@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Subtle brand glow at the top of the viewport */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: 320px;
+    pointer-events: none;
+    background: radial-gradient(
+      80% 100% at 50% 0%,
+      rgba(180, 128, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0) 70%
+    );
+    z-index: -1;
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "jsxImportSource": "solid-js",
+    "jsx": "preserve",
+    "types": [
+      "vinxi/client",
+      "vidstack/solid"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["shared/*"]
+    }
+  },
+  "include": [
+    "src",
+    "shared"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/node_modules"
+  ]
+}

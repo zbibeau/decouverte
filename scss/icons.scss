@@ -1,0 +1,40 @@
+.icon {
+  $icons: "circle-60-percent", "circle-40-percent", "square-stetho", "icon-user-search", "play-btn-alt", "menu-line",
+    "toolbox1-alice-infos", "toolbox1-summary-alice", "toolbox1-summary-decrease", "toolbox1-summary-pricing",
+    "toolbox1-summary-privacy", "toolbox1-summary-rules", "toolbox1-summary-secAway", "toolbox2-org",
+    "toolbox2-documents", "toolbox2-notifications", "toolbox2-teleconsult", "toolbox3-campaign", "toolbox3-inbox",
+    "toolbox3-website", "toolbox3-messages", "toolbox3-sms", "toolbox3-infos", "add-line", "arrow-down-s-line",
+    "arrow-left", "arrow-right", "calendar-todo-fill", "check-fill", "check-line", "close", "hand-coin-fill",
+    "home-fill", "lightbulb-fill", "loop-right-line", "money-euro-circle", "moon-clear-fill", "pause-circle-fill",
+    "play-circle-fill", "questionnaire-fill", "refresh-line", "send-plane-fill", "subtract-line", "sun-fill",
+    "team-fill", "user-fill";
+
+  @each $icon in $icons {
+    &.icon-#{$icon} {
+      mask: url("/icons/#{$icon}.svg");
+      mask-size: contain !important;
+      mask-repeat: no-repeat !important;
+      mask-position: center center;
+    }
+    &.bg-#{$icon} {
+      background: url("/icons/#{$icon}.svg") no-repeat;
+      background-size: 100%;
+    }
+  }
+}
+
+.brand {
+  $icons: "brand-icon", "brand-logo", "brand-symbol";
+  @each $icon in $icons {
+    &.icon-#{$icon} {
+      mask: url("/brand/#{$icon}.svg");
+      mask-size: contain !important;
+      mask-repeat: no-repeat !important;
+      mask-position: center center;
+    }
+    &.bg-#{$icon} {
+      background: url("/icons/#{$icon}.svg") no-repeat;
+      background-size: 100%;
+    }
+  }
+}

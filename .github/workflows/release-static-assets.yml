@@ -1,0 +1,115 @@
+name: Release static assets
+
+env:
+  PROJECT_NAME: 'decouverte'
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop", "gay", "main"]
+
+jobs:
+  build:
+    environment: ${{github.ref_name == 'main' && 'PROD' || 'DEV'}}
+    runs-on: self-hosted
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: See environment
+      run: echo ${{github.ref_name == 'main' && 'PROD' || 'DEV'}}
+
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.DEPLOY_KEY_DESIGN_SYSTEM_V2 }}
+        known_hosts: "unnecessary"
+        name: id_rsa # optional
+        if_key_exists: "replace"
+
+    - name: Install Node.js 18.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18.x
+
+    - name: Install PNPM
+      uses: pnpm/action-setup@v3.0.0
+      with:
+        version: 8
+        run_install: false
+        
+    - name: Get pnpm store directory
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+    - uses: actions/cache@v4
+      name: Setup pnpm cache
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+
+    - name: Install dependencies
+      run: pnpm install --no-frozen-lockfile
+
+    - name: Build static files
+      run : BUILD=static pnpm build
+      env:
+        VITE_REST_URL: ${{ secrets.VITE_REST_URL }}
+        VITE_HUBSPOT_MEETING_NO_FOLLOW_UP_MEDECINE: ${{ secrets.VITE_HUBSPOT_MEETING_NO_FOLLOW_UP_MEDECINE }}
+        VITE_HUBSPOT_MEETING_POST_DEMO: ${{ secrets.VITE_HUBSPOT_MEETING_POST_DEMO }}
+        VITE_HUBSPOT_MEETINGS_POST_DEMO: ${{ secrets.VITE_HUBSPOT_MEETINGS_POST_DEMO }}
+    
+    - name: List files
+      run : ls -lsa .output
+
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: build_results
+        path: .output
+        include-hidden-files: true
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build results for job build
+        uses: actions/download-artifact@v4
+        with:
+          name: build_results
+          path: .output
+
+      - name: Extract branch name
+        shell: bash
+        run: echo "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
+
+      - name: Patch branch develop --> to be removed
+        shell: bash
+        run: echo "BRANCH=$([[ $BRANCH == develop ]] && echo dev || echo ${BRANCH})" >> $GITHUB_ENV
+
+      - name: Compute S3 path
+        shell: bash
+        run: echo "S3_PATH=$([[ $BRANCH == main ]] && echo ${PROJECT_NAME} || echo ${BRANCH}/${PROJECT_NAME})" >> $GITHUB_ENV
+
+      - name: Upload static assets to S3 bucket
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks --delete
+        env:
+          AWS_S3_BUCKET: ${{ secrets.AWS_BUCKET_DEV_STATIC_ASSETS }}
+          AWS_S3_ENDPOINT: ${{ secrets.AWS_ENDPOINT_DEV_STATIC_ASSETS }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_DEV_STATIC_ASSETS }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV_STATIC_ASSETS }}
+          AWS_REGION: 'gra' # optional: defaults to us-east-1
+          SOURCE_DIR: '.output/public/' # optional: defaults to entire repository
+          DEST_DIR: '${S3_PATH}'
+
+      - name: Delete build artifact
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: build_results

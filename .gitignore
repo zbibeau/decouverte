@@ -1,0 +1,45 @@
+
+dist
+.solid
+.output
+.vercel
+.netlify
+netlify
+
+# Environment — catch all real env files (incl. our .cloud.backup /
+# .localstack.backup variants which contain Supabase URLs + keys).
+# Exception : *.example files are templates, kept committed.
+.env
+.env.local
+.env.local.*
+.env.*.local
+
+# Manager Next.js — build artifacts + deps + env (its own .gitignore
+# covers these too, repeated here so the root rules are authoritative).
+manager/node_modules
+manager/.next
+manager/out
+manager/.env.local
+manager/.env.local.*
+manager/.env.*.local
+
+# Claude / agent local settings (machine-specific)
+.claude/settings.local.json
+
+# dependencies
+/node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+*.launch
+.settings/
+
+# Temp
+gitignore
+
+# System Files
+.DS_Store
+Thumbs.db
+.vinxi

@@ -1,0 +1,48 @@
+@import "./font.scss";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+// For video player
+.player {
+  --media-brand: #f5f5f5;
+  --media-focus-ring-color: #4e9cf6;
+  --media-focus-ring: 0 0 0 3px var(--media-focus-ring-color);
+
+  // Fix issue due to the library
+  media-radio media-icon svg:nth-child(n + 2) {
+    display: none;
+  }
+}
+
+@import "./icons.scss";
+
+.slide-fade-enter-active,
+.slide-fade-exit-active {
+  transition: opacity 0.3s;
+}
+.slide-fade-enter,
+.slide-fade-exit-to {
+  opacity: 0;
+}
+
+@keyframes slideaway {
+  from {
+    max-width: 25%;
+    max-height: 25%;
+  }
+  to {
+    max-width: 100%;
+    max-height: 100%;
+  }
+}
+
+/* Bilan FONT */
+/* ----------------- */
+@font-face {
+  font-family: "Doctorline";
+  font-weight: normal;
+  font-style: normal;
+  src: url(/fonts/doctorline.ttf);
+}

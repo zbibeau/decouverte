@@ -1,0 +1,51 @@
+name: Release Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "develop", "gay", "main" ]
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Extract branch name
+      shell: bash
+      run: echo "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
+
+    - name: TEST ENV VAR
+      shell: bash
+      run: echo "VITE_REST_URL=${{secrets.VITE_REST_URL}}"
+
+    - name: Compute docker tag
+      shell: bash
+      run: echo "tag=$([[ $BRANCH == main ]] && echo prod || echo ${BRANCH})" >> $GITHUB_OUTPUT
+      id: extract_docker_tag
+
+    - name: Login to OVH registry
+      uses: docker/login-action@v2
+      with:
+        registry: zz6lq8cq.gra7.container-registry.ovh.net
+        username: ${{ secrets.OVH_REGISTRY_USERNAME_DEV }}
+        password: ${{ secrets.OVH_REGISTRY_TOKEN_DEV }}
+
+    - uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.DEPLOY_KEY_DESIGN_SYSTEM_V2 }}
+
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        platforms: linux/amd64
+        push: true
+        ssh: |
+          default
+        tags: |
+          zz6lq8cq.gra7.container-registry.ovh.net/dev/demo-ventes:${{ steps.extract_docker_tag.outputs.tag }}
+        secrets: |
+          VITE_REST_URL=${{ secrets.VITE_REST_URL }}
+          VITE_HUBSPOT_MEETING_NO_FOLLOW_UP_MEDECINE=${{ secrets.VITE_HUBSPOT_MEETING_NO_FOLLOW_UP_MEDECINE }}
+          VITE_HUBSPOT_MEETING_POST_DEMO=${{ secrets.VITE_HUBSPOT_MEETING_POST_DEMO }}

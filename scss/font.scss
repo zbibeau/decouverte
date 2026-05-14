@@ -1,0 +1,50 @@
+/* MADEFORMED FONT */
+/* ----------------- */
+@font-face {
+    font-family: "MadeForMed";
+    font-weight: normal;
+    font-style: normal;
+    src: url(/fonts/MadeForMed/madeformed-webfont.eot);
+    src:
+        url(/fonts/MadeForMed/madeformed-webfont.eot?#iefix) format("embedded-opentype"),
+        url(/fonts/MadeForMed/madeformed-webfont.woff2) format("woff2"),
+        url(/fonts/MadeForMed/madeformed-webfont.woff) format("woff"),
+        url(/fonts/MadeForMed/madeformed-webfont.ttf) format("truetype");
+}
+
+/* STERADIAN FONT */
+/* ----------------- */
+@mixin fontSteradian($name, $weight) {
+    @font-face {
+        font-family: "Steradian";
+        src: url("/fonts/Steradian/steradian-#{$name}-webfont.eot");
+        src:
+            url("/fonts/Steradian/steradian-#{$name}-webfont.eot?#iefix") format("embedded-opentype"),
+            url("/fonts/Steradian/steradian-#{$name}-webfont.woff2") format("woff2"),
+            url("/fonts/Steradian/steradian-#{$name}-webfont.woff") format("woff"),
+            url("/fonts/Steradian/steradian-#{$name}-webfont.ttf") format("truetype");
+        font-weight: $weight;
+        font-style: normal;
+    }
+
+    @font-face {
+        font-family: "Steradian";
+        src: url("/fonts/Steradian/steradian-#{$name}it-webfont.eot");
+        src:
+            url("/fonts/Steradian/steradian-#{$name}it-webfont.eot?#iefix") format("embedded-opentype"),
+            url("/fonts/Steradian/steradian-#{$name}it-webfont.woff2") format("woff2"),
+            url("/fonts/Steradian/steradian-#{$name}it-webfont.woff") format("woff"),
+            url("/fonts/Steradian/steradian-#{$name}it-webfont.ttf") format("truetype");
+        font-weight: $weight;
+        font-style: italic;
+    }
+}
+
+@include fontSteradian("th", 100);
+@include fontSteradian("xlt", 200);
+@include fontSteradian("ultlt", 285);
+@include fontSteradian("lt", 300);
+@include fontSteradian("rg", 400);
+@include fontSteradian("md", 500);
+@include fontSteradian("bd", 700);
+@include fontSteradian("blk", 900);

@@ -1,0 +1,49 @@
+import chardet
+
+# Chemin de ton fichier
+input_file = "/Users/vivienperalta/Downloads/fwd_demande_dexport_de_donnes_mlm_3/Patients TRAUCHESSEC.csv"
+output_file = "/Users/vivienperalta/Downloads/Patients_TRAUCHESSEC_corrige.csv"
+
+# Détection automatique de l'encodage
+with open(input_file, "rb") as f:
+    raw = f.read()
+    detected = chardet.detect(raw)
+    print(f"Encodage détecté : {detected}")
+
+# Décodage et ré-encodage en UTF-8
+with open(input_file, "rb") as f:
+    content = f.read().decode("latin-1")  # ou "cp1252"
+
+with open(output_file, "w", encoding="utf-8-sig") as f:
+    f.write(content)
+
+print("Fichier corrigé sauvegardé !")import chardet
+
+# Chemin de ton fichier
+input_file = "/Users/vivienperalta/Downloads/fwd_demande_dexport_de_donnes_mlm_3/Patients TRAUCHESSEC.csv"
+output_file = "/Users/vivienperalta/Downloads/Patients_TRAUCHESSEC_corrige.csv"
+
+# Détection automatique de l'encodage
+with open(input_file, "rb") as f:
+    raw = f.read()
+    detected = chardet.detect(raw)
+    print(f"Encodage détecté : {detected}")
+
+# Décodage et ré-encodage en UTF-8
+with open(input_file, "rb") as f:
+    content = f.read().decode("latin-1")  # ou "cp1252"
+
+with open(output_file, "w", encoding="utf-8-sig") as f:
+    f.write(content)
+
+print("Fichier corrigé sauvegardé !")
+python3 -c "
+input_file = '/Users/vivienperalta/Downloads/fwd_demande_dexport_de_donnes_mlm_3/Patients TRAUCHESSEC.csv'
+output_file = '/Users/vivienperalta/Downloads/Patients_TRAUCHESSEC_corrige.csv'
+with open(input_file, 'rb') as f:
+    content = f.read().decode('latin-1')
+with open(output_file, 'w', encoding='utf-8-sig') as f:
+    f.write(content)
+print('Fichier corrigé sauvegardé !')
+"
+

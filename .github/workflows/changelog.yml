@@ -1,0 +1,72 @@
+name: Generate Changelog
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main", "gay"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Extract branch name
+      shell: bash
+      run: echo "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV && echo "RELEASE_DATE=date +'%Y%m%d%H%M'"
+
+    - name: Conventional Changelog Action
+      id: changelog
+      uses: TriPSs/conventional-changelog-action@v5
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        output-file: "false"
+        pre-release: ${{env.BRANCH == 'gay' && 'true' || 'false'}}
+    
+    - name: Edit generated changelog
+      shell: bash
+      env:
+          CURRENT_CHANGELOG: ${{steps.changelog.outputs.clean_changelog}}
+      run: | 
+        EDITED_CHANGELOG=$(sed -E 's/MFM-([0-9]+)/\[&\]\(https:\/\/linear.app\/madeformed\/issue\/\1\)/g' <<< "${CURRENT_CHANGELOG}")
+
+        echo "${EDITED_CHANGELOG}"
+        echo "EDITED_CHANGELOG<<EOF" >> $GITHUB_ENV
+        echo "${EDITED_CHANGELOG}" >> $GITHUB_ENV 
+        echo "EOF" >> $GITHUB_ENV
+
+    - name: Create Release
+      uses: actions/create-release@v1
+      id: release
+      if: ${{ steps.changelog.outputs.skipped == 'false' }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: "${{ steps.changelog.outputs.tag }}"
+        release_name: ${{env.BRANCH}} - ${{ steps.changelog.outputs.tag }}
+        body: ${{ env.EDITED_CHANGELOG }}
+
+    - name: Convert Markdown to Slack Markdown
+      uses: LoveToKnow/slackify-markdown-action@v1.1.1
+      id: slackMarkdown
+      if: ${{ steps.changelog.outputs.skipped == 'false' }}
+      with:
+        text: ${{ env.EDITED_CHANGELOG }}
+
+    - name: Post to a Slack channel
+      id: slack
+      uses: slackapi/slack-github-action@v1.27.1
+      if: ${{ steps.changelog.outputs.skipped == 'false' }}
+      with:
+        # Slack channel id, channel name, or user id to post message.
+        # See also: https://api.slack.com/methods/chat.postMessage#channels
+        channel-id: '${{ secrets.SLACK_CHANNEL }}'
+        # For posting a rich message using Block Kit
+        payload: |
+          {
+            "text": "*${{ env.BRANCH == 'gay' && 'ℹ️ New GAY' || '🔥 New PRODUCTION'}} version - ${{ steps.changelog.outputs.tag }}* \n\n ${{ steps.slackMarkdown.outputs.text }} \n\n Details: ${{ steps.release.outputs.html_url }}"
+          }
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        
