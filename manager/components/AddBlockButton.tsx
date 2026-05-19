@@ -9,7 +9,11 @@ import type { BlockSample } from '@/lib/blockSamples';
 interface Props {
   type: string;
   label: string;
-  sample: BlockSample;
+  /** Curated sample payload + description. Optional at the type level for
+   *  defensive callers ; the component falls back to an empty payload when
+   *  missing, so it never crashes due to a stale HMR snapshot or a new
+   *  block type not yet wired in `SAMPLE_PAYLOADS`. */
+  sample?: BlockSample;
   clientUrl?: string;
   /** Inserts the block at the end of the current chapter, using the sample payload. */
   onInsert: (type: string) => Promise<void>;
@@ -46,6 +50,11 @@ export function AddBlockButton({
   const previewId = `add-${type}`;
   const iframeUrl = `${clientUrl}/preview-block?preview=1&id=${previewId}&type=${type}`;
 
+  // Resolved payload pushed to the preview iframe. Fallback to an empty
+  // object so this component never crashes when `sample` is missing — the
+  // iframe will simply render the type's default empty state.
+  const samplePayload = sample?.payload ?? {};
+
   // Push the sample payload once the Solid iframe signals it is ready.
   useEffect(() => {
     if (!open) return;
@@ -60,7 +69,7 @@ export function AddBlockButton({
           {
             type: 'preview:setBlockOverride',
             blockId: previewId,
-            block: { type, payload: sample.payload },
+            block: { type, payload: samplePayload },
           },
           { targetOrigin: clientUrl },
         );
@@ -68,7 +77,7 @@ export function AddBlockButton({
     }
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [open, type, sample.payload, clientUrl, previewId]);
+  }, [open, type, samplePayload, clientUrl, previewId]);
 
   // Close on outside click or Escape.
   useEffect(() => {
@@ -124,9 +133,12 @@ export function AddBlockButton({
             <span className="inline-flex h-5 items-center rounded bg-muted px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {label}
             </span>
-            <p className="text-sm font-medium leading-snug">{sample.description}</p>
+            <p className="text-sm font-medium leading-snug">
+              {sample?.description ?? `Bloc « ${label} ».`}
+            </p>
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium">Quand l&apos;utiliser :</span> {sample.whenToUse}
+              <span className="font-medium">Quand l&apos;utiliser :</span>{' '}
+              {sample?.whenToUse ?? 'À utiliser comme bloc dans un chapitre.'}
             </p>
           </div>
 

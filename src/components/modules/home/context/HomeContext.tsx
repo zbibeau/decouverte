@@ -10,7 +10,12 @@ import {
   LOCALSTORAGE_MOST_ADVANCED_STEP_KEY,
   LOCALSTORAGE_STEP_KEY,
 } from '../utils/HomeIds';
-import { type ChapterStub, loadChapterSequence } from '../renderer/loadChapter';
+import {
+  type ChapterStub,
+  type NavbarVariant,
+  loadChapterSequence,
+  loadNavbarVariants,
+} from '../renderer/loadChapter';
 import { HOME_STEPS, HOME_STEPS_KEYS } from '../utils/HomeSteps';
 import { HOME_STEPS_LAYOUT_VALUE } from '../utils/HomeUtils';
 import { loadDynamicHubspotMappings } from '../utils/dynamicHubspotMapping';
@@ -42,6 +47,7 @@ export const HomeContext = createContext({
   parcoursSlug: () => DEFAULT_PARCOURS_SLUG,
   chapters: () => [],
   chaptersLoaded: () => false,
+  navbarVariants: () => [],
 } as HomeContextReturn);
 
 export enum PERSON_WHO_HANDLE_CALLS {
@@ -86,6 +92,10 @@ type HomeContextReturn = {
    *  empty" — an empty parcours should show a friendly empty state instead
    *  of staying stuck on a loading spinner. */
   chaptersLoaded: Accessor<boolean>;
+  /** Navbar variants registered on the current parcours (Tool 1 pilote).
+   *  Used by `renderNavbar` to resolve `payload.navbar.variant` keys to
+   *  display data (title, icon, color, percent). */
+  navbarVariants: Accessor<NavbarVariant[]>;
 };
 
 export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: string }) => {
@@ -102,6 +112,7 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
   const [hubspotContactId, setHubspotContactId] = createSignal<number>();
   const [chapters, setChapters] = createSignal<ChapterStub[]>([]);
   const [chaptersLoaded, setChaptersLoaded] = createSignal(false);
+  const [navbarVariants, setNavbarVariants] = createSignal<NavbarVariant[]>([]);
   // Stable per-mount slug : whichever slug the route declared at mount
   // time. Wrapped in an accessor for context API consistency.
   const parcoursSlug = () => props.parcoursSlug ?? DEFAULT_PARCOURS_SLUG;
@@ -126,6 +137,13 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
     loadDynamicHubspotMappings(parcoursSlug())
       .then(setDynamicHubspotMappings)
       .catch((e) => console.warn('[HomeContext] dynamic hubspot mappings load failed', e));
+
+    // Hydrate the navbar variants registry for the active parcours. The
+    // renderer reads this to map a block's `payload.navbar.variant` key to
+    // its title/icon/color/percent.
+    loadNavbarVariants(parcoursSlug())
+      .then(setNavbarVariants)
+      .catch((e) => console.warn('[HomeContext] navbar variants load failed', e));
 
     // Load the chapter sequence from DB. The dynamic stepper uses this
     // to know what chapters exist and how to navigate; the default
@@ -345,6 +363,7 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
         parcoursSlug,
         chapters,
         chaptersLoaded,
+        navbarVariants,
         //@ts-ignore
         setCurrentStep: (step: HOME_STEPS_KEYS) => {
           // eslint-disable-next-line solid/reactivity

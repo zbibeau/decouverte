@@ -19,6 +19,7 @@ import { AudioPlayer } from '../../../primitives/AudioPlayer';
 import { Text } from '../../../primitives/Text';
 import { Title } from '../../../primitives/Title';
 import { AfterHeroContainer, AfterHeroContainerFullVideoSection } from '../components/AfterHeroContainer';
+import { ChapterTransitionGrid } from '../components/ChapterTransitionGrid';
 import { ExceptionBlock } from '../components/ExceptionBlock';
 import { FAQCard } from '../components/FAQCard';
 import { HeroTitle } from '../components/Hero';
@@ -36,35 +37,57 @@ import { RenderFormBlock } from './RenderFormBlock';
 // Lifted from HomeTool1.tsx so the renderer stays self-contained.
 // Will be generalised once we extract per-chapter chrome into the schema.
 
-const Tool1Navbar = (props: { stepActive: 'appointment' | 'contact' }) => (
-  <div class="sticky left-0 top-0 z-50 w-full">
-    <div
-      class="flex w-full items-center justify-between px-8 py-4 shadow"
-      style={{
-        background: 'linear-gradient(176deg, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.33) 96.48%)',
-      }}
-    >
-      <div>
-        <Title variant="h4">
-          {props.stepActive === 'appointment' ? 'Les demandes de rendez-vous' : 'Les demandes de contact'}
-        </Title>
+/**
+ * Resolves a block's `payload.navbar.variant` key against the parcours'
+ * navbar variants registry (loaded into HomeContext at mount) and renders
+ * a title + optional icon/percent ring + accent color background.
+ *
+ * Legacy fallback: when a key is referenced but not registered (e.g.
+ * `appointment` / `contact` on a parcours that hasn't been seeded), the
+ * key itself is displayed and a console warning is emitted so the author
+ * notices the gap in the manager.
+ */
+const Tool1Navbar: Component<{ variantKey: string }> = (props) => {
+  const { navbarVariants } = useHome();
+  const variant = createMemo(() =>
+    navbarVariants().find((v) => v.key === props.variantKey),
+  );
+  return (
+    <div class="sticky left-0 top-0 z-50 w-full">
+      <div
+        class="flex w-full items-center justify-between px-8 py-4 shadow"
+        style={{
+          background: variant()?.color
+            ? `linear-gradient(176deg, ${variant()!.color}33 0%, ${variant()!.color}1a 96.48%)`
+            : 'linear-gradient(176deg, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.33) 96.48%)',
+        }}
+      >
+        <div class="flex items-center gap-3">
+          <Show when={variant()?.icon}>
+            <Icon
+              icon={`icon icon-${variant()!.icon} h-6 w-6`}
+              variant="primary400"
+              size="default"
+            />
+          </Show>
+          <Title variant="h4">
+            {variant()?.title ?? props.variantKey}
+          </Title>
+        </div>
+        <Show when={typeof variant()?.percent === 'number'}>
+          <div class="flex items-center gap-2">
+            <i
+              class={`icon bg-circle-${variant()!.percent}-percent block h-14 w-[100px]`}
+            />
+          </div>
+        </Show>
       </div>
-      {props.stepActive === 'contact' && (
-        <div>
-          <i class="icon bg-circle-40-percent block h-14 w-[100px]" />
-        </div>
-      )}
-      {props.stepActive === 'appointment' && (
-        <div>
-          <i class="icon bg-circle-60-percent block h-14 w-[100px]" />
-        </div>
-      )}
     </div>
-  </div>
-);
+  );
+};
 
-const renderNavbar = (navbar?: { variant: 'appointment' | 'contact' }): JSX.Element | undefined =>
-  navbar ? <Tool1Navbar stepActive={navbar.variant} /> : undefined;
+const renderNavbar = (navbar?: { variant: string }): JSX.Element | undefined =>
+  navbar?.variant ? <Tool1Navbar variantKey={navbar.variant} /> : undefined;
 
 /**
  * Convert raw newlines into `<br>` so author-typed carriage returns appear
@@ -219,6 +242,10 @@ const RenderBlock: Component<BlockProps> = (props) => {
                 <PhotoCarousel payload={blk.payload} />
               </div>
             );
+
+          // Legacy block type `chapterTransition` removed from the schema.
+          // Any row still carrying that type in DB hits the `default` branch
+          // below (returns null silently) — no manual rendering needed.
 
           default:
             return null;
@@ -810,6 +837,13 @@ export const ChapterRenderer: Component<{
           );
         }}
       </For>
+      {/* Auto-injected "next chapter" section panorama at the end of every
+          chapter (custom parcours only — demo-ventes legacy keeps its
+          hardcoded GoToNextPartButton). Renders the next chapter's section
+          with the next chapter highlighted + a "Découvrir" CTA. The
+          ChapterTransitionGrid itself returns null when there is no next
+          chapter, so the last chapter of the parcours stays clean. */}
+      <ChapterTransitionGrid activeChapter="next" />
     </div>
   );
 };

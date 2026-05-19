@@ -47,7 +47,10 @@ export function summarizeBlock(type: string, payload: Record<string, unknown>): 
       case 'componentRef':
         return String(payload.name ?? '');
       case 'toolContentSection':
-        return `${payload.name ?? ''} — ${payload.title ?? ''}`;
+        // `name` is deprecated (legacy label nav) — fall back to the title
+        // when missing, which is now the source of truth for the section
+        // identity.
+        return String(payload.title ?? payload.name ?? '');
       default:
         return JSON.stringify(payload).slice(0, 80);
     }

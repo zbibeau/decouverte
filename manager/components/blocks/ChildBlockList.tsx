@@ -4,20 +4,33 @@ import type { ContentBlock } from '@shared/content-schema';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
 
-import { AddBlockButton } from '@/components/AddBlockButton';
+import { BlockTypeSelector } from '@/components/BlockTypeSelector';
 import { Button } from '@/components/ui/Button';
 import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS, blankBlock } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { summarizeBlock } from '@/lib/blockSummary';
 
+/** Block types that don't make sense as a nested sub-block : the hero
+ *  title is per-chapter, and component refs are top-level only. */
+const NESTED_EXCLUDED_TYPES = new Set<ContentBlock['type']>([
+  'heroTitle',
+  'componentRef',
+]);
+
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { PayloadEditor } from './PayloadEditor';
-import type { VariableMeta } from './editor-types';
+import type {
+  ChapterMeta,
+  NavbarVariantMeta,
+  VariableMeta,
+} from './editor-types';
 
 interface Props {
   blocks: ContentBlock[];
   onChange: (next: ContentBlock[]) => void;
   variables: VariableMeta[];
+  chapters?: ChapterMeta[];
+  navbarVariants?: NavbarVariantMeta[];
   depth?: number;
   /**
    * Path-like label shown in the ⌘K palette ("Card", "Conditionnel > Alors",
@@ -32,7 +45,15 @@ interface Props {
  * `conditional`. Each child is rendered as a collapsible row with the
  * appropriate PayloadEditor inside.
  */
-export function ChildBlockList({ blocks, onChange, variables, depth = 0, scopeLabel }: Props) {
+export function ChildBlockList({
+  blocks,
+  onChange,
+  variables,
+  chapters,
+  navbarVariants,
+  depth = 0,
+  scopeLabel,
+}: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(blocks.length === 1 ? 0 : null);
 
   function update(idx: number, next: ContentBlock) {
@@ -146,36 +167,25 @@ export function ChildBlockList({ blocks, onChange, variables, depth = 0, scopeLa
             </div>
             {isOpen && (
               <div className="border-t border-border bg-muted/20 p-3">
-                <PayloadEditor block={b} onChange={(next) => update(idx, next)} variables={variables} depth={depth + 1} />
+                <PayloadEditor
+                  block={b}
+                  onChange={(next) => update(idx, next)}
+                  variables={variables}
+                  chapters={chapters}
+                  navbarVariants={navbarVariants}
+                  depth={depth + 1}
+                />
               </div>
             )}
           </div>
         );
       })}
 
-      <div className="flex flex-wrap gap-1.5">
-        {BLOCK_TYPES_ORDER.filter((t) => t !== 'heroTitle' && t !== 'componentRef').map((t) => {
-          const sample = SAMPLE_PAYLOADS[t];
-          // Fall back to a minimal sample stub for block types that don't have
-          // a curated sample (so the popover still works, even if its iframe
-          // shows the blank-payload rendering).
-          const safeSample = sample ?? {
-            description: `Sous-bloc « ${BLOCK_TYPE_LABELS[t] ?? t} ».`,
-            whenToUse: 'À utiliser comme sous-bloc imbriqué.',
-            payload: blankBlock(t).payload as Record<string, unknown>,
-          };
-          return (
-            <AddBlockButton
-              key={t}
-              type={t}
-              label={BLOCK_TYPE_LABELS[t] ?? t}
-              sample={safeSample}
-              insertTarget="children"
-              onInsert={() => add(t)}
-            />
-          );
-        })}
-      </div>
+      <BlockTypeSelector
+        onInsert={(t) => add(t)}
+        excludeTypes={NESTED_EXCLUDED_TYPES}
+        insertTarget="children"
+      />
     </>
   );
   return scopeId ? (

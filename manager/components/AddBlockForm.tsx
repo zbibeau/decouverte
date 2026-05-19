@@ -1,8 +1,6 @@
 'use client';
 
-import { AddBlockButton } from '@/components/AddBlockButton';
-import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
-import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
+import { BlockTypeSelector } from '@/components/BlockTypeSelector';
 
 interface Props {
   /**
@@ -14,17 +12,5 @@ interface Props {
 }
 
 export function AddBlockForm({ insertSampleAction }: Props) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {BLOCK_TYPES_ORDER.map((t) => (
-        <AddBlockButton
-          key={t}
-          type={t}
-          label={BLOCK_TYPE_LABELS[t]}
-          sample={SAMPLE_PAYLOADS[t]}
-          onInsert={insertSampleAction}
-        />
-      ))}
-    </div>
-  );
+  return <BlockTypeSelector onInsert={(t) => insertSampleAction(t)} />;
 }

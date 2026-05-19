@@ -6,7 +6,12 @@ import { notFound } from 'next/navigation';
 import { BlockEditor } from '@/components/BlockEditor';
 import { Button } from '@/components/ui/Button';
 import { BLANK_PAYLOADS, BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
-import { createBlockWithPayload, getDraftStatus, getEditingVersionId } from '@/lib/actions';
+import {
+  createBlockWithPayload,
+  getDraftStatus,
+  getEditingVersionId,
+  getNavbarVariants,
+} from '@/lib/actions';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -69,13 +74,15 @@ export default async function NewBlockPage({
 
   const { data: allChapters } = await supabase
     .from('chapter')
-    .select('id, slug, title, "order"')
+    .select('id, slug, title, "order", section_label, section_order')
     .eq('version_id', versionId ?? '')
     .order('order', { ascending: true });
   const chapters = (allChapters ?? []).map((c) => ({
     id: c.id,
     slug: c.slug,
     title: c.title,
+    sectionLabel: (c as { section_label?: string | null }).section_label ?? null,
+    sectionOrder: (c as { section_order?: number | null }).section_order ?? null,
   }));
 
   const draftId = `draft-${type}`;
@@ -96,6 +103,7 @@ export default async function NewBlockPage({
 
   // Draft id (if any) so the iframe previews the draft version, not the live.
   const draftStatus = await getDraftStatus(slug);
+  const navbarVariants = await getNavbarVariants(slug);
 
   return (
     <div className="space-y-6">
@@ -127,6 +135,7 @@ export default async function NewBlockPage({
         editingVersionId={draftStatus.draftVersionId}
         publishedVersionId={draftStatus.publishedVersionId}
         chapters={chapters}
+        navbarVariants={navbarVariants}
       />
     </div>
   );

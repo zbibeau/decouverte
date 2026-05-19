@@ -1,5 +1,6 @@
 'use client';
 
+import type { BranchingCondition, LeafCondition } from '@shared/content-schema';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { useCallback } from 'react';
 
@@ -11,6 +12,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { useFieldDiff, useBlockIsNew } from './DiffContext';
 import { Field, Section } from './Field';
+import { NavbarVariantSelect } from './NavbarVariantSelect';
 import { ItemsList } from './ItemsList';
 import type { PayloadEditorProps } from './editor-types';
 
@@ -36,29 +38,27 @@ function InlineDiffBadge({ path }: { path: string }) {
   return null;
 }
 
-type Branching = {
-  variable: string;
-  op: '=' | '!=' | 'in';
-  value: string | number | boolean | Array<string | number | boolean>;
-};
-
 type GroupItem =
   | { text: string }
-  | { conditional: Branching; then: { text: string }; else?: { text: string } };
+  | { conditional: BranchingCondition; then: { text: string }; else?: { text: string } };
 
 type Group = {
   title: string;
-  variant?: 'secondary50' | 'primary50';
+  variant?: 'success50' | 'secondary50' | 'primary50' | 'primary400';
+  icon?: string;
   items: GroupItem[];
 };
 
 type KPPayload = {
-  navbar?: { variant: 'appointment' | 'contact' };
+  navbar?: { variant: string };
+  contentClass?: string;
+  inline?: boolean;
+  hideHeader?: boolean;
   main: {
     icon?: string;
     title: string;
     description?: string;
-    items?: Array<{ text: string }>;
+    items?: Array<{ text: string; variant?: string }>;
     extraDescriptions?: string[];
   };
   groups?: Group[];
@@ -66,11 +66,17 @@ type KPPayload = {
     icon?: string;
     title: string;
     description?: string;
-    items?: Array<{ text: string }>;
+    items?: Array<{ text: string; variant?: string }>;
+    style?: 'primary' | 'dark' | 'secondary';
   };
 };
 
-export function KeyPointsCardEditor({ payload, onChange, variables }: PayloadEditorProps<KPPayload>) {
+export function KeyPointsCardEditor({
+  payload,
+  onChange,
+  variables,
+  navbarVariants,
+}: PayloadEditorProps<KPPayload>) {
   function updateMain(patch: Partial<KPPayload['main']>) {
     onChange({ ...payload, main: { ...payload.main, ...patch } });
   }
@@ -197,23 +203,17 @@ export function KeyPointsCardEditor({ payload, onChange, variables }: PayloadEdi
 
   return (
     <ScopeRoot scopeId="keypoints-main" className="space-y-3 rounded-md p-1 -m-1">
-      <Field label="Navbar pilote Tool 1" path="navbar">
-        <select
-          className="h-9 rounded-md border border-border bg-white px-3 text-sm"
-          value={payload.navbar?.variant ?? ''}
-          onChange={(e) =>
+      <Field label="Navbar pilote" path="navbar">
+        <NavbarVariantSelect
+          value={payload.navbar?.variant}
+          onChange={(key) =>
             onChange({
               ...payload,
-              navbar: e.target.value
-                ? { variant: e.target.value as 'appointment' | 'contact' }
-                : undefined,
+              navbar: key ? { variant: key } : undefined,
             })
           }
-        >
-          <option value="">(aucune)</option>
-          <option value="appointment">appointment</option>
-          <option value="contact">contact</option>
-        </select>
+          variants={navbarVariants}
+        />
       </Field>
 
       <Section title="Sous-titre optionnel (au-dessus des paragraphes)" accentColor="rose">
@@ -358,16 +358,20 @@ export function KeyPointsCardEditor({ payload, onChange, variables }: PayloadEdi
                             </Button>
                           </div>
                           {(() => {
-                            const selectedVar = variables.find((v) => v.key === item.conditional.variable);
+                            // The UI only supports LeafCondition for now.
+                            // AllCondition / AnyCondition trees would need a
+                            // recursive editor — out of scope here.
+                            const cond = item.conditional as LeafCondition;
+                            const selectedVar = variables.find((v) => v.key === cond.variable);
                             return (
                               <div className="flex items-center gap-1">
                                 <select
                                   className="h-8 flex-1 rounded-md border border-border bg-white px-1 text-xs"
-                                  value={item.conditional.variable}
+                                  value={cond.variable}
                                   onChange={(e) =>
                                     updateGroupItem(gIdx, iIdx, {
                                       ...item,
-                                      conditional: { ...item.conditional, variable: e.target.value },
+                                      conditional: { ...cond, variable: e.target.value },
                                     })
                                   }
                                 >
@@ -380,12 +384,12 @@ export function KeyPointsCardEditor({ payload, onChange, variables }: PayloadEdi
                                 </select>
                                 <select
                                   className="h-8 rounded-md border border-border bg-white px-1 text-xs"
-                                  value={item.conditional.op}
+                                  value={cond.op}
                                   onChange={(e) =>
                                     updateGroupItem(gIdx, iIdx, {
                                       ...item,
                                       conditional: {
-                                        ...item.conditional,
+                                        ...cond,
                                         op: e.target.value as '=' | '!=' | 'in',
                                       },
                                     })
@@ -398,11 +402,11 @@ export function KeyPointsCardEditor({ payload, onChange, variables }: PayloadEdi
                                 {selectedVar?.type === 'boolean' ? (
                                   <select
                                     className="h-8 w-24 rounded-md border border-border bg-white px-1 text-xs"
-                                    value={String(item.conditional.value)}
+                                    value={String(cond.value)}
                                     onChange={(e) =>
                                       updateGroupItem(gIdx, iIdx, {
                                         ...item,
-                                        conditional: { ...item.conditional, value: e.target.value === 'true' },
+                                        conditional: { ...cond, value: e.target.value === 'true' },
                                       })
                                     }
                                   >
@@ -412,11 +416,11 @@ export function KeyPointsCardEditor({ payload, onChange, variables }: PayloadEdi
                                 ) : selectedVar?.type === 'enum' && selectedVar.options.length > 0 ? (
                                   <select
                                     className="h-8 w-24 rounded-md border border-border bg-white px-1 text-xs"
-                                    value={String(item.conditional.value)}
+                                    value={String(cond.value)}
                                     onChange={(e) =>
                                       updateGroupItem(gIdx, iIdx, {
                                         ...item,
-                                        conditional: { ...item.conditional, value: e.target.value },
+                                        conditional: { ...cond, value: e.target.value },
                                       })
                                     }
                                   >
@@ -428,14 +432,14 @@ export function KeyPointsCardEditor({ payload, onChange, variables }: PayloadEdi
                                   </select>
                                 ) : (
                                   <Input
-                                    value={String(item.conditional.value)}
+                                    value={String(cond.value)}
                                     onChange={(e) => {
                                       const raw = e.target.value;
                                       const val: string | boolean | number =
                                         raw === 'true' ? true : raw === 'false' ? false : isNaN(Number(raw)) || raw === '' ? raw : Number(raw);
                                       updateGroupItem(gIdx, iIdx, {
                                         ...item,
-                                        conditional: { ...item.conditional, value: val },
+                                        conditional: { ...cond, value: val },
                                       });
                                     }}
                                     placeholder="valeur"

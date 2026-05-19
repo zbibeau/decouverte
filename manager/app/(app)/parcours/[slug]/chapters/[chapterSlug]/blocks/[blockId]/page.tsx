@@ -9,6 +9,7 @@ import {
   getBlockDraftDiff,
   getDraftStatus,
   getEditingVersionId,
+  getNavbarVariants,
   updateBlockPayload,
 } from '@/lib/actions';
 import { createClient } from '@/lib/supabase/server';
@@ -89,14 +90,20 @@ export default async function BlockEditPage({
   const editingVersionId = await getEditingVersionId(slug);
   const { data: allChapters } = await supabase
     .from('chapter')
-    .select('id, slug, title, "order"')
+    .select('id, slug, title, "order", section_label, section_order')
     .eq('version_id', editingVersionId ?? '')
     .order('order', { ascending: true });
   const chapters = (allChapters ?? []).map((c) => ({
     id: c.id,
     slug: c.slug,
     title: c.title,
+    sectionLabel: (c as { section_label?: string | null }).section_label ?? null,
+    sectionOrder: (c as { section_order?: number | null }).section_order ?? null,
   }));
+
+  // Navbar variants registered on this parcours — fed to editors that expose
+  // a `navbar.variant` dropdown (video, card, faqCard, keyPointsCard).
+  const navbarVariants = await getNavbarVariants(slug);
 
   return (
     <div className="space-y-6">
@@ -128,6 +135,7 @@ export default async function BlockEditPage({
         draftStatus={blockDiff.status}
         sourcePayload={blockDiff.sourcePayload}
         chapters={chapters}
+        navbarVariants={navbarVariants}
       />
     </div>
   );

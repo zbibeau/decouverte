@@ -11,6 +11,7 @@ export function ParcoursTabs({ slug }: { slug: string }) {
   const tabs = [
     { href: base, label: 'Chapitres', active: pathname === base || pathname.startsWith(`${base}/chapters`) },
     { href: `${base}/variables`, label: 'Variables', active: pathname.startsWith(`${base}/variables`) },
+    { href: `${base}/navbars`, label: 'Navbars', active: pathname.startsWith(`${base}/navbars`) },
     { href: `${base}/library`, label: 'Bibliothèque', active: pathname.startsWith(`${base}/library`) },
   ];
   return (

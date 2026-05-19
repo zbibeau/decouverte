@@ -666,6 +666,20 @@ export async function createChapter(parcoursSlug: string, formData: FormData) {
   const title = String(formData.get('title') ?? '').trim();
   if (!slug || !title) throw new Error('slug et title requis');
 
+  // Pre-check for slug collision in this version so the user gets a clear
+  // error rather than a raw Postgres 23505 (unique_violation).
+  const { data: existing } = await supabase
+    .from('chapter')
+    .select('id, slug')
+    .eq('version_id', versionId)
+    .eq('slug', slug)
+    .maybeSingle();
+  if (existing) {
+    throw new Error(
+      `Un chapitre avec le slug « ${slug} » existe déjà dans ce parcours. Choisis un slug différent.`,
+    );
+  }
+
   const { data: maxOrder } = await supabase
     .from('chapter')
     .select('order')
@@ -676,11 +690,13 @@ export async function createChapter(parcoursSlug: string, formData: FormData) {
 
   const nextOrder = (maxOrder?.order ?? 0) + 1;
 
-  // Default wrapper: full-viewport scroll container with the "secondary-50"
-  // beige background + space-y between blocks. Matches the PRESENTATION
-  // chapter (migration 0020) so freshly-created chapters render with the
-  // same chrome instead of a blank white page.
-  const DEFAULT_WRAPPER_CLASS = 'h-dvh w-dvw overflow-auto bg-secondary-50 space-y-8';
+  // Default wrapper: occupy the available content area (not the viewport
+  // width) so the StepperLayout sidebar doesn't push the content past the
+  // right edge. `w-full` lets the chapter take whatever space its parent
+  // gives ; `min-h-dvh` ensures the wrapper still fills the screen
+  // vertically even when the content is short.
+  const DEFAULT_WRAPPER_CLASS =
+    'min-h-dvh w-full overflow-x-hidden bg-secondary-50 space-y-8';
 
   const { error } = await supabase.from('chapter').insert({
     version_id: versionId,
@@ -690,7 +706,21 @@ export async function createChapter(parcoursSlug: string, formData: FormData) {
     wrapper_class: DEFAULT_WRAPPER_CLASS,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Surface a friendly message for the common collision cases.
+    if (error.code === '23505') {
+      const detail = error.message || '';
+      if (detail.toLowerCase().includes('slug')) {
+        throw new Error(`Un chapitre avec le slug « ${slug} » existe déjà.`);
+      }
+      if (detail.toLowerCase().includes('order')) {
+        throw new Error(
+          `Conflit d'ordre lors de la création (place ${nextOrder} déjà prise). Recharge la page et réessaie.`,
+        );
+      }
+    }
+    throw error;
+  }
   revalidatePath(`/parcours/${parcoursSlug}`);
 }
 
@@ -801,9 +831,44 @@ export async function updateChapterMeta(
   const slug = String(formData.get('slug') ?? '').trim();
   if (!title || !slug) throw new Error('title et slug requis');
 
+  // Optional sidebar grouping. Empty string clears the section assignment so
+  // the chapter goes back to "ungrouped" in the stepper.
+  const sectionLabelRaw = formData.get('sectionLabel');
+  const sectionOrderRaw = formData.get('sectionOrder');
+  const cardImageRaw = formData.get('cardImage');
+  const cardShortTitleRaw = formData.get('cardShortTitle');
+  const update: {
+    title: string;
+    slug: string;
+    section_label?: string | null;
+    section_order?: number | null;
+    card_image?: string | null;
+    card_short_title?: string | null;
+  } = { title, slug };
+  if (sectionLabelRaw !== null) {
+    const v = String(sectionLabelRaw).trim();
+    update.section_label = v === '' ? null : v;
+  }
+  if (sectionOrderRaw !== null) {
+    const raw = String(sectionOrderRaw).trim();
+    if (raw === '') update.section_order = null;
+    else {
+      const n = Number(raw);
+      update.section_order = Number.isFinite(n) ? Math.round(n) : null;
+    }
+  }
+  if (cardImageRaw !== null) {
+    const v = String(cardImageRaw).trim();
+    update.card_image = v === '' ? null : v;
+  }
+  if (cardShortTitleRaw !== null) {
+    const v = String(cardShortTitleRaw).trim();
+    update.card_short_title = v === '' ? null : v;
+  }
+
   const { error } = await supabase
     .from('chapter')
-    .update({ title, slug })
+    .update(update)
     .eq('id', draftChapterId);
   if (error) throw error;
   revalidatePath(`/parcours/${parcoursSlug}`);
@@ -1476,13 +1541,18 @@ export async function createParcours(input: {
   }
 
   // 1. parcours row.
+  // Build the insert payload defensively : only include `host` when an
+  // actual value is provided. This way the insert works on clouds where the
+  // `host` column hasn't been added yet (migration 0028 not applied) — a
+  // schema drift the manager has to tolerate while we onboard new envs.
+  const insertPayload: { slug: string; name: string; host?: string } = {
+    slug,
+    name: input.name.trim(),
+  };
+  if (input.host) insertPayload.host = input.host;
   const { data: parcours, error: pErr } = await supabase
     .from('parcours')
-    .insert({
-      slug,
-      name: input.name.trim(),
-      host: input.host || null,
-    })
+    .insert(insertPayload)
     .select('id, slug')
     .single();
   if (pErr || !parcours) {
@@ -1505,4 +1575,80 @@ export async function createParcours(input: {
 
   revalidatePath('/');
   return { slug: parcours.slug };
+}
+
+// ============================================================
+// Navbar variants (per-parcours navbar pilote registry)
+// ============================================================
+
+export interface NavbarVariant {
+  key: string;
+  title: string;
+  icon?: string;
+  color?: string;
+  /** Optional 0-100 progress ring percentage (legacy demo-ventes uses 40/60). */
+  percent?: number;
+}
+
+/**
+ * Read the navbar variants registry of a parcours. Returns [] when the
+ * parcours doesn't exist or has no variants defined. Safe to call from
+ * any server action / page loader.
+ */
+export async function getNavbarVariants(parcoursSlug: string): Promise<NavbarVariant[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('parcours')
+    .select('navbar_variants')
+    .eq('slug', parcoursSlug)
+    .maybeSingle();
+  const raw = (data as { navbar_variants?: unknown } | null)?.navbar_variants;
+  return Array.isArray(raw) ? (raw as NavbarVariant[]) : [];
+}
+
+function normalizeVariantKey(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_-]/g, '')
+    .slice(0, 40);
+}
+
+/**
+ * Replace the entire variants registry of a parcours. Validates keys are
+ * unique + non-empty + slug-safe. Used by the manager admin UI.
+ */
+export async function setNavbarVariants(
+  parcoursSlug: string,
+  variants: NavbarVariant[],
+): Promise<void> {
+  // Server-side validation : drop empty rows + de-duplicate keys + clamp percent.
+  const clean: NavbarVariant[] = [];
+  const seen = new Set<string>();
+  for (const v of variants) {
+    const key = normalizeVariantKey(String(v.key ?? ''));
+    const title = String(v.title ?? '').trim();
+    if (!key || !title) continue;
+    if (seen.has(key)) {
+      throw new Error(`Clé de variant en double : « ${key} ».`);
+    }
+    seen.add(key);
+    const next: NavbarVariant = { key, title };
+    if (v.icon) next.icon = String(v.icon).trim();
+    if (v.color) next.color = String(v.color).trim();
+    if (typeof v.percent === 'number' && v.percent >= 0 && v.percent <= 100) {
+      next.percent = Math.round(v.percent);
+    }
+    clean.push(next);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('parcours')
+    .update({ navbar_variants: clean })
+    .eq('slug', parcoursSlug);
+  if (error) throw new Error(`Mise à jour des variants échouée : ${error.message}`);
+
+  revalidatePath(`/parcours/${parcoursSlug}`, 'layout');
 }

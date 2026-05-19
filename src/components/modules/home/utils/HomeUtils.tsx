@@ -1,5 +1,6 @@
 import { tI18n } from '../../../../lang/useI18n';
 import type { NavGroupData } from '../../../organisms/NavGroup';
+import type { ChapterStub } from '../renderer/loadChapter';
 import { HOME_STEPS, HOME_STEPS_KEYS } from './HomeSteps';
 
 export type HOME_SECTION_PROPS = {
@@ -65,3 +66,62 @@ export const HOME_SECTIONS_DATA = (t: tI18n, changeStep: (step: HOME_STEPS_KEYS)
     ],
   },
 ];
+
+/**
+ * Build the left-sidebar stepper data dynamically from the chapter list of
+ * the current parcours. Chapters with the same `sectionLabel` are grouped;
+ * chapters without one go to an ungrouped section (no header).
+ *
+ * Returns `{ data, actualStep }` where `actualStep` matches the NavGroup
+ * format `"sectionIdx+1.chapterIdx+1"` so the existing NavGroup highlight
+ * logic works unchanged.
+ *
+ * When no chapter carries a `sectionLabel`, the stepper still works as a
+ * flat list (one ungrouped section). The caller can decide whether to
+ * fall back to the legacy hardcoded `HOME_SECTIONS_DATA` instead.
+ */
+export function buildDynamicSections(
+  chapters: ChapterStub[],
+  currentSlug: string | undefined,
+  setStepBySlug: (slug: string) => void,
+): { data: NavGroupData; actualStep?: string } {
+  // Preserve the order in which sections first appear.
+  const groupOrder: (string | null)[] = [];
+  const groups = new Map<string | null, ChapterStub[]>();
+  for (const c of chapters) {
+    const key = c.sectionLabel && c.sectionLabel.trim() !== '' ? c.sectionLabel : null;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      groupOrder.push(key);
+    }
+    groups.get(key)!.push(c);
+  }
+  // Sort within a section by sectionOrder NULLS LAST, then chapter.order.
+  for (const arr of groups.values()) {
+    arr.sort((a, b) => {
+      const ao = a.sectionOrder ?? Number.POSITIVE_INFINITY;
+      const bo = b.sectionOrder ?? Number.POSITIVE_INFINITY;
+      if (ao !== bo) return ao - bo;
+      return a.order - b.order;
+    });
+  }
+
+  const data: NavGroupData = groupOrder.map((key) => ({
+    title: key ?? undefined,
+    steps: groups.get(key)!.map((c) => ({
+      text: c.title,
+      onClick: () => setStepBySlug(c.slug),
+    })),
+  }));
+
+  // Compute actualStep "X.Y" from the current slug.
+  let actualStep: string | undefined;
+  groupOrder.forEach((key, gi) => {
+    const items = groups.get(key)!;
+    items.forEach((c, si) => {
+      if (c.slug === currentSlug) actualStep = `${gi + 1}.${si + 1}`;
+    });
+  });
+
+  return { data, actualStep };
+}

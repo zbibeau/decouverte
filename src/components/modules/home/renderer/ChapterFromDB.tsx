@@ -9,6 +9,12 @@ import { loadPublishedChapter } from './loadChapter';
  * Loads a single chapter from Supabase and renders it via <ChapterRenderer />.
  * Renders nothing while loading; renders an error placeholder on miss/failure
  * so we don't silently fall through to a blank screen.
+ *
+ * The createResource source includes `chapterSlug` (and versionId) so the
+ * resource refetches whenever the user navigates to a different chapter.
+ * Without it, custom parcours (where every chapter hits the same fallback
+ * branch in HomeSteps.Switch) would stay stuck on the first chapter
+ * because the component instance is reused and the resource never re-runs.
  */
 export const ChapterFromDB: Component<
   HOME_SECTION_PROPS & { parcoursSlug: string; chapterSlug: string; versionId?: string }
@@ -16,9 +22,20 @@ export const ChapterFromDB: Component<
   const [mounted, setMounted] = createSignal(false);
   onMount(() => setMounted(true));
 
-  const [chapter] = createResource<Chapter | null>(
-    mounted,
-    () => loadPublishedChapter(props.parcoursSlug, props.chapterSlug, props.versionId),
+  const [chapter] = createResource<
+    Chapter | null,
+    { mounted: boolean; parcoursSlug: string; chapterSlug: string; versionId?: string }
+  >(
+    () => ({
+      mounted: mounted(),
+      parcoursSlug: props.parcoursSlug,
+      chapterSlug: props.chapterSlug,
+      versionId: props.versionId,
+    }),
+    async (src) => {
+      if (!src.mounted) return null;
+      return loadPublishedChapter(src.parcoursSlug, src.chapterSlug, src.versionId);
+    },
   );
 
   return (

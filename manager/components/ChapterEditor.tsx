@@ -35,6 +35,9 @@ interface Props {
   chapter: { id: string; slug: string; title: string };
   blocks: BlockRow[];
   variables: VariableMeta[];
+  /** Navbar variants registered on this parcours — used to render a small
+   *  colored pill on each block row whose payload references one. */
+  navbarVariants?: Array<{ key: string; title: string; color?: string }>;
   addBlockAction: (type: string) => Promise<void>;
   /**
    * Insert a sample block (curated payload from `SAMPLE_PAYLOADS`) at the
@@ -283,6 +286,29 @@ export function ChapterEditor(props: Props) {
                       <span className="flex-1 truncate text-sm">
                         {summarizeBlock(b.type, b.payload)}
                       </span>
+                      {/* Navbar variant indicator — surfaces the "Tool 1
+                          navbar" used by this block at a glance. */}
+                      {(() => {
+                        const variantKey = (
+                          b.payload as { navbar?: { variant?: string } } | null
+                        )?.navbar?.variant;
+                        if (!variantKey) return null;
+                        const v = (props.navbarVariants ?? []).find(
+                          (x) => x.key === variantKey,
+                        );
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-[10px]"
+                            title={`Navbar « ${variantKey} »`}
+                          >
+                            <span
+                              className="inline-block h-2 w-2 rounded-full"
+                              style={{ background: v?.color || '#94a3b8' }}
+                            />
+                            {v?.title ?? variantKey}
+                          </span>
+                        );
+                      })()}
                       <BlockDiffBadge diff={b.diff} />
                     </button>
                     <Link

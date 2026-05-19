@@ -20,7 +20,6 @@ export const BLANK_PAYLOADS: Record<ContentBlock['type'], Record<string, unknown
   },
   componentRef: { name: 'HomeTool1_Summary' },
   toolContentSection: {
-    name: 'Section',
     title: 'Titre de la section',
     subtitle: '',
     advantageTitle: 'Les avantages',

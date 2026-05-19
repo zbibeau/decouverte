@@ -15,8 +15,13 @@ import { Modal } from '../atoms/Modal';
 import { GotToNextPartButton } from '../modules/home/components/GoToNextPartButton';
 import { TakeAppointment } from '../modules/home/components/TakeAppointment';
 import { stepperContentId } from '../modules/home/utils/HomeIds';
+import { DEFAULT_PARCOURS_SLUG, useHome } from '../modules/home/context/HomeContext';
 import { HOME_STEPS, HOME_STEPS_KEYS } from '../modules/home/utils/HomeSteps';
-import { HOME_SECTIONS_DATA, HOME_STEPS_LAYOUT_VALUE } from '../modules/home/utils/HomeUtils';
+import {
+  HOME_SECTIONS_DATA,
+  HOME_STEPS_LAYOUT_VALUE,
+  buildDynamicSections,
+} from '../modules/home/utils/HomeUtils';
 import { NavItem, NavItemStatus } from '../molecules/NavItem';
 import { NavGroup } from '../organisms/NavGroup';
 const MAX_MOBILE_WIDTH = 1200;
@@ -100,10 +105,28 @@ export const StepperLayout: Component<{
   mostAdvancedStep: Accessor<HOME_STEPS_KEYS>;
 }> = (props) => {
   const i18n = useI18n();
+  const { parcoursSlug, chapters } = useHome();
 
   const isMobileDisplay = isLayoutMobileDisplay();
   const [isMobileMenuDisplay, setIsMobileMenuDisplay] = createSignal(false);
   const windowScroll = createScrollPosition(() => ref);
+
+  /**
+   * Decide which stepper data to feed the sidebar :
+   *   - For the legacy `demo-ventes` parcours, keep the hardcoded
+   *     HOME_SECTIONS_DATA + HOME_STEPS_LAYOUT_VALUE mapping (no schema
+   *     migration needed for the live demo).
+   *   - For any other parcours, build sections dynamically from the
+   *     `chapter.section_label` column loaded into `chapters()`.
+   * The transition is automatic and per-parcours — no code change needed
+   * when a new parcours is created.
+   */
+  const useDynamic = createMemo(() => parcoursSlug() !== DEFAULT_PARCOURS_SLUG);
+  const dynamic = createMemo(() =>
+    buildDynamicSections(chapters(), props.currentStep() as string, (slug) =>
+      props.setCurrentStep(slug as HOME_STEPS_KEYS),
+    ),
+  );
 
   createEffect(
     on(isMobileDisplay, () => {
@@ -159,9 +182,23 @@ export const StepperLayout: Component<{
             />
 
             <NavGroup
-              data={HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)}
-              actualStep={HOME_STEPS_LAYOUT_VALUE[props.currentStep()]}
-              disableFromStep={props.mostAdvancedStep() ? HOME_STEPS_LAYOUT_VALUE[props.mostAdvancedStep()] : undefined}
+              data={
+                useDynamic()
+                  ? dynamic().data
+                  : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)
+              }
+              actualStep={
+                useDynamic()
+                  ? dynamic().actualStep
+                  : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]
+              }
+              disableFromStep={
+                useDynamic()
+                  ? undefined
+                  : props.mostAdvancedStep()
+                    ? HOME_STEPS_LAYOUT_VALUE[props.mostAdvancedStep()]
+                    : undefined
+              }
             />
           </div>
 
@@ -198,10 +235,22 @@ export const StepperLayout: Component<{
                   />
 
                   <NavGroup
-                    data={HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)}
-                    actualStep={HOME_STEPS_LAYOUT_VALUE[props.currentStep()]}
+                    data={
+                      useDynamic()
+                        ? dynamic().data
+                        : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)
+                    }
+                    actualStep={
+                      useDynamic()
+                        ? dynamic().actualStep
+                        : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]
+                    }
                     disableFromStep={
-                      props.mostAdvancedStep() ? HOME_STEPS_LAYOUT_VALUE[props.mostAdvancedStep()] : undefined
+                      useDynamic()
+                        ? undefined
+                        : props.mostAdvancedStep()
+                          ? HOME_STEPS_LAYOUT_VALUE[props.mostAdvancedStep()]
+                          : undefined
                     }
                   />
                 </div>

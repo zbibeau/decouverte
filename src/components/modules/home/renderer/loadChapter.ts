@@ -90,6 +90,16 @@ export interface ChapterStub {
   slug: string;
   title: string;
   order: number;
+  /** Sidebar grouping (matches `chapter.section_label`). NULL means
+   *  ungrouped — the stepper renders it as a top-level item. */
+  sectionLabel?: string | null;
+  /** Sort key within a section. NULL = let `order` decide. */
+  sectionOrder?: number | null;
+  /** Background image URL displayed on the chapter card in section
+   *  panoramas (chapterTransition block + auto next-chapter transition). */
+  cardImage?: string | null;
+  /** Short label displayed in the chapter card. Falls back to `title` when null. */
+  cardShortTitle?: string | null;
 }
 export async function loadChapterSequence(
   parcoursSlug: string,
@@ -128,7 +138,9 @@ export async function loadChapterSequence(
 
   const { data: rows } = await supabase
     .from('chapter')
-    .select('id, slug, title, "order"')
+    .select(
+      'id, slug, title, "order", section_label, section_order, card_image, card_short_title',
+    )
     .eq('version_id', effectiveVersionId)
     .order('order', { ascending: true });
 
@@ -137,5 +149,35 @@ export async function loadChapterSequence(
     slug: r.slug,
     title: r.title,
     order: r.order,
+    sectionLabel: (r as { section_label?: string | null }).section_label ?? null,
+    sectionOrder: (r as { section_order?: number | null }).section_order ?? null,
+    cardImage: (r as { card_image?: string | null }).card_image ?? null,
+    cardShortTitle: (r as { card_short_title?: string | null }).card_short_title ?? null,
   }));
+}
+
+/** Shape of a single navbar variant stored in `parcours.navbar_variants`. */
+export interface NavbarVariant {
+  key: string;
+  title: string;
+  icon?: string;
+  color?: string;
+  percent?: number;
+}
+
+/**
+ * Load the navbar variants registry for a parcours. Returns [] when the
+ * parcours has no row or no variants yet — the renderer then falls back to
+ * a graceful no-op (no Tool1 navbar rendered).
+ */
+export async function loadNavbarVariants(parcoursSlug: string): Promise<NavbarVariant[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from('parcours')
+    .select('navbar_variants')
+    .eq('slug', parcoursSlug)
+    .maybeSingle();
+  const raw = (data as { navbar_variants?: unknown } | null)?.navbar_variants;
+  return Array.isArray(raw) ? (raw as NavbarVariant[]) : [];
 }

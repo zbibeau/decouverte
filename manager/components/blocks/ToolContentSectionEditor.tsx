@@ -38,16 +38,18 @@ export function ToolContentSectionEditor({
 
   return (
     <div className="space-y-3">
-      {/* --- Identifiants (label nav + anchor) --- */}
-      <Section title="Identifiants" accentColor="slate">
-        <Field label="Nom (label nav)" path="name">
-          <Input
-            value={payload.name ?? ''}
-            onChange={(e) => onChange({ ...payload, name: e.target.value })}
-            placeholder="Messagerie"
-          />
-        </Field>
-        <Field label="Anchor ID (facultatif)" path="anchorId">
+      {/* --- Ancre HTML facultative --- */}
+      {/* Le champ `name` (ex « label nav ») n'est plus exposé : le renderer
+          Solid ne le lisait jamais (legacy d'une mini-nav latérale interne
+          aujourd'hui remplacée par la sidebar gauche + les navbars custom).
+          Les anciens payloads continuent de fonctionner — la valeur est
+          simplement ignorée. */}
+      <Section title="Ancre HTML (facultative)" accentColor="slate">
+        <Field
+          label="Anchor ID"
+          path="anchorId"
+          hint="Identifiant pour les liens internes (ex. #section-message). Laisse vide si tu n'utilises pas d'ancres."
+        >
           <Input
             value={payload.anchorId ?? ''}
             onChange={(e) => onChange({ ...payload, anchorId: e.target.value })}

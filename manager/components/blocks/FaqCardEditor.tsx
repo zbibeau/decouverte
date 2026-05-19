@@ -10,14 +10,20 @@ import { Input } from '@/components/ui/Input';
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { FaqContentList } from './FaqContentList';
 import { Field, Section } from './Field';
+import { NavbarVariantSelect } from './NavbarVariantSelect';
 import type { PayloadEditorProps } from './editor-types';
 
 type FaqPayload = {
-  navbar?: { variant: 'appointment' | 'contact' };
+  navbar?: { variant: string };
   questions: FAQQuestion[];
 };
 
-export function FaqCardEditor({ payload, onChange, variables }: PayloadEditorProps<FaqPayload>) {
+export function FaqCardEditor({
+  payload,
+  onChange,
+  variables,
+  navbarVariants,
+}: PayloadEditorProps<FaqPayload>) {
   function updateQuestion(idx: number, patch: Partial<FAQQuestion>) {
     const copy = payload.questions.slice();
     copy[idx] = { ...copy[idx], ...patch };
@@ -62,23 +68,17 @@ export function FaqCardEditor({ payload, onChange, variables }: PayloadEditorPro
 
   return (
     <ScopeRoot scopeId="faq-questions" className="space-y-3 rounded-md p-1 -m-1">
-      <Field label="Navbar pilote Tool 1" path="navbar">
-        <select
-          className="h-9 rounded-md border border-border bg-white px-3 text-sm"
-          value={payload.navbar?.variant ?? ''}
-          onChange={(e) =>
+      <Field label="Navbar pilote" path="navbar">
+        <NavbarVariantSelect
+          value={payload.navbar?.variant}
+          onChange={(key) =>
             onChange({
               ...payload,
-              navbar: e.target.value
-                ? { variant: e.target.value as 'appointment' | 'contact' }
-                : undefined,
+              navbar: key ? { variant: key } : undefined,
             })
           }
-        >
-          <option value="">(aucune)</option>
-          <option value="appointment">appointment</option>
-          <option value="contact">contact</option>
-        </select>
+          variants={navbarVariants}
+        />
       </Field>
 
       {payload.questions.map((q, idx) => (

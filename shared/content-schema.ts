@@ -75,7 +75,7 @@ export interface VideoBlock {
     contentId?: string;
     contentClass?: string;
     /** Optional pilot-specific Tool1 navbar variant rendered on top of the video. */
-    navbar?: { variant: 'appointment' | 'contact' };
+    navbar?: { variant: string };
   };
 }
 
@@ -115,8 +115,11 @@ export type KeyPointsGroupItem =
 export interface KeyPointsGroup {
   /** Section heading displayed above the checklist. */
   title: string;
-  /** Visual variant for the CheckListGroup component. */
-  variant?: 'secondary50' | 'primary50';
+  /** Visual variant for the CheckListGroup component. Includes `primary400`
+   *  (dark) and `success50` for richer layouts. */
+  variant?: 'success50' | 'secondary50' | 'primary50' | 'primary400';
+  /** Optional icon key (matches the IconPicker library). */
+  icon?: string;
   items: KeyPointsGroupItem[];
 }
 
@@ -124,7 +127,7 @@ export interface KeyPointsCardBlock {
   type: 'keyPointsCard';
   payload: {
     /** Optional pilot-specific Tool1 navbar variant rendered as preChildren. */
-    navbar?: { variant: 'appointment' | 'contact' };
+    navbar?: { variant: string };
     contentClass?: string;
     /** When true, render without the full-page AfterHeroContainer wrapper
      *  (no min-h-dvh, no top padding). Useful when the card sits inside a
@@ -168,7 +171,7 @@ export interface FAQQuestion {
 export interface FAQCardBlock {
   type: 'faqCard';
   payload: {
-    navbar?: { variant: 'appointment' | 'contact' };
+    navbar?: { variant: string };
     contentClass?: string;
     questions: FAQQuestion[];
   };
@@ -177,7 +180,7 @@ export interface FAQCardBlock {
 export interface CardBlock {
   type: 'card';
   payload: {
-    navbar?: { variant: 'appointment' | 'contact' };
+    navbar?: { variant: string };
     contentClass?: string;
     children: ContentBlock[];
   };
@@ -222,8 +225,11 @@ export interface ComponentRefBlock {
 export interface ToolContentSectionBlock {
   type: 'toolContentSection';
   payload: {
-    /** Display label (used for nav / breadcrumbs). */
-    name: string;
+    /** @deprecated Legacy "label nav" field — was used by a mini sidebar that
+     *  has been replaced by the global StepperLayout sidebar + per-block
+     *  navbar variants. Kept optional for back-compat with existing payloads
+     *  in DB; never rendered. New blocks shouldn't set this. */
+    name?: string;
     /** Optional HTML anchor id (e.g. "section-message") for deep-linking. */
     anchorId?: string;
     title: string;
@@ -326,6 +332,16 @@ export interface PhotoCarouselBlock {
     autoplayMs?: number;
   };
 }
+
+/**
+ * @deprecated `ChapterTransitionBlock` was a manual "section panorama"
+ * block. Replaced by the auto-injected next-chapter transition rendered at
+ * the end of every chapter by ChapterRenderer (which reads from chapter
+ * `card_image` + `card_short_title`). Type removed from the union ; any
+ * row of this type still sitting in DB is treated as "unknown" by the
+ * renderer (renders null) and by the manager UI (shows the default
+ * "type inconnu" message + a delete button).
+ */
 
 export type ContentBlock =
   | TextBlock

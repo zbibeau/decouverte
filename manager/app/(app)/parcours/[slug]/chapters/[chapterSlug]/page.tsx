@@ -9,6 +9,7 @@ import {
   getDraftBlockDiffs,
   getDraftStatus,
   getEditingVersionId,
+  getNavbarVariants,
   insertSampleBlock,
   reorderBlocks,
 } from '@/lib/actions';
@@ -101,6 +102,10 @@ export default async function ChapterEditPage({
     title: c.title,
   }));
 
+  // Navbar variants registered on this parcours — used to render a small
+  // pill next to each block row when the block payload references one.
+  const navbarVariants = await getNavbarVariants(slug);
+
   return (
     <ChapterEditor
       parcoursSlug={slug}
@@ -126,6 +131,7 @@ export default async function ChapterEditPage({
       copyBlockToChapterAction={copyBlockToChapterAction}
       reorderBlocksAction={reorderBlocksAction}
       chapters={chapters}
+      navbarVariants={navbarVariants}
       editingVersionId={draftStatus.draftVersionId}
       publishedVersionId={draftStatus.publishedVersionId}
     />

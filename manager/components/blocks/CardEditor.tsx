@@ -4,33 +4,34 @@ import type { ContentBlock } from '@shared/content-schema';
 
 import { ChildBlockList } from './ChildBlockList';
 import { Field } from './Field';
+import { NavbarVariantSelect } from './NavbarVariantSelect';
 import type { PayloadEditorProps } from './editor-types';
 
 type CardPayload = {
-  navbar?: { variant: 'appointment' | 'contact' };
+  navbar?: { variant: string };
   children: ContentBlock[];
 };
 
-export function CardEditor({ payload, onChange, variables, depth = 0 }: PayloadEditorProps<CardPayload>) {
+export function CardEditor({
+  payload,
+  onChange,
+  variables,
+  navbarVariants,
+  depth = 0,
+}: PayloadEditorProps<CardPayload>) {
   return (
     <div className="space-y-3">
-      <Field label="Navbar pilote Tool 1" path="navbar">
-        <select
-          className="h-9 rounded-md border border-border bg-white px-3 text-sm"
-          value={payload.navbar?.variant ?? ''}
-          onChange={(e) =>
+      <Field label="Navbar pilote" path="navbar">
+        <NavbarVariantSelect
+          value={payload.navbar?.variant}
+          onChange={(key) =>
             onChange({
               ...payload,
-              navbar: e.target.value
-                ? { variant: e.target.value as 'appointment' | 'contact' }
-                : undefined,
+              navbar: key ? { variant: key } : undefined,
             })
           }
-        >
-          <option value="">(aucune)</option>
-          <option value="appointment">appointment</option>
-          <option value="contact">contact</option>
-        </select>
+          variants={navbarVariants}
+        />
       </Field>
 
       <Field label="Blocs enfants" path="children">
@@ -38,6 +39,7 @@ export function CardEditor({ payload, onChange, variables, depth = 0 }: PayloadE
           blocks={payload.children}
           onChange={(children) => onChange({ ...payload, children })}
           variables={variables}
+          navbarVariants={navbarVariants}
           depth={depth}
           scopeLabel="Card"
         />

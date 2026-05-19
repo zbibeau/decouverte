@@ -1,15 +1,20 @@
 'use client';
 
 import type { ContentBlock } from '@shared/content-schema';
-import { useEffect, useState } from 'react';
+import { Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 import { AddBlockButton } from '@/components/AddBlockButton';
+import { useToast } from '@/components/Toaster';
+import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS, blankBlock } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
+import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
 
 import { Field, Section } from './Field';
+import { NavbarVariantSelect } from './NavbarVariantSelect';
 import type { PayloadEditorProps } from './editor-types';
 
 // ---------- text ----------
@@ -114,18 +119,31 @@ type VideoPayload = {
   vimeoSrc?: string;
   contentId?: string;
   contentClass?: string;
-  navbar?: { variant: 'appointment' | 'contact' };
+  navbar?: { variant: string };
 };
 
-export function VideoEditor({ payload, onChange }: PayloadEditorProps<VideoPayload>) {
+export function VideoEditor({
+  payload,
+  onChange,
+  navbarVariants,
+}: PayloadEditorProps<VideoPayload>) {
   return (
     <div className="space-y-3">
-      <Field label="Source Vimeo" path="vimeoSrc" hint='Format : "vimeo/123456789?hash=abcdef"'>
-        <Input
-          value={payload.vimeoSrc ?? ''}
-          onChange={(e) => onChange({ ...payload, vimeoSrc: e.target.value })}
-          placeholder="vimeo/123456789?hash=abcdef"
-        />
+      <Field
+        label="Source vidéo"
+        path="vimeoSrc"
+        hint="Colle une URL Vimeo (vimeo/<id>?hash=<hash>), une URL MP4/WebM/MOV directe, OU upload un fichier depuis ton disque (.mp4 / .webm / .mov, 200 MB max)."
+      >
+        <div className="space-y-2">
+          <Input
+            value={payload.vimeoSrc ?? ''}
+            onChange={(e) => onChange({ ...payload, vimeoSrc: e.target.value })}
+            placeholder="vimeo/123456789?hash=abcdef  ou  https://…/clip.mp4"
+          />
+          <VideoUploadButton
+            onUploaded={(url) => onChange({ ...payload, vimeoSrc: url })}
+          />
+        </div>
       </Field>
       <Field label="Content ID (ancre facultative)" path="contentId">
         <Input
@@ -134,21 +152,17 @@ export function VideoEditor({ payload, onChange }: PayloadEditorProps<VideoPaylo
           placeholder="appointment-section"
         />
       </Field>
-      <Field label="Navbar pilote Tool 1" path="navbar">
-        <select
-          className="h-9 rounded-md border border-border bg-white px-3 text-sm"
-          value={payload.navbar?.variant ?? ''}
-          onChange={(e) =>
+      <Field label="Navbar pilote" path="navbar">
+        <NavbarVariantSelect
+          value={payload.navbar?.variant}
+          onChange={(key) =>
             onChange({
               ...payload,
-              navbar: e.target.value ? { variant: e.target.value as 'appointment' | 'contact' } : undefined,
+              navbar: key ? { variant: key } : undefined,
             })
           }
-        >
-          <option value="">(aucune)</option>
-          <option value="appointment">appointment</option>
-          <option value="contact">contact</option>
-        </select>
+          variants={navbarVariants}
+        />
       </Field>
       {payload.vimeoSrc && <VimeoPreview src={payload.vimeoSrc} />}
     </div>
@@ -156,16 +170,244 @@ export function VideoEditor({ payload, onChange }: PayloadEditorProps<VideoPaylo
 }
 
 function VimeoPreview({ src }: { src: string }) {
-  const match = src.match(/vimeo\/(\d+)(?:\?hash=(\w+))?/);
-  if (!match) return null;
-  const [, id, hash] = match;
-  const url = `https://player.vimeo.com/video/${id}${hash ? `?h=${hash}` : ''}`;
-  return (
-    <div className="space-y-1">
-      <p className="text-[10px] font-medium text-muted-foreground">Preview</p>
-      <div className="aspect-video w-full max-w-md overflow-hidden rounded-md border border-border bg-black">
-        <iframe src={url} className="h-full w-full" allow="autoplay; fullscreen; picture-in-picture" />
+  // Vimeo provider syntax → embed iframe
+  const vimeoMatch = src.match(/^vimeo\/(\d+)(?:\?hash=(\w+))?/);
+  if (vimeoMatch) {
+    const [, id, hash] = vimeoMatch;
+    const url = `https://player.vimeo.com/video/${id}${hash ? `?h=${hash}` : ''}`;
+    return (
+      <div className="space-y-1">
+        <p className="text-[10px] font-medium text-muted-foreground">Preview</p>
+        <div className="aspect-video w-full max-w-md overflow-hidden rounded-md border border-border bg-black">
+          <iframe
+            src={url}
+            className="h-full w-full"
+            allow="autoplay; fullscreen; picture-in-picture"
+          />
+        </div>
       </div>
+    );
+  }
+  // Direct HTTP URL → HTML5 <video>
+  if (/^https?:\/\//.test(src)) {
+    return (
+      <div className="space-y-1">
+        <p className="text-[10px] font-medium text-muted-foreground">Preview</p>
+        <div className="aspect-video w-full max-w-md overflow-hidden rounded-md border border-border bg-black">
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video src={src} controls className="h-full w-full" />
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+/**
+ * File-picker button that uploads a video DIRECTLY to Supabase Storage from
+ * the browser, with realtime progress + clear success/error feedback.
+ *
+ * Why client-side and not a server action ?
+ *   - Next.js App Router server actions cap the body at ~1 MB by default
+ *     (configurable but still buffers the whole file in server memory).
+ *   - Server actions don't expose upload progress to the browser.
+ *   - Direct-to-Storage from the browser uses the user's authenticated
+ *     session, respects bucket RLS (migration 0029), avoids the Next.js
+ *     middle-tier entirely, and supports XHR `upload.progress` events.
+ */
+const VIDEO_BUCKET = 'videos';
+const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+const VIDEO_ALLOWED_MIME = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+]);
+
+function buildVideoStoragePath(userId: string, file: File) {
+  const ext =
+    (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') ||
+    'mp4';
+  const baseName =
+    file.name
+      .replace(/\.[^.]+$/, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'video';
+  return `${userId}/${Date.now()}-${baseName}.${ext}`;
+}
+
+function VideoUploadButton({
+  onUploaded,
+}: {
+  onUploaded: (url: string) => void;
+}) {
+  const toast = useToast();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const [pending, setPending] = useState(false);
+  // 0..100, null when not uploading.
+  const [progress, setProgress] = useState<number | null>(null);
+  const [statusLabel, setStatusLabel] = useState<string>('');
+
+  function reset() {
+    setPending(false);
+    setProgress(null);
+    setStatusLabel('');
+    xhrRef.current = null;
+    if (inputRef.current) inputRef.current.value = '';
+  }
+
+  function cancel() {
+    if (xhrRef.current) {
+      xhrRef.current.abort();
+      xhrRef.current = null;
+    }
+    reset();
+    toast.info('Upload annulé.');
+  }
+
+  async function handleFile(file: File) {
+    // ----- Client-side validation (matches bucket policy migration 0029) -----
+    if (file.size === 0) {
+      toast.error('Fichier vide.');
+      return;
+    }
+    if (file.size > VIDEO_MAX_BYTES) {
+      toast.error(
+        `Vidéo trop volumineuse (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum 200 MB.`,
+      );
+      return;
+    }
+    if (!VIDEO_ALLOWED_MIME.has(file.type)) {
+      toast.error(
+        `Format non supporté (${file.type || 'inconnu'}). Utilise mp4, webm ou mov.`,
+      );
+      return;
+    }
+
+    setPending(true);
+    setProgress(0);
+    setStatusLabel('Authentification…');
+
+    try {
+      const supabase = createBrowserSupabase();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session) {
+        toast.error('Tu dois être connecté pour uploader.');
+        reset();
+        return;
+      }
+      const userId = session.user.id;
+      const path = buildVideoStoragePath(userId, file);
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (!supabaseUrl) {
+        toast.error('Configuration Supabase manquante.');
+        reset();
+        return;
+      }
+      const endpoint = `${supabaseUrl}/storage/v1/object/${VIDEO_BUCKET}/${encodeURI(path)}`;
+
+      setStatusLabel('Upload…');
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.open('POST', endpoint);
+        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('x-upsert', 'false');
+
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const pct = Math.round((event.loaded / event.total) * 100);
+          setProgress(pct);
+          setStatusLabel(
+            `Upload ${pct}% — ${(event.loaded / 1024 / 1024).toFixed(1)} / ${(event.total / 1024 / 1024).toFixed(1)} MB`,
+          );
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            // Try to surface Supabase's JSON error message.
+            let errMsg = `HTTP ${xhr.status}`;
+            try {
+              const parsed = JSON.parse(xhr.responseText);
+              if (parsed?.message) errMsg = parsed.message;
+              else if (parsed?.error) errMsg = parsed.error;
+            } catch {
+              if (xhr.responseText) errMsg = xhr.responseText.slice(0, 200);
+            }
+            reject(new Error(errMsg));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Erreur réseau.'));
+        xhr.onabort = () => reject(new Error('Upload annulé.'));
+
+        xhr.send(file);
+      });
+
+      // Upload OK — get public URL.
+      const { data: pub } = supabase.storage.from(VIDEO_BUCKET).getPublicUrl(path);
+      onUploaded(pub.publicUrl);
+      setStatusLabel('Terminé');
+      toast.success(`Vidéo uploadée (${(file.size / 1024 / 1024).toFixed(1)} MB).`);
+      reset();
+    } catch (e) {
+      console.error('[VideoUploadButton] upload failed', e);
+      toast.error(
+        `Upload échoué : ${e instanceof Error ? e.message : String(e)}`,
+      );
+      reset();
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="video/mp4,video/webm,video/quicktime"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleFile(file);
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={pending}
+          onClick={() => inputRef.current?.click()}
+        >
+          <Upload className="h-3.5 w-3.5" />
+          {pending ? 'Upload en cours…' : 'Uploader une vidéo'}
+        </Button>
+        {pending && (
+          <Button type="button" variant="ghost" size="sm" onClick={cancel}>
+            Annuler
+          </Button>
+        )}
+        {statusLabel && !pending && (
+          <span className="text-[10px] text-emerald-700">{statusLabel}</span>
+        )}
+      </div>
+      {pending && progress != null && (
+        <div className="space-y-1">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-brand-primary-500 transition-[width] duration-150"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">{statusLabel}</p>
+        </div>
+      )}
     </div>
   );
 }

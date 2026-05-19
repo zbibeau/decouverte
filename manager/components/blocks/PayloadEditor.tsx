@@ -17,7 +17,15 @@ import type { BlockEditorFrameProps } from './editor-types';
  * a new ContentBlock when any field changes. Used at the top of
  * `BlockEditor.tsx` and recursively inside `ChildBlockList`.
  */
-export function PayloadEditor({ block, onChange, variables, chapters, depth = 0 }: BlockEditorFrameProps) {
+export function PayloadEditor({
+  block,
+  onChange,
+  variables,
+  chapters,
+  currentChapterSlug,
+  navbarVariants,
+  depth = 0,
+}: BlockEditorFrameProps) {
   function updatePayload<P>(next: P) {
     onChange({ ...block, payload: next } as ContentBlock);
   }
@@ -40,6 +48,7 @@ export function PayloadEditor({ block, onChange, variables, chapters, depth = 0 
           payload={block.payload}
           onChange={updatePayload}
           variables={variables}
+          navbarVariants={navbarVariants}
           depth={depth}
         />
       );
@@ -58,6 +67,7 @@ export function PayloadEditor({ block, onChange, variables, chapters, depth = 0 
           payload={block.payload}
           onChange={updatePayload}
           variables={variables}
+          navbarVariants={navbarVariants}
           depth={depth}
         />
       );
@@ -67,6 +77,7 @@ export function PayloadEditor({ block, onChange, variables, chapters, depth = 0 
           payload={block.payload}
           onChange={updatePayload}
           variables={variables}
+          navbarVariants={navbarVariants}
           depth={depth}
         />
       );
@@ -76,6 +87,7 @@ export function PayloadEditor({ block, onChange, variables, chapters, depth = 0 
           payload={block.payload}
           onChange={updatePayload}
           variables={variables}
+          navbarVariants={navbarVariants}
           depth={depth}
         />
       );

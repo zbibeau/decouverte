@@ -198,7 +198,6 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
     description: 'Carte structurée : titre + sous-titre + vidéo (optionnelle) + bloc « avantages » avec checklist + paragraphe + sous-blocs libres.',
     whenToUse: 'Présenter un outil avec un layout récurrent (vidéo + bénéfices). C\'est ce qui produit la carte « Les avantages » avec checkmarks verts. Tu peux empiler d\'autres blocs (texte, key points, FAQ…) en-dessous via la section « Sous-blocs additionnels ».',
     payload: {
-      name: 'Click to Call !',
       title: 'Le click to call',
       subtitle: 'La fin des appels masqués',
       advantageTitle: 'Les avantages',

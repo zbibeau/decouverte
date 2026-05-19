@@ -9,7 +9,11 @@ import { DiffProvider } from '@/components/blocks/DiffContext';
 import { FieldHoverProvider } from '@/components/blocks/FieldHoverContext';
 import { PayloadEditor } from '@/components/blocks/PayloadEditor';
 import { SimulatorProvider } from '@/components/blocks/SimulatorContext';
-import type { ChapterMeta, VariableMeta } from '@/components/blocks/editor-types';
+import type {
+  ChapterMeta,
+  NavbarVariantMeta,
+  VariableMeta,
+} from '@/components/blocks/editor-types';
 import { DraftBlockDiffPanel } from '@/components/DraftBlockDiffPanel';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +33,13 @@ interface Props {
   variables: VariableMeta[];
   /** All chapters of the parcours (draft view) — used by dropdowns like `nextStep`. */
   chapters?: ChapterMeta[];
+  /** Navbar variants registered on this parcours — fed to editors that surface
+   *  a `payload.navbar.variant` dropdown. */
+  navbarVariants?: NavbarVariantMeta[];
+  /** Slug of the chapter that owns the block — propagated to editors that
+   *  need to scope their behaviour to the current chapter's section (see
+   *  `ChapterTransitionEditor`). */
+  // NB: already available via `props.chapterSlug` above; kept implicit.
   /**
    * Other blocks of the chapter (excluding the one being edited). Used to
    * compute which variables to expose in the preview simulator. In draft
@@ -460,6 +471,8 @@ export function BlockEditor(props: Props) {
                 onChange={setBlock}
                 variables={props.variables}
                 chapters={props.chapters}
+                currentChapterSlug={props.chapterSlug}
+                navbarVariants={props.navbarVariants}
               />
             </SimulatorProvider>
           </FieldHoverProvider>
