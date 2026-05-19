@@ -27,7 +27,6 @@ import { KeyPointsCard } from '../components/KeyPointsCard';
 import { PhotoCarousel } from '../components/PhotoCarousel';
 import { ToolContentSection } from '../components/ToolContentSection';
 import { useHome } from '../context/HomeContext';
-import type { HOME_STEPS_KEYS } from '../utils/HomeSteps';
 import { HOME_SECTION_PROPS } from '../utils/HomeUtils';
 import { CUSTOM_COMPONENT_RUNTIME } from './customComponents';
 import { RenderFormBlock } from './RenderFormBlock';
@@ -577,56 +576,7 @@ export const ChapterRenderer: Component<{
 
   // Snapshot of the user's filled-in form data — drives conditional
   // gating of any block placed AFTER a `form` block in this chapter.
-  // We also pull the chapter sequence here so we can render a "previous
-  // chapter" button at the top, giving the visitor (and the dev) a way
-  // to go back even when the sidebar is collapsed (narrow viewport,
-  // manager preview iframe, etc.).
-  const {
-    data: homeData,
-    chapters: homeChapters,
-    currentStep: homeCurrentStep,
-    setCurrentStep: homeSetCurrentStep,
-  } = useHome();
-
-  /** Sort chapters in their logical reading order : section by section
-   *  (in first-appearance order), and within each section by `sectionOrder`
-   *  then by `chapter.order`. Mirrors the logic in `ChapterTransitionGrid`
-   *  so the "previous" button picks the chapter the visitor would have come
-   *  from, not the raw DB order. */
-  function logicallyOrdered<T extends {
-    order: number;
-    sectionLabel?: string | null;
-    sectionOrder?: number | null;
-  }>(all: T[]): T[] {
-    const sectionMinOrder = new Map<string, number>();
-    for (const c of all) {
-      const key = c.sectionLabel?.trim() || '__none__';
-      const prev = sectionMinOrder.get(key);
-      if (prev === undefined || c.order < prev) sectionMinOrder.set(key, c.order);
-    }
-    return [...all].sort((a, b) => {
-      const ak = a.sectionLabel?.trim() || '__none__';
-      const bk = b.sectionLabel?.trim() || '__none__';
-      if (ak !== bk) {
-        return (sectionMinOrder.get(ak) ?? 0) - (sectionMinOrder.get(bk) ?? 0);
-      }
-      const ao = a.sectionOrder ?? Number.POSITIVE_INFINITY;
-      const bo = b.sectionOrder ?? Number.POSITIVE_INFINITY;
-      if (ao !== bo) return ao - bo;
-      return a.order - b.order;
-    });
-  }
-
-  /** Chapter coming right BEFORE the current one in logical order, or null
-   *  when the current chapter is the first one. */
-  const previousChapter = createMemo(() => {
-    const all = homeChapters();
-    if (!all || all.length === 0) return null;
-    const ordered = logicallyOrdered(all);
-    const curIdx = ordered.findIndex((c) => c.slug === homeCurrentStep());
-    if (curIdx <= 0) return null;
-    return ordered[curIdx - 1];
-  });
+  const { data: homeData } = useHome();
 
   // Index of the first `form` block in the chapter (or -1 if none). Blocks
   // at index ≤ formIndex are always rendered ; blocks AFTER the form (and
@@ -1054,44 +1004,22 @@ export const ChapterRenderer: Component<{
 
   return (
     <div class={props.chapter.wrapperClass ?? undefined}>
-      {/* "Retour au formulaire" affordance — ONLY shown when the chapter
-           the visitor came from contains a form block. On any other chapter,
-           the sidebar / hamburger menu is enough to navigate backwards, so
-           we keep this surface uncluttered. The button label is fixed
-           (« Retour au formulaire ») rather than the actual chapter title
-           so the intent ("you can review / change your answers") is
-           explicit. */}
-      <Show when={previousChapter()?.hasForm && previousChapter()}>
-        {(prev) => (
-          <div class="px-4 pt-4 md:px-8">
-            <button
-              type="button"
-              onClick={() =>
-                homeSetCurrentStep(prev().slug as HOME_STEPS_KEYS)
-              }
-              class="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-white/80 px-3 py-1 text-xs text-primary-700 shadow-sm transition-colors hover:bg-white hover:text-primary-900"
-              title={`Revenir au formulaire « ${prev().title} » pour modifier tes réponses`}
-            >
-              <span aria-hidden="true">←</span>
-              <span>Retour au formulaire</span>
-            </button>
-          </div>
-        )}
-      </Show>
-      {/* Optional hero image at the very top of the chapter — same image as
-           the chapter card in the section panorama, displayed full-width with
-           rounded corners. Skipped if `chapter.cardImage` is empty.
-           Capped at 40vh so portrait / large images don't dominate the page
-           and bury the chapter content + transition grid below the fold. */}
-      <Show when={props.chapter.cardImage}>
-        <div class="mb-8 px-4 md:px-8">
-          <img
-            src={props.chapter.cardImage!}
-            alt={props.chapter.cardShortTitle ?? props.chapter.title}
-            class="mx-auto block max-h-[40vh] w-full max-w-4xl rounded-2xl object-cover shadow-sm"
-          />
-        </div>
-      </Show>
+      {/* The chapter-level "Retour au formulaire" button was removed.
+           Rationale: it only ever made sense for a block that immediately
+           follows a `form` block — i.e. the BLOCK-LEVEL variant rendered
+           below inside the For loop (see `isFirstAfterForm`). Surfacing
+           a Retour-au-formulaire button at the top of any chapter whose
+           PREVIOUS chapter happened to contain a form was confusing in
+           practice : the visitor sees the button on chapters that have
+           nothing to do with the form (e.g. observations after a generic
+           form), and it pollutes chapters with stale affordances. The
+           sidebar already lets them navigate back if they truly want to.
+           `cardImage` rendering at the top of the chapter was also
+           removed — the cardImage belongs to the chapter card in the
+           section panorama (ChapterTransitionGrid), not to the chapter
+           page itself. Rendering it both places duplicated the visual
+           and made chapter landings look like leftovers of the previous
+           chapter. */}
       <For each={props.chapter.blocks}>
         {(originalBlock, idx) => {
           // Memo recomputes when an override for this block id is added/cleared.
