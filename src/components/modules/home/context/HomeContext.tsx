@@ -133,6 +133,18 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
       : `${LOCALSTORAGE_MOST_ADVANCED_STEP_KEY}.${parcoursSlug()}`;
 
   onMount(async () => {
+    // Preview mode: manager iframe injects step + variables via query params.
+    // Resolved SYNCHRONOUSLY here BEFORE kicking off any async loaders so
+    // its result wins the race against `loadChapterSequence(...).then(...)`,
+    // which would otherwise overwrite `currentStep` with the first chapter
+    // of the parcours when its promise resolves.
+    const preview = getPreviewParams();
+    if (preview) {
+      setData(preview.data);
+      setCurrentStep(preview.step);
+      setMostAdvancedStep(preview.step);
+    }
+
     // Hydrate dynamic Hubspot mappings (non-blocking) for the active parcours.
     loadDynamicHubspotMappings(parcoursSlug())
       .then(setDynamicHubspotMappings)
@@ -154,6 +166,11 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
         setChapters(seq);
         setChaptersLoaded(true);
         if (seq.length === 0) return;
+        // In preview mode the manager iframe URL is authoritative on which
+        // chapter to display — never override it with localStorage or with
+        // the parcours' first chapter, otherwise the block-edit preview
+        // jumps back to chapter 1 when this async loader resolves.
+        if (preview) return;
         // Authoritative resolution of `currentStep` :
         //   1. If localStorage holds a step that STILL EXISTS in the
         //      live DB chapter list → restore it (returning visitor
@@ -180,13 +197,9 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
         setChaptersLoaded(true);
       });
 
-    // Preview mode: manager iframe injects step + variables via query params.
-    // Skip localStorage/Hubspot entirely and drive state from the URL.
-    const preview = getPreviewParams();
+    // In preview mode we drove state from the URL above and skip the
+    // localStorage / Hubspot hydration below.
     if (preview) {
-      setData(preview.data);
-      setCurrentStep(preview.step);
-      setMostAdvancedStep(preview.step);
       return;
     }
 

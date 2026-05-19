@@ -517,28 +517,10 @@ export function ChapterList({
                 </p>
               </div>
             )}
-            {/* No more inline "Section : XXX" label — the section is now the
-                group header above the row. */}
-            {!isEditing && (c.navbars?.length ?? 0) > 0 && (
-              <div className="flex flex-wrap items-center gap-1 pl-8 pt-1">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Navbars :
-                </span>
-                {c.navbars!.map((n) => (
-                  <span
-                    key={n.key}
-                    className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-[10px]"
-                    title={`Variant « ${n.key} » — utilisé pour découper ce chapitre en sous-parties.`}
-                  >
-                    <span
-                      className="inline-block h-2 w-2 rounded-full"
-                      style={{ background: n.color || '#94a3b8' }}
-                    />
-                    {n.title}
-                  </span>
-                ))}
-              </div>
-            )}
+            {/* Navbar chips removed from this row per UX feedback : too
+                noisy in a list of 10+ chapters. The chips are still rendered
+                INSIDE the chapter detail view (`ChapterEditor.tsx`), per
+                block, where the context makes the variant relevant. */}
           </div>
         );
       }}
