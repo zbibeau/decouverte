@@ -37,7 +37,9 @@ export async function loadPublishedChapter(
 
   const { data: chapter, error: chapterErr } = await supabase
     .from('chapter')
-    .select('id, version_id, slug, title, "order", next_chapter_id, branching_next, wrapper_class')
+    .select(
+      'id, version_id, slug, title, "order", next_chapter_id, branching_next, wrapper_class, card_image, card_short_title',
+    )
     .eq('version_id', effectiveVersionId)
     .eq('slug', chapterSlug)
     .maybeSingle();
@@ -74,6 +76,11 @@ export async function loadPublishedChapter(
     wrapperClass: chapter.wrapper_class ?? undefined,
     blocks,
     branchingNext: chapter.branching_next ?? [],
+    cardImage:
+      (chapter as { card_image?: string | null }).card_image ?? undefined,
+    cardShortTitle:
+      (chapter as { card_short_title?: string | null }).card_short_title ??
+      undefined,
   };
 }
 

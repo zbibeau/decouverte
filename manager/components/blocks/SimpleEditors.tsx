@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS, blankBlock } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
+import { uploadImageDirect } from '@/lib/uploadImageClient';
 
 import { Field, Section } from './Field';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
@@ -413,15 +414,58 @@ function VideoUploadButton({
 }
 
 // ---------- heroTitle ----------
-type HeroPayload = { title?: string; number?: number; illustration?: string };
+type HeroPayload = {
+  title?: string;
+  sectionTitle?: string;
+  number?: number;
+  illustration?: string;
+};
 
 export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPayload>) {
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    try {
+      const res = await uploadImageDirect(file);
+      if (!res.ok || !res.url) {
+        toast.error(res.error || 'Upload échoué.');
+        return;
+      }
+      onChange({ ...payload, illustration: res.url });
+      toast.success('Illustration uploadée.');
+    } catch (e) {
+      console.error('[HeroTitleEditor] image upload failed', e);
+      toast.error(
+        `Upload échoué : ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
   return (
     <div className="space-y-3">
       <Field label="Titre" path="title">
         <Input
           value={payload.title ?? ''}
           onChange={(e) => onChange({ ...payload, title: e.target.value })}
+        />
+      </Field>
+      <Field
+        label="Sur-titre (section)"
+        path="sectionTitle"
+        hint="Petite étiquette affichée au-dessus du titre. Sert souvent à rappeler le nom de la section / partie."
+      >
+        <Input
+          value={payload.sectionTitle ?? ''}
+          onChange={(e) =>
+            onChange({ ...payload, sectionTitle: e.target.value || undefined })
+          }
+          placeholder="Ex. : Partie 2"
         />
       </Field>
       <Field label="Numéro" path="number">
@@ -431,12 +475,52 @@ export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPa
           onChange={(e) => onChange({ ...payload, number: Number(e.target.value) })}
         />
       </Field>
-      <Field label="Illustration (chemin public)" path="illustration">
-        <Input
-          value={payload.illustration ?? ''}
-          onChange={(e) => onChange({ ...payload, illustration: e.target.value })}
-          placeholder="/illustrations/toolbox1-header.webp"
-        />
+      <Field
+        label="Illustration"
+        path="illustration"
+        hint="URL externe, chemin public (ex. /illustrations/toolbox1-header.webp) ou upload d'une image (.jpg, .png, .webp, .gif — 5 MB max)."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={payload.illustration ?? ''}
+            onChange={(e) =>
+              onChange({ ...payload, illustration: e.target.value || undefined })
+            }
+            placeholder="/illustrations/toolbox1-header.webp ou URL"
+            className="h-8 flex-1 text-xs"
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleUpload(file);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            title="Uploader une illustration"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {uploading ? '…' : ''}
+          </Button>
+          {payload.illustration && (
+            <div className="basis-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={payload.illustration}
+                alt="Aperçu illustration"
+                className="mt-1 h-32 w-auto rounded border border-border object-contain"
+              />
+            </div>
+          )}
+        </div>
       </Field>
     </div>
   );

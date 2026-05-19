@@ -37,7 +37,8 @@ export function summarizeBlock(type: string, payload: Record<string, unknown>): 
       }
       case 'card': {
         const children = (payload.children as unknown[]) ?? [];
-        return `${children.length} bloc(s) enfant(s)`;
+        const hasImage = typeof payload.image === 'string' && payload.image !== '';
+        return `${hasImage ? 'avec image — ' : ''}${children.length} bloc(s) enfant(s)`;
       }
       case 'conditional': {
         const cond = payload.condition as Record<string, unknown> | undefined;

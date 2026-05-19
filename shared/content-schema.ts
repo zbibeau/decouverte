@@ -182,6 +182,13 @@ export interface CardBlock {
   payload: {
     navbar?: { variant: string };
     contentClass?: string;
+    /** Optional cover image displayed at the top of the card (rounded, full-bleed
+     *  inside the card chrome). Mirrors the visual treatment used in the
+     *  chapter transition panorama. URL may be a Supabase Storage public URL
+     *  or any external image. */
+    image?: string;
+    /** Optional alt text for the cover image. Defaults to an empty string. */
+    imageAlt?: string;
     children: ContentBlock[];
   };
 }
@@ -379,6 +386,12 @@ export interface Chapter {
   nextChapterSlug?: string;
   branchingNext?: BranchingNextRule[];
   blocks: BlockWithId[];
+  /** Hero image rendered at the top of the chapter (full-width, rounded).
+   *  Comes from `chapter.card_image` — same source as the chapter card
+   *  in the section panorama, kept consistent across both surfaces. */
+  cardImage?: string;
+  /** Short label used by the chapter card. Falls back to `title` when undefined. */
+  cardShortTitle?: string;
 }
 
 export interface ParcoursVariableEnumOption {

@@ -130,9 +130,16 @@ const RenderBlock: Component<BlockProps> = (props) => {
             return (
               <HeroTitle title={blk.payload.title} number={blk.payload.number} sectionTitle={blk.payload.sectionTitle}>
                 <Show when={blk.payload.illustration}>
+                  {/* Square vignette with a pronounced -4° tilt, rounded
+                       corners and soft shadow. `aspect-square` forces a 1:1
+                       ratio so any source image is cropped to a uniform
+                       thumbnail. Positioned in the upper-right area (not
+                       bottom-anchored) and capped at 480px so it doesn't
+                       dominate the hero. No hover animation (the image
+                       should sit still). */}
                   <img
                     src={blk.payload.illustration!}
-                    class="bottom-0 right-0 my-auto w-full md:absolute md:max-w-[596px]"
+                    class="right-0 top-1/4 aspect-square w-full -rotate-[4deg] rounded-2xl object-cover shadow-md md:absolute md:max-w-[480px]"
                     alt="header"
                   />
                 </Show>
@@ -187,6 +194,22 @@ const RenderBlock: Component<BlockProps> = (props) => {
             return (
               <AfterHeroContainer contentClass="" preChildren={renderNavbar(blk.payload.navbar)}>
                 <Card>
+                  {/* Optional cover image — same visual treatment as the
+                       chapter transition card (rounded, full-bleed inside the
+                       card chrome). A subtle 2° tilt + soft shadow gives it a
+                       "casually placed photo" look, mirroring the playful
+                       slight rotation visible on the reference design.
+                       The outer wrapper has matching padding so the rotated
+                       corners don't get clipped by the card edges. */}
+                  <Show when={blk.payload.image}>
+                    <div class="mb-6 px-2 py-3">
+                      <img
+                        src={blk.payload.image!}
+                        alt={blk.payload.imageAlt ?? ''}
+                        class="block w-full -rotate-2 rounded-2xl object-cover shadow-md transition-transform duration-300 ease-out hover:rotate-0"
+                      />
+                    </div>
+                  </Show>
                   <div data-field-rail="children" data-field-path="children" class="space-y-6">
                     <For each={blk.payload.children}>
                       {(child) => (
@@ -817,6 +840,20 @@ export const ChapterRenderer: Component<{
 
   return (
     <div class={props.chapter.wrapperClass ?? undefined}>
+      {/* Optional hero image at the very top of the chapter — same image as
+           the chapter card in the section panorama, displayed full-width with
+           rounded corners. Skipped if `chapter.cardImage` is empty.
+           Capped at 40vh so portrait / large images don't dominate the page
+           and bury the chapter content + transition grid below the fold. */}
+      <Show when={props.chapter.cardImage}>
+        <div class="mb-8 px-4 md:px-8">
+          <img
+            src={props.chapter.cardImage!}
+            alt={props.chapter.cardShortTitle ?? props.chapter.title}
+            class="mx-auto block max-h-[40vh] w-full max-w-4xl rounded-2xl object-cover shadow-sm"
+          />
+        </div>
+      </Show>
       <For each={props.chapter.blocks}>
         {(originalBlock) => {
           // Memo recomputes when an override for this block id is added/cleared.

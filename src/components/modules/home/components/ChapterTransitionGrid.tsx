@@ -198,14 +198,26 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                       </Title>
                     </div>
                     <Show when={image()}>
+                      {/* Image as a tilted, rounded photo (same visual
+                           treatment as the heroTitle vignette). Wrapper has
+                           padding so the rotated corners don't get clipped
+                           by the card's `overflow-hidden`. Takes 50% of the
+                           card height — a touch more than the previous 40%
+                           so the photo feels like the primary content. */}
                       <div
                         class={cx(
-                          'h-2/5 w-full bg-cover bg-center',
+                          'h-1/2 px-3 pb-3',
                           !isActive() && 'opacity-50',
                         )}
-                        style={{ 'background-image': `url(${image()})` }}
-                        aria-hidden="true"
-                      />
+                      >
+                        <img
+                          src={image()!}
+                          alt=""
+                          aria-hidden="true"
+                          draggable={false}
+                          class="h-full w-full -rotate-2 rounded-2xl object-cover shadow-md"
+                        />
+                      </div>
                     </Show>
                     <Show when={isActive()}>
                       <div class="absolute bottom-4 left-1/2 -translate-x-1/2">

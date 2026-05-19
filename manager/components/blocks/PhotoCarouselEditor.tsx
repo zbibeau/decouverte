@@ -6,7 +6,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { uploadCarouselPhoto } from '@/lib/uploadImage';
+import { uploadImageDirect } from '@/lib/uploadImageClient';
 
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { Field, Section } from './Field';
@@ -93,9 +93,9 @@ export function PhotoCarouselEditor({ payload, onChange }: PayloadEditorProps<Pa
     const uploaded: CarouselPhoto[] = [];
     for (let i = 0; i < list.length; i++) {
       const file = list[i];
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await uploadCarouselPhoto(fd);
+      // Direct browser → Supabase upload : bypasses the Next.js server
+      // action 1 MB body limit so phone-sized photos (2-8 MB) go through.
+      const res = await uploadImageDirect(file);
       if (res.ok && res.url) {
         uploaded.push({
           url: res.url,
@@ -129,9 +129,8 @@ export function PhotoCarouselEditor({ payload, onChange }: PayloadEditorProps<Pa
     setUploading(true);
     setReplacingIdx(idx);
 
-    const fd = new FormData();
-    fd.append('file', file);
-    const res = await uploadCarouselPhoto(fd);
+    // Direct browser → Supabase (same reason as above).
+    const res = await uploadImageDirect(file);
 
     if (res.ok && res.url) {
       // Only overwrite url; preserve alt unless it was empty, in which case

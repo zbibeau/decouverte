@@ -246,9 +246,12 @@ export async function getDraftChapterDiffs(
   if (!info.draftVersionId) return new Map();
   const supabase = await createClient();
 
+  const CHAPTER_DIFF_FIELDS =
+    'id, slug, title, wrapper_class, branching_next, "order", section_label, section_order, card_image, card_short_title';
+
   const { data: draftChapters } = await supabase
     .from('chapter')
-    .select('id, slug, title, wrapper_class, branching_next, "order"')
+    .select(CHAPTER_DIFF_FIELDS)
     .eq('version_id', info.draftVersionId);
   if (!draftChapters) return new Map();
 
@@ -265,11 +268,15 @@ export async function getDraftChapterDiffs(
     wrapper_class: string | null;
     branching_next: unknown;
     order: number;
+    section_label: string | null;
+    section_order: number | null;
+    card_image: string | null;
+    card_short_title: string | null;
   }> = [];
   if (info.publishedVersionId) {
     const { data: pubs } = await supabase
       .from('chapter')
-      .select('id, slug, title, wrapper_class, branching_next, "order"')
+      .select(CHAPTER_DIFF_FIELDS)
       .eq('version_id', info.publishedVersionId);
     if (pubs) publishedChapters.push(...((pubs as unknown) as typeof publishedChapters));
   }
@@ -331,10 +338,19 @@ export async function getDraftChapterDiffs(
       result.set(c.id, 'new');
       continue;
     }
-    // Meta diff against the published twin.
+    // Meta diff against the published twin. Includes every editable field
+    // surfaced in the manager UI — `getDraftChapterDiffs` is the single
+    // source of truth for the "is the Publish button enabled" signal, so any
+    // editable column added later (migrations 0031 section_*, 0034 card_*…)
+    // MUST be added here, otherwise updating it won't enable Publish.
     const metaChanged =
       pub.title !== c.title ||
       pub.wrapper_class !== c.wrapper_class ||
+      pub.order !== c.order ||
+      (pub.section_label ?? null) !== (c.section_label ?? null) ||
+      (pub.section_order ?? null) !== (c.section_order ?? null) ||
+      (pub.card_image ?? null) !== (c.card_image ?? null) ||
+      (pub.card_short_title ?? null) !== (c.card_short_title ?? null) ||
       JSON.stringify(pub.branching_next ?? []) !==
         JSON.stringify(c.branching_next ?? []);
 

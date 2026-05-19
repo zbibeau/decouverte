@@ -10,7 +10,7 @@ import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
-import { uploadCarouselPhoto } from '@/lib/uploadImage';
+import { uploadImageDirect } from '@/lib/uploadImageClient';
 
 interface ChapterRow {
   id: string;
@@ -115,16 +115,18 @@ export function ChapterList({
     setEditCardShortTitle('');
   }
   async function handleCardImageUpload(file: File) {
+    // Direct browser → Supabase upload : bypasses the Next.js server action
+    // 1 MB body limit so photos > 1 MB go through (phone shots are typically
+    // 2-8 MB). Same pattern as `VideoUploadButton`.
     setCardImageUploading(true);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await uploadCarouselPhoto(fd);
+      const res = await uploadImageDirect(file);
       if (!res.ok || !res.url) {
         toast.error(res.error || 'Upload échoué.');
         return;
       }
       setEditCardImage(res.url);
+      toast.success('Image carte uploadée.');
     } catch (e) {
       console.error('[ChapterList] card image upload failed', e);
       toast.error(
@@ -358,25 +360,58 @@ export function ChapterList({
               </>
             ) : (
               <>
+                {/*
+                  Row layout : the "open chapter" Link is split into two
+                  segments around the Pencil button so the pencil sits
+                  visually right after the title — per UX feedback, the user
+                  was confusing the pencil (renommer) with the ChevronRight
+                  (entrer dans le chapitre). The pencil moved to the left
+                  near the title (less-used action, but where it logically
+                  belongs), and the chevron stays at the far right as the
+                  unambiguous "enter chapter" affordance.
+
+                  Two Link nodes pointing to the same destination is a bit
+                  redundant but is the cleanest HTML-valid way to interleave
+                  a button in the middle of a clickable row (nesting a
+                  `<button>` inside `<a>` would be invalid). Both segments
+                  share the same href + `hover:underline` so the row reads
+                  visually as a single clickable area.
+                */}
                 <Link
                   href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
-                  className="flex flex-1 items-center gap-3 hover:underline"
+                  className="flex items-center gap-3 hover:underline"
                 >
                   <span className="font-mono text-xs text-muted-foreground">{c.order}.</span>
+                  {c.cardImage && (
+                    // Small thumbnail of the chapter card image — gives the
+                    // author a visual marker to spot a chapter at a glance
+                    // (same image as the section-panorama card).
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={c.cardImage}
+                      alt=""
+                      className="h-8 w-12 shrink-0 rounded border border-border object-cover"
+                    />
+                  )}
                   <span className="font-medium">{c.title}</span>
-                  <code className="text-xs text-muted-foreground">({c.slug})</code>
-                  <DiffBadge diff={c.diff} />
-                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
                 </Link>
                 <Button
                   variant="ghost"
                   size="sm"
-                  title="Renommer (titre + slug)"
+                  title="Renommer (titre + slug + section + carte)"
                   disabled={isPending}
                   onClick={() => startEdit(c)}
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
+                <Link
+                  href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
+                  className="flex flex-1 items-center gap-3 hover:underline"
+                >
+                  <code className="text-xs text-muted-foreground">({c.slug})</code>
+                  <DiffBadge diff={c.diff} />
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                </Link>
                 <Button
                   variant="ghost"
                   size="sm"
