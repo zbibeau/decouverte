@@ -107,6 +107,10 @@ export interface ChapterStub {
   cardImage?: string | null;
   /** Short label displayed in the chapter card. Falls back to `title` when null. */
   cardShortTitle?: string | null;
+  /** TRUE iff at least one top-level block of this chapter has `type='form'`.
+   *  Drives the "Retour au formulaire" button shown on the very next chapter
+   *  in the reading flow so visitors (and the dev) can revisit their answers. */
+  hasForm?: boolean;
 }
 export async function loadChapterSequence(
   parcoursSlug: string,
@@ -151,6 +155,23 @@ export async function loadChapterSequence(
     .eq('version_id', effectiveVersionId)
     .order('order', { ascending: true });
 
+  // Pre-compute which chapters contain a form block, in one round-trip,
+  // so the chapter sequence carries a `hasForm` flag the renderer can use
+  // without re-loading each chapter's content. This drives the "Retour au
+  // formulaire" button shown on the chapter right after a form chapter.
+  const chapterIds = (rows ?? []).map((r) => r.id as string);
+  const chaptersWithForm = new Set<string>();
+  if (chapterIds.length > 0) {
+    const { data: formBlockRows } = await supabase
+      .from('block')
+      .select('chapter_id')
+      .eq('type', 'form')
+      .in('chapter_id', chapterIds);
+    for (const b of formBlockRows ?? []) {
+      chaptersWithForm.add((b as { chapter_id: string }).chapter_id);
+    }
+  }
+
   return (rows ?? []).map((r) => ({
     id: r.id,
     slug: r.slug,
@@ -160,6 +181,7 @@ export async function loadChapterSequence(
     sectionOrder: (r as { section_order?: number | null }).section_order ?? null,
     cardImage: (r as { card_image?: string | null }).card_image ?? null,
     cardShortTitle: (r as { card_short_title?: string | null }).card_short_title ?? null,
+    hasForm: chaptersWithForm.has(r.id as string),
   }));
 }
 

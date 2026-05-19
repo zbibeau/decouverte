@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/Textarea';
 
 import { ChildBlockList } from './ChildBlockList';
 import { Field, Section } from './Field';
+import { NavbarVariantSelect } from './NavbarVariantSelect';
 import type { PayloadEditorProps } from './editor-types';
 
 type Payload = ToolContentSectionBlock['payload'];
@@ -15,6 +16,7 @@ export function ToolContentSectionEditor({
   payload,
   onChange,
   variables,
+  navbarVariants,
   depth = 0,
 }: PayloadEditorProps<Payload>) {
   const video = payload.video;
@@ -38,6 +40,22 @@ export function ToolContentSectionEditor({
 
   return (
     <div className="space-y-3">
+      {/* --- Navbar pilote --- */}
+      <Section title="Navbar pilote" accentColor="slate">
+        <Field label="Variante" path="navbar">
+          <NavbarVariantSelect
+            value={payload.navbar?.variant}
+            onChange={(key) =>
+              onChange({
+                ...payload,
+                navbar: key ? { variant: key } : undefined,
+              })
+            }
+            variants={navbarVariants}
+          />
+        </Field>
+      </Section>
+
       {/* --- Ancre HTML facultative --- */}
       {/* Le champ `name` (ex « label nav ») n'est plus exposé : le renderer
           Solid ne le lisait jamais (legacy d'une mini-nav latérale interne

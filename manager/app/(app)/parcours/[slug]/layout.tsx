@@ -5,6 +5,7 @@ import { ParcoursTabs } from '@/components/ParcoursTabs';
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog';
 import { Badge } from '@/components/ui/Badge';
 import { getDraftStatus, listVersions, restoreVersionAsDraft } from '@/lib/actions';
+import { pastelForString, safeThemeColor } from '@/lib/pastelColors';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ParcoursLayout({
@@ -18,13 +19,48 @@ export default async function ParcoursLayout({
   const slug = decodeURIComponent(raw.slug);
   const supabase = await createClient();
 
-  const { data: parcours } = await supabase
-    .from('parcours')
-    .select('id, slug, name, published_version_id')
-    .eq('slug', slug)
-    .maybeSingle();
+  // Try selecting with `theme_color` ; fall back to the legacy 4-column
+  // select if the column doesn't exist yet on this DB (migration 0035 not
+  // applied). Same defensive pattern as `(app)/layout.tsx` so a fresh
+  // deploy doesn't 404 every parcours page until someone runs the SQL.
+  let parcours:
+    | {
+        id: string;
+        slug: string;
+        name: string;
+        published_version_id: string | null;
+        theme_color?: string | null;
+      }
+    | null = null;
+  {
+    const { data, error } = await supabase
+      .from('parcours')
+      .select('id, slug, name, published_version_id, theme_color')
+      .eq('slug', slug)
+      .maybeSingle();
+    if (error && /column .*theme_color.* does not exist/i.test(error.message)) {
+      const fallback = await supabase
+        .from('parcours')
+        .select('id, slug, name, published_version_id')
+        .eq('slug', slug)
+        .maybeSingle();
+      parcours = fallback.data
+        ? { ...fallback.data, theme_color: null }
+        : null;
+    } else {
+      parcours = data as typeof parcours;
+    }
+  }
 
   if (!parcours) notFound();
+
+  // Resolve the header tint : explicit `theme_color` wins, else fall back to
+  // a deterministic pastel computed from the slug so existing rows still
+  // look distinct without a manual migration. `safeThemeColor` validates
+  // the hex format and guards against legacy garbage.
+  const themeColor = safeThemeColor(
+    parcours.theme_color ?? pastelForString(slug),
+  );
 
   // Initial snapshot for the history dialog — the client refetches when opened.
   const [versions, draftStatus] = await Promise.all([
@@ -44,7 +80,15 @@ export default async function ParcoursLayout({
 
   return (
     <div>
-      <div className="border-b border-border bg-white">
+      {/* Header tinted with the parcours' theme color so the author can tell
+           at a glance which project they're editing. Inline `background` is
+           used (rather than a Tailwind class) because the color is dynamic
+           per-parcours. A subtle bottom border keeps the visual separation
+           from the content area. */}
+      <div
+        className="border-b border-border"
+        style={{ background: themeColor }}
+      >
         <div className="mx-auto max-w-[1400px] px-8 pt-6">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{parcours.name}</h1>

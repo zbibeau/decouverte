@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -44,9 +44,48 @@ export function SortableList<T extends { id: string }>({
     setMounted(true);
   }, []);
 
-  // Sync when parent updates (after refresh)
-  if (items.length !== localItems.length || items.some((it, i) => it.id !== localItems[i]?.id)) {
-    setLocalItems(items);
+  // Optimistic-update tracking. When the user drops an item we update
+  // `localItems` synchronously AND remember the new order here. The server
+  // action then runs in the background and the parent eventually re-renders
+  // with the same order. Until that happens, the parent's `items` prop is
+  // STILL the pre-drop order — so without this ref, the sync block below
+  // would helpfully "fix" our optimistic state by snapping the item back
+  // to its original slot. That's exactly the lag/flicker the user reports:
+  // the row visibly jumps back to its old position for a tick before the
+  // refresh lands and it re-jumps to the new position.
+  //
+  // With the ref: while `expectedOrderRef` is set, we ignore prop updates
+  // that don't match the optimistic order. Once props catch up (server
+  // confirmed), we clear the ref and resume normal sync. If props change
+  // to a DIFFERENT order (rare — e.g. another tab edited concurrently),
+  // we don't get stuck because we fall through to the regular sync as
+  // soon as the expected and prop orders both end up valid.
+  const expectedOrderRef = useRef<string[] | null>(null);
+
+  // Sync when parent updates (after refresh) — but respect any optimistic
+  // reorder still in flight.
+  const propsIds = items.map((i) => i.id);
+  const localIds = localItems.map((i) => i.id);
+  const propsDifferFromLocal =
+    propsIds.length !== localIds.length ||
+    propsIds.some((id, i) => id !== localIds[i]);
+  if (propsDifferFromLocal) {
+    const expected = expectedOrderRef.current;
+    if (expected) {
+      const propsMatchExpected =
+        propsIds.length === expected.length &&
+        propsIds.every((id, i) => id === expected[i]);
+      if (propsMatchExpected) {
+        // Server caught up to our optimistic order → clear the flag and
+        // accept the refreshed items (no visible change, same order).
+        expectedOrderRef.current = null;
+        setLocalItems(items);
+      }
+      // else : server hasn't caught up yet — keep showing the optimistic
+      // order. Once it does, the branch above fires on the next render.
+    } else {
+      setLocalItems(items);
+    }
   }
 
   const sensors = useSensors(
@@ -61,8 +100,13 @@ export function SortableList<T extends { id: string }>({
     const newIndex = localItems.findIndex((i) => i.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(localItems, oldIndex, newIndex);
+    const nextIds = next.map((i) => i.id);
+    // Stash the optimistic order BEFORE updating state so the sync block
+    // above knows to skip its "reset from props" while the server action
+    // is in flight (see expectedOrderRef comment).
+    expectedOrderRef.current = nextIds;
     setLocalItems(next);
-    void onReorder(next.map((i) => i.id));
+    void onReorder(nextIds);
   }
 
   if (!mounted) {

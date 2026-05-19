@@ -79,11 +79,22 @@ export default async function ChapterEditPage({
     'use server';
     await reorderBlocks(slug, chapterSlug, chapter!.id, orderedIds);
   }
-  async function insertSampleBlockAction(type: string) {
+  async function insertSampleBlockAction(type: string): Promise<string> {
     'use server';
     const sample = SAMPLE_PAYLOADS[type as ContentBlock['type']];
     if (!sample) throw new Error(`Type de bloc inconnu : ${type}`);
-    await insertSampleBlock(slug, chapter!.id, type, sample.payload);
+    const { blockId } = await insertSampleBlock(
+      slug,
+      chapter!.id,
+      type,
+      sample.payload,
+    );
+    // Return the new block id so the client can open its editor right away
+    // (router.push from `handleInsertSample` in ChapterEditor). Otherwise the
+    // user has to click the inserted row's pencil — an extra step that breaks
+    // flow when the typical follow-up to "Ajouter un bloc" is "now fill it
+    // in".
+    return blockId;
   }
 
   // Draft id (if any) so the iframe previews the draft version, not the live.

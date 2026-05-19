@@ -27,6 +27,7 @@ import { KeyPointsCard } from '../components/KeyPointsCard';
 import { PhotoCarousel } from '../components/PhotoCarousel';
 import { ToolContentSection } from '../components/ToolContentSection';
 import { useHome } from '../context/HomeContext';
+import type { HOME_STEPS_KEYS } from '../utils/HomeSteps';
 import { HOME_SECTION_PROPS } from '../utils/HomeUtils';
 import { CUSTOM_COMPONENT_RUNTIME } from './customComponents';
 import { RenderFormBlock } from './RenderFormBlock';
@@ -159,14 +160,31 @@ const RenderBlock: Component<BlockProps> = (props) => {
               </AfterHeroContainerFullVideoSection>
             );
 
-          case 'text':
+          case 'text': {
+            // Nested text (inside a card / keyPointsCard / conditional...)
+            // skips the AfterHeroContainer wrapper. Otherwise its
+            // `min-h-dvh` would create a viewport-tall slide INSIDE the
+            // parent's own viewport-tall slide → a giant empty gap before
+            // and after the text. When nested, just render the Text
+            // component inline so it flows with the surrounding card
+            // content at natural height.
+            const textInner = (
+              <Text variant={blk.payload.variant}>
+                <span innerHTML={nl2br(blk.payload.html)} />
+              </Text>
+            );
+            if (props.nested) {
+              return <div class="py-2">{textInner}</div>;
+            }
             return (
-              <AfterHeroContainer contentClass="">
-                <Text variant={blk.payload.variant}>
-                  <span innerHTML={nl2br(blk.payload.html)} />
-                </Text>
+              <AfterHeroContainer
+                contentClass=""
+                preChildren={renderNavbar(blk.payload.navbar)}
+              >
+                {textInner}
               </AfterHeroContainer>
             );
+          }
 
           case 'keyPointsCard':
             return <RenderKeyPoints block={blk} nested={props.nested} />;
@@ -255,13 +273,18 @@ const RenderBlock: Component<BlockProps> = (props) => {
           case 'form':
             return (
               <div data-field-rail="fields" data-field-path="fields">
-                <RenderFormBlock block={blk} sectionProps={props.sectionProps} />
+                <RenderFormBlock
+                  block={blk}
+                  sectionProps={props.sectionProps}
+                  navbar={renderNavbar(blk.payload.navbar)}
+                />
               </div>
             );
 
           case 'photoCarousel':
             return (
               <div data-field-rail="photos" data-field-path="photos">
+                {renderNavbar(blk.payload.navbar)}
                 <PhotoCarousel payload={blk.payload} />
               </div>
             );
@@ -317,6 +340,7 @@ const RenderToolContentSection: Component<{
       payload={props.block.payload}
       personWhoHandleCalls={data()?.personWhoHandleCalls as string | undefined}
       renderChild={(child) => <RenderBlock block={child} sectionProps={props.sectionProps} />}
+      navbar={renderNavbar(props.block.payload.navbar)}
     />
   );
 };
@@ -538,6 +562,196 @@ export const ChapterRenderer: Component<{
   // Live block-payload overrides pushed from the manager block editor.
   // Maps block id → ContentBlock that replaces the DB-loaded block at render time.
   const [overrides, setOverrides] = createSignal<Record<string, ContentBlock>>({});
+
+  // --- Scroll-lock state for the post-form region ----------------------
+  // Once the visitor has scrolled past the form's slide (i.e. the parent
+  // scroller's scrollTop has reached the offsetTop of the FIRST block after
+  // the form), `hasPassedForm` flips to true. From that point on, the
+  // scroll handler below snaps the scroller back DOWN whenever the user
+  // tries to slide UP past the post-form boundary. The only way to revisit
+  // the form is the "Retour au formulaire" CTA — clicking it flips
+  // `hasPassedForm` back to false AND sets `ctaBypassUntil` to a future
+  // timestamp so the lock doesn't fight the smooth scrollIntoView.
+  const [hasPassedForm, setHasPassedForm] = createSignal(false);
+  const [ctaBypassUntil, setCtaBypassUntil] = createSignal(0);
+
+  // Snapshot of the user's filled-in form data — drives conditional
+  // gating of any block placed AFTER a `form` block in this chapter.
+  // We also pull the chapter sequence here so we can render a "previous
+  // chapter" button at the top, giving the visitor (and the dev) a way
+  // to go back even when the sidebar is collapsed (narrow viewport,
+  // manager preview iframe, etc.).
+  const {
+    data: homeData,
+    chapters: homeChapters,
+    currentStep: homeCurrentStep,
+    setCurrentStep: homeSetCurrentStep,
+  } = useHome();
+
+  /** Sort chapters in their logical reading order : section by section
+   *  (in first-appearance order), and within each section by `sectionOrder`
+   *  then by `chapter.order`. Mirrors the logic in `ChapterTransitionGrid`
+   *  so the "previous" button picks the chapter the visitor would have come
+   *  from, not the raw DB order. */
+  function logicallyOrdered<T extends {
+    order: number;
+    sectionLabel?: string | null;
+    sectionOrder?: number | null;
+  }>(all: T[]): T[] {
+    const sectionMinOrder = new Map<string, number>();
+    for (const c of all) {
+      const key = c.sectionLabel?.trim() || '__none__';
+      const prev = sectionMinOrder.get(key);
+      if (prev === undefined || c.order < prev) sectionMinOrder.set(key, c.order);
+    }
+    return [...all].sort((a, b) => {
+      const ak = a.sectionLabel?.trim() || '__none__';
+      const bk = b.sectionLabel?.trim() || '__none__';
+      if (ak !== bk) {
+        return (sectionMinOrder.get(ak) ?? 0) - (sectionMinOrder.get(bk) ?? 0);
+      }
+      const ao = a.sectionOrder ?? Number.POSITIVE_INFINITY;
+      const bo = b.sectionOrder ?? Number.POSITIVE_INFINITY;
+      if (ao !== bo) return ao - bo;
+      return a.order - b.order;
+    });
+  }
+
+  /** Chapter coming right BEFORE the current one in logical order, or null
+   *  when the current chapter is the first one. */
+  const previousChapter = createMemo(() => {
+    const all = homeChapters();
+    if (!all || all.length === 0) return null;
+    const ordered = logicallyOrdered(all);
+    const curIdx = ordered.findIndex((c) => c.slug === homeCurrentStep());
+    if (curIdx <= 0) return null;
+    return ordered[curIdx - 1];
+  });
+
+  // Index of the first `form` block in the chapter (or -1 if none). Blocks
+  // at index ≤ formIndex are always rendered ; blocks AFTER the form (and
+  // the auto-injected ChapterTransitionGrid) only render once the form's
+  // required variables have been filled in. Stops the visitor from seeing
+  // content that depends on variables they haven't answered yet.
+  const formIndex = createMemo(() =>
+    props.chapter.blocks.findIndex((b) => b.type === 'form'),
+  );
+  const formRequiredKeys = createMemo(() => {
+    const idx = formIndex();
+    if (idx < 0) return [] as string[];
+    const fb = props.chapter.blocks[idx] as ContentBlock & {
+      type: 'form';
+      payload: { fields?: Array<{ key: string; required?: boolean }> };
+    };
+    return (fb.payload.fields ?? [])
+      .filter((f) => f.required !== false)
+      .map((f) => f.key);
+  });
+  const formCompleted = createMemo(() => {
+    const keys = formRequiredKeys();
+    if (keys.length === 0) return true;
+    const d = (homeData() ?? {}) as Record<string, unknown>;
+    return keys.every((k) => {
+      const v = d[k];
+      return v !== undefined && v !== null && v !== '';
+    });
+  });
+  /** Should block at position `idx` be rendered right now ? */
+  function shouldRenderAt(idx: number): boolean {
+    const fi = formIndex();
+    if (fi < 0) return true; // no form in the chapter — render everything
+    if (idx <= fi) return true; // form itself + anything before it
+    return formCompleted(); // after the form : only when filled
+  }
+
+  // --- Scroll-lock: prevent slide-up past the post-form boundary -------
+  // Once the user has scrolled past the form slide, we treat the
+  // post-form block's offsetTop as a "hard floor" for the parent
+  // scroller. Any upward scroll that crosses it gets snapped back
+  // down immediately, so the only path back to the form is the CTA
+  // (which sets `ctaBypassUntil` to skip this guard for ~1.6s).
+  //
+  // Why: the user explicitly asked for the form to be reachable only
+  // via the dedicated button — sliding (mouse-wheel, touch, page-up)
+  // shouldn't take them backwards. Without this lock, the user can
+  // re-enter the form by accident and the previously-answered fields
+  // appear pre-filled, which is confusing if they didn't mean to
+  // revisit them.
+  onMount(() => {
+    if (typeof window === 'undefined') return;
+    // Skip the lock entirely when running inside the manager preview
+    // iframe — CMS editors need to scroll the preview freely to inspect
+    // blocks above the form (e.g. tweaking the form's wording while seeing
+    // its effect on later blocks). The lock is meant to constrain
+    // end-user navigation in production, not authoring tooling.
+    if (new URLSearchParams(window.location.search).get('preview') === '1') {
+      return;
+    }
+    // Late-bound: the scroller mounts in StepperLayout outside this
+    // component, so we lazy-look it up on the first scroll event
+    // (and retry if it isn't there yet).
+    let scroller: HTMLElement | null = null;
+    function getScroller() {
+      if (scroller && scroller.isConnected) return scroller;
+      scroller = document.getElementById('stepper-content');
+      return scroller;
+    }
+
+    function postFormTop(): number | null {
+      const fi = formIndex();
+      if (fi < 0) return null;
+      const postFormBlock = props.chapter.blocks[fi + 1];
+      if (!postFormBlock) return null;
+      const el = document.getElementById(`block-${postFormBlock.id}`);
+      if (!el) return null;
+      return el.offsetTop;
+    }
+
+    function handleScroll() {
+      const s = getScroller();
+      if (!s) return;
+      const top = postFormTop();
+      if (top == null) return;
+      // (1) Track whether the user has crossed the post-form boundary
+      // at least once — that's the trigger for the lock to engage. Use
+      // a small tolerance because some browsers report fractional
+      // scrollTop and snap with sub-pixel offsets.
+      if (!hasPassedForm() && s.scrollTop >= top - 4) {
+        setHasPassedForm(true);
+      }
+      // (2) Once locked, snap any upward escape back down — unless the
+      // CTA just initiated a smooth scroll (in which case we let it
+      // complete uninterrupted).
+      if (hasPassedForm() && Date.now() >= ctaBypassUntil() && s.scrollTop < top - 4) {
+        s.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
+      }
+    }
+
+    // Bind the listener once the scroller exists. Retry briefly because
+    // ChapterRenderer can mount before StepperLayout has finished its
+    // own mount.
+    let attached = false;
+    function attach() {
+      const s = getScroller();
+      if (!s || attached) return;
+      s.addEventListener('scroll', handleScroll, { passive: true });
+      attached = true;
+    }
+    attach();
+    const attachRetry = window.setInterval(() => {
+      if (attached) {
+        window.clearInterval(attachRetry);
+        return;
+      }
+      attach();
+    }, 200);
+
+    onCleanup(() => {
+      window.clearInterval(attachRetry);
+      const s = getScroller();
+      s?.removeEventListener('scroll', handleScroll);
+    });
+  });
 
   onMount(() => {
     if (typeof window === 'undefined') return;
@@ -840,6 +1054,30 @@ export const ChapterRenderer: Component<{
 
   return (
     <div class={props.chapter.wrapperClass ?? undefined}>
+      {/* "Retour au formulaire" affordance — ONLY shown when the chapter
+           the visitor came from contains a form block. On any other chapter,
+           the sidebar / hamburger menu is enough to navigate backwards, so
+           we keep this surface uncluttered. The button label is fixed
+           (« Retour au formulaire ») rather than the actual chapter title
+           so the intent ("you can review / change your answers") is
+           explicit. */}
+      <Show when={previousChapter()?.hasForm && previousChapter()}>
+        {(prev) => (
+          <div class="px-4 pt-4 md:px-8">
+            <button
+              type="button"
+              onClick={() =>
+                homeSetCurrentStep(prev().slug as HOME_STEPS_KEYS)
+              }
+              class="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-white/80 px-3 py-1 text-xs text-primary-700 shadow-sm transition-colors hover:bg-white hover:text-primary-900"
+              title={`Revenir au formulaire « ${prev().title} » pour modifier tes réponses`}
+            >
+              <span aria-hidden="true">←</span>
+              <span>Retour au formulaire</span>
+            </button>
+          </div>
+        )}
+      </Show>
       {/* Optional hero image at the very top of the chapter — same image as
            the chapter card in the section panorama, displayed full-width with
            rounded corners. Skipped if `chapter.cardImage` is empty.
@@ -855,22 +1093,68 @@ export const ChapterRenderer: Component<{
         </div>
       </Show>
       <For each={props.chapter.blocks}>
-        {(originalBlock) => {
+        {(originalBlock, idx) => {
           // Memo recomputes when an override for this block id is added/cleared.
           const effective = createMemo<ContentBlock>(
             () => overrides()[originalBlock.id] ?? originalBlock,
           );
+          const isFirstAfterForm = createMemo(
+            () => formIndex() >= 0 && idx() === formIndex() + 1,
+          );
+          // Gate blocks placed AFTER a form so the visitor only sees them
+          // once the form's required variables are filled — otherwise the
+          // conditional content below would either crash on missing
+          // variables or leak teaser screens before the form is answered.
           return (
-            <div
-              id={`block-${originalBlock.id}`}
-              data-block-id={originalBlock.id}
-              data-block-type={originalBlock.type}
-            >
-              {/* keyed Show remounts RenderBlock when the effective block reference changes */}
-              <Show keyed when={effective()}>
-                {(b) => <RenderBlock block={b} sectionProps={props.sectionProps} />}
-              </Show>
-            </div>
+            <Show when={shouldRenderAt(idx())}>
+              <div
+                id={`block-${originalBlock.id}`}
+                data-block-id={originalBlock.id}
+                data-block-type={originalBlock.type}
+                class={isFirstAfterForm() ? 'relative' : undefined}
+              >
+                {/* "Retour au formulaire" — same-chapter version. Rendered
+                     INSIDE the post-form block's wrapper as an absolutely
+                     positioned overlay, so when the scroller snaps to this
+                     block (its top aligned with the viewport top), the
+                     button is visible at the top-left of the viewport.
+                     Previously the button was a sibling rendered BEFORE the
+                     block div — and since `snap-start` is on the inner
+                     AfterHeroContainer, the button sat at the bottom of the
+                     PREVIOUS snap target and was hidden above the viewport
+                     once the user landed on the post-form slide. Absolute
+                     positioning + z-50 keeps it floating above any content
+                     that AfterHeroContainer renders at its top. */}
+                <Show when={isFirstAfterForm()}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fi = formIndex();
+                      if (fi < 0) return;
+                      const formBlock = props.chapter.blocks[fi];
+                      if (!formBlock) return;
+                      // Bypass the scroll-lock for ~1.6s so the smooth
+                      // `scrollIntoView` completes without snap-back. The
+                      // window covers a typical smooth scroll (~600-1000ms)
+                      // plus margin for browsers that ease out longer.
+                      setCtaBypassUntil(Date.now() + 1600);
+                      setHasPassedForm(false);
+                      const el = document.getElementById(`block-${formBlock.id}`);
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    class="absolute left-4 top-4 z-50 inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-white/90 px-3 py-1 text-xs text-primary-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white hover:text-primary-900 md:left-8 md:top-8"
+                    title="Revenir au formulaire pour modifier tes réponses"
+                  >
+                    <span aria-hidden="true">←</span>
+                    <span>Retour au formulaire</span>
+                  </button>
+                </Show>
+                {/* keyed Show remounts RenderBlock when the effective block reference changes */}
+                <Show keyed when={effective()}>
+                  {(b) => <RenderBlock block={b} sectionProps={props.sectionProps} />}
+                </Show>
+              </div>
+            </Show>
           );
         }}
       </For>
@@ -879,8 +1163,13 @@ export const ChapterRenderer: Component<{
           hardcoded GoToNextPartButton). Renders the next chapter's section
           with the next chapter highlighted + a "Découvrir" CTA. The
           ChapterTransitionGrid itself returns null when there is no next
-          chapter, so the last chapter of the parcours stays clean. */}
-      <ChapterTransitionGrid activeChapter="next" />
+          chapter, so the last chapter of the parcours stays clean.
+          Hidden behind `formCompleted()` when this chapter has a form
+          block — same rationale as the For loop above (no peeking past
+          the form). */}
+      <Show when={formCompleted()}>
+        <ChapterTransitionGrid activeChapter="next" />
+      </Show>
     </div>
   );
 };

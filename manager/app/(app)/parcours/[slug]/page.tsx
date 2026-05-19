@@ -8,6 +8,7 @@ import {
   getDraftChapterDiffs,
   getEditingVersionId,
   getNavbarVariants,
+  moveSectionRelative,
   reorderChapters,
   updateChapterMeta,
 } from '@/lib/actions';
@@ -65,6 +66,13 @@ export default async function ChapterListPage({
     fd.set('cardImage', cardImage ?? '');
     fd.set('cardShortTitle', cardShortTitle ?? '');
     await updateChapterMeta(slug, chapterId, fd);
+  }
+  async function moveSectionAction(
+    sectionLabel: string | null,
+    direction: -1 | 1,
+  ) {
+    'use server';
+    await moveSectionRelative(slug, sectionLabel, direction);
   }
 
   const diffs = await getDraftChapterDiffs(slug);
@@ -125,6 +133,7 @@ export default async function ChapterListPage({
             deleteAction={deleteChapterAction}
             duplicateAction={duplicateChapterAction}
             updateAction={updateChapterAction}
+            moveSectionAction={moveSectionAction}
           />
         </CardContent>
       </Card>

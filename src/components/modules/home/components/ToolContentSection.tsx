@@ -22,6 +22,9 @@ export const ToolContentSection: Component<{
   payload: Payload;
   personWhoHandleCalls?: string;
   renderChild?: (block: ContentBlock) => JSX.Element;
+  /** Optional pilot-specific navbar passed by the dispatcher, rendered as
+   *  `preChildren` of the `AfterHeroContainerWide` wrapper. */
+  navbar?: JSX.Element;
 }> = (props) => {
   const resolvedVideoSrc = () => {
     const v = props.payload.video;
@@ -32,7 +35,10 @@ export const ToolContentSection: Component<{
   };
 
   return (
-    <AfterHeroContainerWide contentId={props.payload.anchorId}>
+    <AfterHeroContainerWide
+      contentId={props.payload.anchorId}
+      preChildren={props.navbar}
+    >
       <div class="mx-auto w-full py-6 md:py-12">
         <div class="m-auto w-full max-w-[800px] space-y-8 px-3 md:px-1">
           <div class="space-y-8">

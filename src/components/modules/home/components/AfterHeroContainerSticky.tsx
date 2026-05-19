@@ -5,7 +5,7 @@ export const AfterHeroContainerSticky: Component<{ children: JSX.Element; title:
   props,
 ) => {
   return (
-    <div class="min-h-[calc(100dvh-56px)] snap-start pb-8 md:min-h-dvh">
+    <div class="min-h-[calc(100dvh-56px)] snap-start snap-always pb-8 md:min-h-dvh">
       <div class="sticky top-0 z-50 pt-6 backdrop-blur-3xl">
         <div class="relative mx-6 rounded-2xl bg-primary-100 p-4 shadow">
           <Title variant="h6" class="leading-tight">

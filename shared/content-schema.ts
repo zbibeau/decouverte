@@ -64,6 +64,8 @@ export interface TextBlock {
     /** Plain HTML or markdown — rendered as-is via innerHTML for the pilot. */
     html: string;
     variant?: 'default' | 'lg' | 'sm';
+    /** Optional pilot-specific Tool1 navbar variant rendered as preChildren. */
+    navbar?: { variant: string };
   };
 }
 
@@ -232,6 +234,8 @@ export interface ComponentRefBlock {
 export interface ToolContentSectionBlock {
   type: 'toolContentSection';
   payload: {
+    /** Optional pilot-specific Tool1 navbar variant rendered as preChildren. */
+    navbar?: { variant: string };
     /** @deprecated Legacy "label nav" field — was used by a mini sidebar that
      *  has been replaced by the global StepperLayout sidebar + per-block
      *  navbar variants. Kept optional for back-compat with existing payloads
@@ -296,6 +300,8 @@ export interface FormField {
 export interface FormBlock {
   type: 'form';
   payload: {
+    /** Optional pilot-specific Tool1 navbar variant rendered as preChildren. */
+    navbar?: { variant: string };
     /** Card header (optional). */
     title?: string;
     description?: string;
@@ -304,7 +310,12 @@ export interface FormBlock {
     fields: FormField[];
     /** CTA label. Defaults to "Continuer". */
     nextButtonText?: string;
-    /** HOME_STEPS key to navigate to after submit. Defaults to INTRO. */
+    /**
+     * @deprecated Removed from the editor : forms now always advance to
+     * the next chapter in the parcours' logical reading order. The field
+     * is kept in the schema so existing rows still parse, but is ignored
+     * by the renderer. Will be dropped from the type in a future cleanup.
+     */
     nextStep?: string;
   };
 }
@@ -332,6 +343,8 @@ export interface CarouselPhoto {
 export interface PhotoCarouselBlock {
   type: 'photoCarousel';
   payload: {
+    /** Optional pilot-specific Tool1 navbar variant rendered as preChildren. */
+    navbar?: { variant: string };
     photos: CarouselPhoto[];
     /** Aspect ratio for the photo viewport. Default 16:9. */
     aspectRatio?: '16/9' | '4/3' | '3/2' | '1/1' | '21/9';

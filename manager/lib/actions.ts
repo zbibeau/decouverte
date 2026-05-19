@@ -7,6 +7,7 @@ import { BLANK_PAYLOADS } from '@/lib/blockDefaults';
 import { extractBlockSearchText } from '@/lib/blockSearch';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { slugifyForParcours } from '@/lib/parcoursSlug';
+import { randomPastel } from '@/lib/pastelColors';
 import { createClient } from '@/lib/supabase/server';
 
 // ============================================================
@@ -375,6 +376,38 @@ export async function getDraftChapterDiffs(
   }
 
   return result;
+}
+
+/**
+ * Count chapters that exist in the published version but NOT in the draft —
+ * i.e. chapters the author has just removed. `getDraftChapterDiffs` only
+ * surfaces NEW / MODIFIED rows (because deleted chapters have no draft id
+ * to key by), so the Publish button used to mistakenly look "nothing to
+ * publish" when the only change was a deletion. Returns 0 when there is no
+ * draft yet.
+ */
+export async function getDraftDeletedChapterCount(
+  parcoursSlug: string,
+): Promise<number> {
+  const info = await getParcoursVersionInfo(parcoursSlug);
+  if (!info.draftVersionId || !info.publishedVersionId) return 0;
+  const supabase = await createClient();
+  const [draftRes, pubRes] = await Promise.all([
+    supabase
+      .from('chapter')
+      .select('slug')
+      .eq('version_id', info.draftVersionId),
+    supabase
+      .from('chapter')
+      .select('slug')
+      .eq('version_id', info.publishedVersionId),
+  ]);
+  const draftSlugs = new Set((draftRes.data ?? []).map((r) => r.slug as string));
+  let removed = 0;
+  for (const p of pubRes.data ?? []) {
+    if (!draftSlugs.has(p.slug as string)) removed++;
+  }
+  return removed;
 }
 
 /**
@@ -1245,6 +1278,70 @@ export async function reorderBlocks(
  * Reorder chapters of the current editing (draft) version. Same two-phase
  * trick to avoid collisions on (version_id, "order").
  */
+/**
+ * Move an entire section (group of chapters sharing the same `section_label`)
+ * up or down relative to its neighbour in the chapter list. Operates on the
+ * draft version.
+ *
+ * The chapter list groups by section in the order each section first appears
+ * (= the minimum `order` of any chapter it contains). Moving a section up is
+ * therefore a matter of swapping the chapter blocks of two adjacent sections
+ * in the global `order` sequence.
+ *
+ * `sectionLabel = null` targets the "(sans section)" pseudo-group.
+ *
+ * No-op (silently) when the section is already at the requested boundary
+ * (first section + dir = -1, last + dir = +1).
+ */
+export async function moveSectionRelative(
+  parcoursSlug: string,
+  sectionLabel: string | null,
+  direction: -1 | 1,
+): Promise<void> {
+  const supabase = await createClient();
+  const versionId = await getOrCreateDraftVersionId(parcoursSlug);
+
+  const { data: rows } = await supabase
+    .from('chapter')
+    .select('id, section_label, "order"')
+    .eq('version_id', versionId)
+    .order('order', { ascending: true });
+  if (!rows || rows.length === 0) return;
+
+  // Group chapters by section in first-appearance order (mirrors the UI
+  // grouping in `ChapterList.tsx` exactly so the "up/down" arrows match
+  // what the user sees on screen).
+  type Row = { id: string; section_label: string | null; order: number };
+  const groups = new Map<string, Row[]>();
+  const sectionsOrdered: string[] = [];
+  for (const r of rows as Row[]) {
+    const key = (r.section_label?.trim() || '__none__') as string;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      sectionsOrdered.push(key);
+    }
+    groups.get(key)!.push(r);
+  }
+
+  const targetKey = sectionLabel?.trim() || '__none__';
+  const idx = sectionsOrdered.indexOf(targetKey);
+  if (idx === -1) return; // unknown section
+  const swapIdx = idx + direction;
+  if (swapIdx < 0 || swapIdx >= sectionsOrdered.length) return; // boundary
+
+  // Swap the two adjacent groups, then flatten back into a single ordered
+  // list of chapter ids — order WITHIN each section is preserved.
+  const a = sectionsOrdered[idx];
+  const b = sectionsOrdered[swapIdx];
+  sectionsOrdered[idx] = b;
+  sectionsOrdered[swapIdx] = a;
+
+  const orderedIds = sectionsOrdered.flatMap((k) =>
+    (groups.get(k) ?? []).map((r) => r.id),
+  );
+  return reorderChapters(parcoursSlug, orderedIds);
+}
+
 export async function reorderChapters(parcoursSlug: string, orderedIds: string[]) {
   const supabase = await createClient();
   const versionId = await getOrCreateDraftVersionId(parcoursSlug);
@@ -1272,6 +1369,60 @@ export async function reorderChapters(parcoursSlug: string, orderedIds: string[]
 // ============================================================
 // Variables
 // ============================================================
+
+/**
+ * Rename the technical key + label of an existing variable. Updates only the
+ * variable row — references in block payloads (conditional blocks, form
+ * fields, key points conditional rows, etc.) are NOT migrated, so the user
+ * is responsible for fixing them manually. The UI surfaces a warning before
+ * confirming the rename.
+ *
+ * The new key must be unique among the parcours' variables (excluding the
+ * one being renamed). Both `key` and `label` can be edited in one call ;
+ * pass the same value when only one of them is changing.
+ */
+export async function renameVariable(
+  parcoursSlug: string,
+  variableId: string,
+  nextKey: string,
+  nextLabel: string,
+): Promise<void> {
+  const key = nextKey.trim();
+  const label = nextLabel.trim();
+  if (!key || !label) throw new Error('Clé et label requis.');
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) {
+    throw new Error(
+      'La clé doit commencer par une lettre et ne contenir que des lettres, chiffres et underscores.',
+    );
+  }
+
+  const supabase = await createClient();
+  const { data: parcours } = await supabase
+    .from('parcours')
+    .select('id')
+    .eq('slug', parcoursSlug)
+    .maybeSingle();
+  if (!parcours) throw new Error('Parcours introuvable.');
+
+  // Reject key collisions early with a friendly error.
+  const { data: clash } = await supabase
+    .from('variable')
+    .select('id')
+    .eq('parcours_id', parcours.id)
+    .eq('key', key)
+    .neq('id', variableId)
+    .maybeSingle();
+  if (clash) {
+    throw new Error(`Une autre variable utilise déjà la clé « ${key} ».`);
+  }
+
+  const { error } = await supabase
+    .from('variable')
+    .update({ key, label })
+    .eq('id', variableId);
+  if (error) throw error;
+  revalidatePath(`/parcours/${parcoursSlug}/variables`);
+}
 
 export async function createVariable(parcoursSlug: string, formData: FormData) {
   const supabase = await createClient();
@@ -1561,16 +1712,43 @@ export async function createParcours(input: {
   // actual value is provided. This way the insert works on clouds where the
   // `host` column hasn't been added yet (migration 0028 not applied) — a
   // schema drift the manager has to tolerate while we onboard new envs.
-  const insertPayload: { slug: string; name: string; host?: string } = {
+  // Same defensive approach for `theme_color` (migration 0035) — included
+  // only when its column exists (we attempt with it, retry without on
+  // schema error).
+  const insertPayload: {
+    slug: string;
+    name: string;
+    host?: string;
+    theme_color?: string;
+  } = {
     slug,
     name: input.name.trim(),
+    theme_color: randomPastel(),
   };
   if (input.host) insertPayload.host = input.host;
-  const { data: parcours, error: pErr } = await supabase
+  let { data: parcours, error: pErr } = await supabase
     .from('parcours')
     .insert(insertPayload)
     .select('id, slug')
     .single();
+  // Retry without `theme_color` if the column doesn't exist yet on the
+  // target DB (migration 0035 not applied). Same tolerance as `host` :
+  // we don't want a fresh deploy to break parcours creation.
+  if (
+    pErr &&
+    insertPayload.theme_color &&
+    /column .*theme_color.* does not exist/i.test(pErr.message)
+  ) {
+    const { theme_color: _omit, ...fallbackPayload } = insertPayload;
+    void _omit;
+    const retry = await supabase
+      .from('parcours')
+      .insert(fallbackPayload)
+      .select('id, slug')
+      .single();
+    parcours = retry.data;
+    pErr = retry.error;
+  }
   if (pErr || !parcours) {
     throw new Error(`Création du parcours échouée : ${pErr?.message ?? 'unknown'}`);
   }

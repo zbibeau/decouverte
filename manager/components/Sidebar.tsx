@@ -6,12 +6,15 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { SignOutButton } from '@/components/SignOutButton';
+import { pastelForString, safeThemeColor } from '@/lib/pastelColors';
 import { cn } from '@/lib/utils';
 
 interface ParcoursItem {
   id: string;
   slug: string;
   name: string;
+  /** Pastel color tinting the parcours header. `null` for legacy rows. */
+  themeColor?: string | null;
 }
 
 interface Props {
@@ -52,6 +55,19 @@ export function Sidebar({ email, parcours }: Props) {
       }
       return next;
     });
+  }
+
+  /** Force-collapse the sidebar (no toggle). Called when the user picks a
+   *  parcours so the parcours detail gets the full viewport width — most
+   *  users navigate to a single parcours and stay there. They can re-expand
+   *  via the chevron in the top-left when they need to switch. */
+  function collapse() {
+    setCollapsed(true);
+    try {
+      localStorage.setItem(STORAGE_KEY, '1');
+    } catch {
+      /* ignore */
+    }
   }
 
   // Avoid a hydration flash: render the expanded width on the server, then
@@ -108,6 +124,7 @@ export function Sidebar({ email, parcours }: Props) {
                 key={p.id}
                 href={`/parcours/${p.slug}`}
                 aria-current={isActive ? 'page' : undefined}
+                onClick={collapse}
                 className={cn(
                   'group relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
                   isActive
@@ -122,6 +139,20 @@ export function Sidebar({ email, parcours }: Props) {
                     className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-primary-600"
                   />
                 )}
+                {/* Small color dot matching the parcours' theme color —
+                     visual cue so the author quickly tells projects apart
+                     in the list. Falls back to a deterministic pastel
+                     derived from the slug for legacy rows without a
+                     stored theme_color. */}
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-3 w-3 shrink-0 rounded-sm border border-border/60"
+                  style={{
+                    background: safeThemeColor(
+                      p.themeColor ?? pastelForString(p.slug),
+                    ),
+                  }}
+                />
                 <BookOpen
                   className={cn(
                     'h-4 w-4',

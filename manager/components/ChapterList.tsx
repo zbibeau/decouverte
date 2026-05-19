@@ -1,6 +1,16 @@
 'use client';
 
-import { Check, ChevronRight, Copy, Pencil, Trash2, Upload, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronRight,
+  Copy,
+  Pencil,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
@@ -51,6 +61,12 @@ interface Props {
     cardImage: string | null,
     cardShortTitle: string | null,
   ) => Promise<void>;
+  /** Server action swapping a section with its neighbour in the global
+   *  chapter order. Powers the ↑ / ↓ buttons in each section header. */
+  moveSectionAction: (
+    sectionLabel: string | null,
+    direction: -1 | 1,
+  ) => Promise<void>;
 }
 
 function DiffBadge({ diff }: { diff?: ChapterRow['diff'] }) {
@@ -78,6 +94,7 @@ export function ChapterList({
   deleteAction,
   duplicateAction,
   updateAction,
+  moveSectionAction,
 }: Props) {
   const router = useRouter();
   const toast = useToast();
@@ -284,17 +301,67 @@ export function ChapterList({
           ))}
         </div>
       )}
-      {groupedChapters.map((group) => (
+      {groupedChapters.map((group, groupIdx) => (
         <div key={group.sectionLabel ?? '__none__'} className="space-y-0">
-          <div className="rounded-t-md border border-b-0 border-border bg-muted/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-primary-700">
+          <div className="flex items-center gap-2 rounded-t-md border border-b-0 border-border bg-muted/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-primary-700">
             {group.sectionLabel ? (
               <span>📁 {group.sectionLabel}</span>
             ) : (
               <span className="italic text-muted-foreground">(sans section)</span>
             )}
-            <span className="ml-2 text-muted-foreground/70">
+            <span className="text-muted-foreground/70">
               · {group.items.length} chapitre(s)
             </span>
+            {/* Section reorder ↑/↓ — swaps the whole group with its
+                 neighbour in the chapter list. Disabled at the boundaries
+                 so the first section can't go higher and the last can't
+                 go lower. */}
+            <div className="ml-auto flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Remonter cette section"
+                disabled={groupIdx === 0 || isPending}
+                onClick={() => {
+                  startTransition(async () => {
+                    try {
+                      await moveSectionAction(group.sectionLabel, -1);
+                      router.refresh();
+                    } catch (e) {
+                      toast.error(
+                        `Déplacement échoué : ${
+                          e instanceof Error ? e.message : String(e)
+                        }`,
+                      );
+                    }
+                  });
+                }}
+              >
+                <ArrowUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Descendre cette section"
+                disabled={groupIdx === groupedChapters.length - 1 || isPending}
+                onClick={() => {
+                  startTransition(async () => {
+                    try {
+                      await moveSectionAction(group.sectionLabel, 1);
+                      router.refresh();
+                    } catch (e) {
+                      toast.error(
+                        `Déplacement échoué : ${
+                          e instanceof Error ? e.message : String(e)
+                        }`,
+                      );
+                    }
+                  });
+                }}
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
           <div className="rounded-b-md border border-border">
     <SortableList

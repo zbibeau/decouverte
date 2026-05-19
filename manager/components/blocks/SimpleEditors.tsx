@@ -23,7 +23,12 @@ export function TextEditor({
   payload,
   onChange,
   onReplace,
-}: PayloadEditorProps<{ html?: string; variant?: string }>) {
+  navbarVariants,
+}: PayloadEditorProps<{
+  html?: string;
+  variant?: string;
+  navbar?: { variant: string };
+}>) {
   /**
    * When `onReplace` is available (passed by PayloadEditor at the
    * top-level dispatch), the user can promote this `text` block into a
@@ -57,6 +62,18 @@ export function TextEditor({
 
   return (
     <div className="space-y-3">
+      <Field label="Navbar pilote" path="navbar">
+        <NavbarVariantSelect
+          value={payload.navbar?.variant}
+          onChange={(key) =>
+            onChange({
+              ...payload,
+              navbar: key ? { variant: key } : undefined,
+            })
+          }
+          variants={navbarVariants}
+        />
+      </Field>
       <Field label="Contenu HTML" path="html">
         <Textarea
           rows={8}

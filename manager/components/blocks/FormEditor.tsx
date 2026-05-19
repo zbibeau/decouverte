@@ -11,11 +11,17 @@ import { Textarea } from '@/components/ui/Textarea';
 
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { Field, Section } from './Field';
+import { NavbarVariantSelect } from './NavbarVariantSelect';
 import type { PayloadEditorProps } from './editor-types';
 
 type FormPayload = FormBlock['payload'];
 
-export function FormEditor({ payload, onChange, variables, chapters }: PayloadEditorProps<FormPayload>) {
+export function FormEditor({
+  payload,
+  onChange,
+  variables,
+  navbarVariants,
+}: PayloadEditorProps<FormPayload>) {
   const fields = payload.fields ?? [];
 
   function updateHeader(patch: Partial<FormPayload>) {
@@ -105,6 +111,19 @@ export function FormEditor({ payload, onChange, variables, chapters }: PayloadEd
 
   return (
     <ScopeRoot scopeId="form-fields" className="space-y-4 rounded-md p-1 -m-1">
+      {/* --- Navbar (slot above the form card) --- */}
+      <Section title="Navbar pilote">
+        <Field label="Variante" path="navbar">
+          <NavbarVariantSelect
+            value={payload.navbar?.variant}
+            onChange={(key) =>
+              updateHeader({ navbar: key ? { variant: key } : undefined })
+            }
+            variants={navbarVariants}
+          />
+        </Field>
+      </Section>
+
       {/* --- Header (card chrome) --- */}
       <Section title="En-tête">
         <Field label="Titre" path="title">
@@ -261,33 +280,11 @@ export function FormEditor({ payload, onChange, variables, chapters }: PayloadEd
             placeholder="Continuer"
           />
         </Field>
-        <Field
-          label="Chapitre suivant"
-          path="nextStep"
-          hint={
-            chapters && chapters.length > 0
-              ? 'Sélectionne le chapitre vers lequel le bouton dirige.'
-              : 'Aucun chapitre disponible — la liste vient du parcours courant.'
-          }
-        >
-          <select
-            className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
-            value={payload.nextStep ?? ''}
-            onChange={(e) => updateHeader({ nextStep: e.target.value || undefined })}
-          >
-            <option value="">— Choisir un chapitre —</option>
-            {(chapters ?? []).map((c) => (
-              <option key={c.id} value={c.slug}>
-                {c.title} ({c.slug})
-              </option>
-            ))}
-            {payload.nextStep && !(chapters ?? []).some((c) => c.slug === payload.nextStep) && (
-              <option value={payload.nextStep}>
-                {payload.nextStep} (slug introuvable)
-              </option>
-            )}
-          </select>
-        </Field>
+        {/* "Chapitre suivant" field removed — forms now always advance to
+             the next chapter in the parcours' logical reading order. The
+             legacy `payload.nextStep` is kept on the schema (marked
+             @deprecated) so existing rows keep parsing, but no longer
+             surfaces in the editor and is ignored by the renderer. */}
       </Section>
     </ScopeRoot>
   );

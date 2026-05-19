@@ -4,11 +4,14 @@ import { ConfirmForm } from '@/components/ConfirmForm';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { AddVariableForm } from '@/components/variables/AddVariableForm';
 import { OptionsListInput } from '@/components/variables/OptionsListInput';
 import { ValueMapInput } from '@/components/variables/ValueMapInput';
+import { VariableHeader } from '@/components/variables/VariableHeader';
 import {
   createVariable,
   deleteVariable,
+  renameVariable,
   updateVariableHubspotMapping,
   updateVariableOptions,
 } from '@/lib/actions';
@@ -72,18 +75,23 @@ export default async function VariablesPage({
           {((variables ?? []) as VariableRow[]).map((v) => (
             <div key={v.id} className="space-y-3 py-4">
               <div className="flex items-center gap-3">
-                <code className="text-sm font-medium">{v.key}</code>
-                <span className="text-sm text-muted-foreground">— {v.label}</span>
-                <span className="inline-flex h-5 items-center rounded bg-muted px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {v.type}
-                </span>
-                {v.type === 'enum' && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {((v.options as VariableOption[]) ?? [])
-                      .map((o) => o.value)
-                      .join(', ')}
-                  </span>
-                )}
+                <VariableHeader
+                  variableId={v.id}
+                  initialKey={v.key}
+                  initialLabel={v.label}
+                  type={v.type}
+                  enumPreview={
+                    v.type === 'enum'
+                      ? ((v.options as VariableOption[]) ?? [])
+                          .map((o) => o.value)
+                          .join(', ')
+                      : ''
+                  }
+                  renameAction={async (variableId, nextKey, nextLabel) => {
+                    'use server';
+                    await renameVariable(slug, variableId, nextKey, nextLabel);
+                  }}
+                />
                 <ConfirmForm
                   className="ml-auto"
                   message={`Supprimer la variable « ${v.key} » ?\n\nTous les blocs qui la référencent (formulaires, conditions, key points conditionnels) cesseront de fonctionner.`}
@@ -170,53 +178,15 @@ export default async function VariablesPage({
       <Card>
         <CardHeader>
           <CardTitle>Ajouter une variable</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Une variable, c'est une information que tu collectes auprès du
+            visiteur du parcours (par exemple « Statut du patient ») et que tu
+            réutilises ensuite pour personnaliser le contenu (conditions,
+            formulaires, mapping Hubspot…).
+          </p>
         </CardHeader>
         <CardContent>
-          <form action={createAction} className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Clé (camelCase)</label>
-              <Input name="key" placeholder="practiceSize" required />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Label</label>
-              <Input name="label" placeholder="Taille du cabinet" required />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Type</label>
-              <select
-                name="type"
-                className="flex h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
-              >
-                <option value="boolean">boolean</option>
-                <option value="enum">enum</option>
-                <option value="string">string</option>
-                <option value="number">number</option>
-              </select>
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground">
-                Options (pour type <code>enum</code> uniquement)
-              </label>
-              <OptionsListInput name="options" />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
-                Hubspot property (optionnel)
-              </label>
-              <Input name="hsProperty" placeholder="ma_propriete_hs" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
-                Mapping valeur → label Hubspot (optionnel)
-              </label>
-              <ValueMapInput name="hsValueMap" />
-            </div>
-
-            <div className="sm:col-span-2">
-              <Button type="submit">Créer la variable</Button>
-            </div>
-          </form>
+          <AddVariableForm createAction={createAction} />
         </CardContent>
       </Card>
     </div>

@@ -43,8 +43,12 @@ interface Props {
    * Insert a sample block (curated payload from `SAMPLE_PAYLOADS`) at the
    * end of the current chapter. Powers the popover-driven "Ajouter un bloc"
    * UI that lets the user pick visually before inserting.
+   *
+   * Returns the newly-created block id so the client can immediately open
+   * its editor (`/blocks/<id>`) — typical follow-up to "Ajouter un bloc" is
+   * "now fill it in", so we save the user a manual pencil click.
    */
-  insertSampleBlockAction: (type: string) => Promise<void>;
+  insertSampleBlockAction: (type: string) => Promise<string>;
   deleteBlockAction: (blockId: string) => Promise<void>;
   duplicateBlockAction: (blockId: string) => Promise<string>;
   copyBlockToChapterAction: (
@@ -214,11 +218,19 @@ export function ChapterEditor(props: Props) {
   const handleReorder = withRefresh(props.reorderBlocksAction);
   const handleAdd = withRefresh(props.addBlockAction);
   // Insert with sample payload — called from the new popover-driven Add UI.
-  // We wrap with router.refresh so the chapter list re-renders with the new
-  // block, but we DON'T swallow errors — the popover surfaces them via toast.
+  // After the server action returns the new block id, navigate straight to
+  // its editor page (`/blocks/<id>`). Typical user flow after "Ajouter un
+  // bloc" is "now fill it in", so saving a pencil click on the just-inserted
+  // row keeps momentum. The router.push triggers a fresh server render of
+  // the block editor route, so no separate router.refresh() is needed — the
+  // chapter list will also be re-fetched when the user comes back via the
+  // "Retour aux chapitres" affordance. Errors bubble up to the popover's
+  // toast handler.
   const handleInsertSample = async (type: string) => {
-    await props.insertSampleBlockAction(type);
-    router.refresh();
+    const newBlockId = await props.insertSampleBlockAction(type);
+    router.push(
+      `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${newBlockId}`,
+    );
   };
 
   return (

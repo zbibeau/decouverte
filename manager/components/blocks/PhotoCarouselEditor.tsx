@@ -10,6 +10,7 @@ import { uploadImageDirect } from '@/lib/uploadImageClient';
 
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { Field, Section } from './Field';
+import { NavbarVariantSelect } from './NavbarVariantSelect';
 import type { PayloadEditorProps } from './editor-types';
 
 type Payload = PhotoCarouselBlock['payload'];
@@ -22,7 +23,11 @@ const ASPECT_OPTIONS: Array<NonNullable<Payload['aspectRatio']>> = [
   '21/9',
 ];
 
-export function PhotoCarouselEditor({ payload, onChange }: PayloadEditorProps<Payload>) {
+export function PhotoCarouselEditor({
+  payload,
+  onChange,
+  navbarVariants,
+}: PayloadEditorProps<Payload>) {
   const photos = payload.photos ?? [];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
@@ -161,6 +166,18 @@ export function PhotoCarouselEditor({ payload, onChange }: PayloadEditorProps<Pa
     <ScopeRoot scopeId="photo-carousel" className="space-y-3 rounded-md p-1 -m-1">
       {/* --- Style global --- */}
       <Section title="Style du carrousel" accentColor="slate">
+        <Field label="Navbar pilote" path="navbar">
+          <NavbarVariantSelect
+            value={payload.navbar?.variant}
+            onChange={(key) =>
+              onChange({
+                ...payload,
+                navbar: key ? { variant: key } : undefined,
+              })
+            }
+            variants={navbarVariants}
+          />
+        </Field>
         <Field label="Format d'image (ratio)" path="aspectRatio">
           <select
             className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"

@@ -1,0 +1,43 @@
+-- =====================================================================
+-- Apply migration 0035 (parcours.theme_color) on CLOUD.
+-- =====================================================================
+-- Project ref : cixcaysppiwxkqjvlkrd (decouverte.madeformed.com)
+--
+-- Adds a `theme_color` text column to `parcours`. The manager UI tints
+-- the parcours header with this color so the author can tell at a glance
+-- which project they're editing. Future creates set it to a random
+-- pastel ; existing rows stay NULL until manually updated.
+--
+-- Idempotent.
+--
+-- How to apply :
+--   1. Open Supabase Studio of project cixcaysppiwxkqjvlkrd
+--   2. SQL Editor → New query
+--   3. Paste this file's contents
+--   4. Run
+-- =====================================================================
+
+alter table public.parcours
+  add column if not exists theme_color text;
+
+-- =====================================================================
+-- Optional : backfill existing parcours with a stable pastel based on
+-- their slug (so the colors stay consistent across reloads even before
+-- the manager assigns them at next save).
+-- =====================================================================
+-- Uncomment to backfill :
+--
+-- update public.parcours
+--   set theme_color = case (abs(hashtext(slug)) % 10)
+--     when 0 then '#FCE4EC' -- pink
+--     when 1 then '#F3E5F5' -- purple
+--     when 2 then '#E1F5FE' -- light blue
+--     when 3 then '#E0F2F1' -- mint
+--     when 4 then '#F1F8E9' -- light green
+--     when 5 then '#FFF9C4' -- light yellow
+--     when 6 then '#FFE0B2' -- peach
+--     when 7 then '#FFCCBC' -- salmon
+--     when 8 then '#D7CCC8' -- warm beige
+--     else        '#CFD8DC' -- blue-grey
+--   end
+--   where theme_color is null;

@@ -121,7 +121,11 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
 
   return (
     <Show when={anchor() && sectionChapters().length > 0}>
-      <div class="w-full max-w-full overflow-hidden bg-gradient-to-b from-primary-100 to-primary-200 px-4 py-10 md:px-6 md:py-12">
+      {/* `snap-start snap-always min-h-dvh` makes the transition grid a full
+           snap target — without it, `snap-y mandatory` on the parent
+           scroller traps the visitor on the last block above (they can't
+           scroll down to reach the cards). */}
+      <div class="flex min-h-dvh w-full max-w-full snap-start snap-always flex-col justify-center overflow-hidden bg-gradient-to-b from-primary-100 to-primary-200 px-4 py-10 md:px-6 md:py-12">
         <div class="mx-auto w-full max-w-[1100px]">
           <Show when={sectionTitle()}>
             <Title

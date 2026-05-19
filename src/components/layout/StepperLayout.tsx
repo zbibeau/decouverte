@@ -266,7 +266,13 @@ export const StepperLayout: Component<{
       )}
 
       <div
-        class="relative grow snap-y snap-mandatory overflow-auto bg-opacity-50"
+        // `snap-proximity` (instead of `snap-mandatory`) lets the user
+        // scroll freely past the last snap target (e.g. when the chapter
+        // ends and there's no auto-injected transition grid). Each block
+        // still gets `snap-always` (scroll-snap-stop: always), which
+        // forces the scroller to stop at every snap point it crosses —
+        // so the "form skipped on fast scroll" issue stays fixed.
+        class="relative grow snap-y snap-proximity overflow-auto bg-opacity-50"
         id={stepperContentId}
         ref={(e) => (ref = e)}
       >
@@ -276,6 +282,14 @@ export const StepperLayout: Component<{
         />
         <Transition
           name="slide-fade"
+          // `mode="outin"` guarantees the previous chapter fully fades out
+          // BEFORE the next one fades in — eliminates the brief overlap
+          // where the old chapter's hero image lingered ("résiduel") on top
+          // of the new chapter's transition cards. Default cross-fade
+          // mounted both at once and let them stack vertically during the
+          // 0.3s overlap, which the user perceived as a stale photo
+          // stuck to the new chapter's top.
+          mode="outin"
           onExit={(el, done) => {
             if (document.getElementById(stepperContentId)) {
               document.getElementById(stepperContentId)?.scroll({ top: 0 });

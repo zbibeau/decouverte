@@ -478,14 +478,17 @@ export function PreviewPanel({
             className="pointer-events-none absolute inset-y-0 left-0 z-10"
             style={{ width: 10 }}
           >
-            {fieldRails.map((r) => {
+            {fieldRails.map((r, i) => {
               const color = fieldRailColors[r.key];
               if (!color) return null;
               // Clip to the iframe height so a partially-offscreen region
-              // shows as a partial bar.
+              // shows as a partial bar. Index appended to the React key so
+              // multiple rails with the same `r.key` (e.g. nested cards,
+              // each emitting `data-field-rail="children"`) don't trigger
+              // React's duplicate-key warning.
               return (
                 <div
-                  key={r.key}
+                  key={`${r.key}-${i}`}
                   style={{
                     position: 'absolute',
                     left: 2,
