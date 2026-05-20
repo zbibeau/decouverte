@@ -1058,8 +1058,20 @@ export const ChapterRenderer: Component<{
           here override the globals while this chapter is mounted —
           @solidjs/meta handles the swap on chapter change. */}
       <MetaTagsTitle value={props.chapter.title} />
-      <Show when={props.chapter.cardShortTitle}>{(blurb) => <MetaTagsDescription value={blurb()} />}</Show>
-      <Show when={props.chapter.cardImage}>{(img) => <MetaTagsImage url={img()} />}</Show>
+      {/* NOTE : we deliberately DON'T use the function-child form
+          `<Show>{(v) => ...}` because the accessor it produces is read
+          AFTER the chapter unmounts (during Transition fade-out) and
+          throws "Attempting to access a stale value from <Show>".
+          Reading `props.chapter.X` directly inside the Show body is
+          safe — Solid disposes the Show before the parent unmount
+          completes, and the `!` non-null assertion is sound because
+          the parent `when` already filtered out null/undefined. */}
+      <Show when={props.chapter.cardShortTitle}>
+        <MetaTagsDescription value={props.chapter.cardShortTitle!} />
+      </Show>
+      <Show when={props.chapter.cardImage}>
+        <MetaTagsImage url={props.chapter.cardImage!} />
+      </Show>
       {/* The chapter-level "Retour au formulaire" button + cardImage at
            the top were removed in a previous pass — see the git history.
            Below : a section panorama (ChapterTransitionGrid mode="current")
