@@ -222,20 +222,44 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                           class="rounded-full bg-primary-400 px-6 py-2 text-sm font-medium text-white shadow hover:bg-primary-500"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // In `current` mode, the active card represents the
-                            // chapter the visitor is already on — re-calling
-                            // setCurrentStep would just re-mount the chapter
-                            // and reset scroll to the panorama (= no visible
-                            // change). When the host (ChapterRenderer) hands
-                            // us the first block id of the current chapter,
-                            // we use it to smooth-scroll "into" the chapter
-                            // past the top panorama instead.
-                            if (mode() === 'current' && props.currentChapterFirstBlockId) {
-                              const el = document.getElementById(`block-${props.currentChapterFirstBlockId}`);
-                              el?.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'start',
-                              });
+                            // In `current` mode, the active card represents
+                            // the chapter the visitor is already on —
+                            // re-calling setCurrentStep would just re-mount
+                            // the chapter and reset scroll back to this
+                            // panorama (= no visible change). We
+                            // smooth-scroll "into" the chapter past the top
+                            // panorama instead.
+                            //
+                            // Lookup strategy (handles the "first click does
+                            // nothing, second works" symptom — the first
+                            // click was firing before Solid had materialised
+                            // the block's wrapper into the DOM) :
+                            //   1. By id : `block-${currentChapterFirstBlockId}`
+                            //      if the host passed the id.
+                            //   2. By DOM order fallback : the first element
+                            //      carrying `data-block-id` — works even
+                            //      when the host hasn't wired the prop
+                            //      AND when the For loop has just rendered.
+                            //   3. If nothing yet, retry every 50ms (5x).
+                            if (mode() === 'current') {
+                              let attempts = 0;
+                              const tryScroll = () => {
+                                const byId = props.currentChapterFirstBlockId
+                                  ? document.getElementById(`block-${props.currentChapterFirstBlockId}`)
+                                  : null;
+                                const el = byId ?? (document.querySelector('[data-block-id]') as HTMLElement | null);
+                                if (el) {
+                                  el.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                                  return;
+                                }
+                                if (attempts++ < 5) {
+                                  setTimeout(tryScroll, 50);
+                                }
+                              };
+                              tryScroll();
                               return;
                             }
                             setCurrentStep(c.slug as HOME_STEPS_KEYS);
