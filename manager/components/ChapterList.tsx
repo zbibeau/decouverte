@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 
+import { TagsField, TagsHelpBanner } from '@/components/blocks/TagsField';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
@@ -550,6 +551,17 @@ export function ChapterList({
                           Le titre court et l'image servent au visuel de transition de chapitre (panorama de section) en
                           fin de chapitre.
                         </p>
+                        {/* Maintenance tags for the chapter's card_image —
+                            same vocabulary as block-level tags (the global
+                            `tag` table is shared). Persisted directly via
+                            `chapter_tag` join, no draft/publish cycle. */}
+                        <div className="basis-full space-y-2 pt-2">
+                          <TagsHelpBanner contextHint="Décris ici l'interface produit que l'image-carte de ce chapitre représente (ex. fiche patient, agenda)." />
+                          <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                            Tags de maintenance
+                          </label>
+                          <TagsField target={{ kind: 'chapter', chapterId: c.id }} />
+                        </div>
                       </div>
                     )}
                     {/* Navbar chips removed from this row per UX feedback : too

@@ -11,23 +11,14 @@ import { uploadImageDirect } from '@/lib/uploadImageClient';
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { Field, Section } from './Field';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
+import { TagsField, TagsHelpBanner } from './TagsField';
 import type { PayloadEditorProps } from './editor-types';
 
 type Payload = PhotoCarouselBlock['payload'];
 
-const ASPECT_OPTIONS: Array<NonNullable<Payload['aspectRatio']>> = [
-  '16/9',
-  '4/3',
-  '3/2',
-  '1/1',
-  '21/9',
-];
+const ASPECT_OPTIONS: Array<NonNullable<Payload['aspectRatio']>> = ['16/9', '4/3', '3/2', '1/1', '21/9'];
 
-export function PhotoCarouselEditor({
-  payload,
-  onChange,
-  navbarVariants,
-}: PayloadEditorProps<Payload>) {
+export function PhotoCarouselEditor({ payload, onChange, navbarVariants }: PayloadEditorProps<Payload>) {
   const photos = payload.photos ?? [];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
@@ -107,7 +98,7 @@ export function PhotoCarouselEditor({
           alt: file.name.replace(/\.[^.]+$/, ''),
         });
       } else {
-        setUploadError(res.error ?? 'Erreur inconnue lors de l\'upload.');
+        setUploadError(res.error ?? "Erreur inconnue lors de l'upload.");
         break;
       }
       setUploadProgress({ done: i + 1, total: list.length });
@@ -141,12 +132,10 @@ export function PhotoCarouselEditor({
       // Only overwrite url; preserve alt unless it was empty, in which case
       // fall back to the new filename. Title/description remain untouched.
       const current = photos[idx];
-      const nextAlt = current?.alt && current.alt.length > 0
-        ? current.alt
-        : file.name.replace(/\.[^.]+$/, '');
+      const nextAlt = current?.alt && current.alt.length > 0 ? current.alt : file.name.replace(/\.[^.]+$/, '');
       updatePhoto(idx, { url: res.url, alt: nextAlt });
     } else {
-      setUploadError(res.error ?? 'Erreur inconnue lors de l\'upload.');
+      setUploadError(res.error ?? "Erreur inconnue lors de l'upload.");
     }
 
     setUploading(false);
@@ -163,7 +152,7 @@ export function PhotoCarouselEditor({
   }
 
   return (
-    <ScopeRoot scopeId="photo-carousel" className="space-y-3 rounded-md p-1 -m-1">
+    <ScopeRoot scopeId="photo-carousel" className="-m-1 space-y-3 rounded-md p-1">
       {/* --- Style global --- */}
       <Section title="Style du carrousel" accentColor="slate">
         <Field label="Navbar pilote" path="navbar">
@@ -180,7 +169,7 @@ export function PhotoCarouselEditor({
         </Field>
         <Field label="Format d'image (ratio)" path="aspectRatio">
           <select
-            className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+            className="border-border h-9 w-full rounded-md border bg-white px-3 text-sm"
             value={payload.aspectRatio ?? '16/9'}
             onChange={(e) =>
               onChange({
@@ -296,21 +285,21 @@ export function PhotoCarouselEditor({
         </div>
 
         {uploadError && (
-          <p className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <p className="border-destructive/30 bg-destructive/5 text-destructive mb-3 rounded-md border px-3 py-2 text-xs">
             {uploadError}
           </p>
         )}
 
         {photos.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Aucune photo. Glisse une image dans la zone ci-dessus, ou clique sur « URL manuelle » pour saisir une URL.
           </p>
         ) : (
           <div className="space-y-3">
             {photos.map((photo, idx) => (
-              <div key={idx} className="space-y-2 rounded-md border border-border bg-white p-3">
+              <div key={idx} className="border-border space-y-2 rounded-md border bg-white p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
                     Photo #{idx + 1}
                   </span>
                   <div className="flex items-center gap-1">
@@ -330,12 +319,7 @@ export function PhotoCarouselEditor({
                         <ImageUp className="h-3.5 w-3.5" />
                       )}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => movePhoto(idx, -1)}
-                      disabled={idx === 0}
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => movePhoto(idx, -1)} disabled={idx === 0}>
                       <ArrowUp className="h-3.5 w-3.5" />
                     </Button>
                     <Button
@@ -347,7 +331,7 @@ export function PhotoCarouselEditor({
                       <ArrowDown className="h-3.5 w-3.5" />
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => removePhoto(idx)}>
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      <Trash2 className="text-destructive h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -382,7 +366,7 @@ export function PhotoCarouselEditor({
                     onChange={(e) => updatePhoto(idx, { description: e.target.value })}
                     placeholder="Travaux réalisés en mars 2024.&#10;Mobilier en chêne, éclairage LED."
                     rows={3}
-                    className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="border-border focus-visible:ring-ring w-full rounded-md border bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1"
                   />
                 </Field>
 
@@ -400,7 +384,7 @@ export function PhotoCarouselEditor({
 
                 {/* Mini-preview de l'image pour confort */}
                 {photo.url && (
-                  <div className="mt-2 overflow-hidden rounded-md border border-border bg-muted/30">
+                  <div className="border-border bg-muted/30 mt-2 overflow-hidden rounded-md border">
                     <img
                       src={photo.url}
                       alt={photo.alt ?? photo.title ?? `Photo ${idx + 1}`}
@@ -416,6 +400,10 @@ export function PhotoCarouselEditor({
           </div>
         )}
       </Section>
+      <TagsHelpBanner contextHint="Ces tags s'appliquent au carrousel entier (pas à chaque photo). Décris la fonctionnalité produit que les photos illustrent." />
+      <Field label="Tags de maintenance" path="tags">
+        <TagsField />
+      </Field>
     </ScopeRoot>
   );
 }

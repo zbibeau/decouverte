@@ -16,6 +16,7 @@ import { uploadImageDirect } from '@/lib/uploadImageClient';
 
 import { Field, Section } from './Field';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
+import { TagsField, TagsHelpBanner } from './TagsField';
 import type { PayloadEditorProps } from './editor-types';
 
 // ---------- text ----------
@@ -51,10 +52,7 @@ export function TextEditor({
     const card: ContentBlock = {
       type: 'card',
       payload: {
-        children: [
-          { type: 'text', payload: { ...payload } } as ContentBlock,
-          newSubBlock,
-        ],
+        children: [{ type: 'text', payload: { ...payload } } as ContentBlock, newSubBlock],
       },
     } as ContentBlock;
     onReplace(card);
@@ -83,7 +81,7 @@ export function TextEditor({
       </Field>
       <Field label="Variante" path="variant">
         <select
-          className="h-9 rounded-md border border-border bg-white px-3 text-sm"
+          className="border-border h-9 rounded-md border bg-white px-3 text-sm"
           value={payload.variant ?? 'default'}
           onChange={(e) => onChange({ ...payload, variant: e.target.value })}
         >
@@ -100,31 +98,29 @@ export function TextEditor({
       */}
       {onReplace && (
         <Section title="Sous-blocs additionnels" accentColor="purple">
-          <p className="mb-2 text-[11px] text-muted-foreground">
-            Ajouter un sous-bloc transformera ce bloc texte en{' '}
-            <strong>card</strong> contenant ton texte + le nouveau sous-bloc.
+          <p className="text-muted-foreground mb-2 text-[11px]">
+            Ajouter un sous-bloc transformera ce bloc texte en <strong>card</strong> contenant ton texte + le nouveau
+            sous-bloc.
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {BLOCK_TYPES_ORDER.filter((t) => t !== 'heroTitle' && t !== 'componentRef').map(
-              (t) => {
-                const sample = SAMPLE_PAYLOADS[t];
-                const safeSample = sample ?? {
-                  description: `Sous-bloc « ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t} ».`,
-                  whenToUse: 'À utiliser comme sous-bloc imbriqué.',
-                  payload: blankBlock(t).payload as Record<string, unknown>,
-                };
-                return (
-                  <AddBlockButton
-                    key={t}
-                    type={t}
-                    label={(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}
-                    sample={safeSample}
-                    insertTarget="children"
-                    onInsert={() => promoteToCardWith(t)}
-                  />
-                );
-              },
-            )}
+            {BLOCK_TYPES_ORDER.filter((t) => t !== 'heroTitle' && t !== 'componentRef').map((t) => {
+              const sample = SAMPLE_PAYLOADS[t];
+              const safeSample = sample ?? {
+                description: `Sous-bloc « ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t} ».`,
+                whenToUse: 'À utiliser comme sous-bloc imbriqué.',
+                payload: blankBlock(t).payload as Record<string, unknown>,
+              };
+              return (
+                <AddBlockButton
+                  key={t}
+                  type={t}
+                  label={(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}
+                  sample={safeSample}
+                  insertTarget="children"
+                  onInsert={() => promoteToCardWith(t)}
+                />
+              );
+            })}
           </div>
         </Section>
       )}
@@ -140,11 +136,7 @@ type VideoPayload = {
   navbar?: { variant: string };
 };
 
-export function VideoEditor({
-  payload,
-  onChange,
-  navbarVariants,
-}: PayloadEditorProps<VideoPayload>) {
+export function VideoEditor({ payload, onChange, navbarVariants }: PayloadEditorProps<VideoPayload>) {
   return (
     <div className="space-y-3">
       <Field
@@ -158,9 +150,7 @@ export function VideoEditor({
             onChange={(e) => onChange({ ...payload, vimeoSrc: e.target.value })}
             placeholder="vimeo/123456789?hash=abcdef  ou  https://…/clip.mp4"
           />
-          <VideoUploadButton
-            onUploaded={(url) => onChange({ ...payload, vimeoSrc: url })}
-          />
+          <VideoUploadButton onUploaded={(url) => onChange({ ...payload, vimeoSrc: url })} />
         </div>
       </Field>
       <Field label="Content ID (ancre facultative)" path="contentId">
@@ -183,6 +173,10 @@ export function VideoEditor({
         />
       </Field>
       {payload.vimeoSrc && <VimeoPreview src={payload.vimeoSrc} />}
+      <TagsHelpBanner contextHint="Décris ici les interfaces / fonctionnalités produit que cette vidéo montre (ex. fiche patient, agenda, messagerie)." />
+      <Field label="Tags de maintenance" path="tags">
+        <TagsField />
+      </Field>
     </div>
   );
 }
@@ -195,13 +189,9 @@ function VimeoPreview({ src }: { src: string }) {
     const url = `https://player.vimeo.com/video/${id}${hash ? `?h=${hash}` : ''}`;
     return (
       <div className="space-y-1">
-        <p className="text-[10px] font-medium text-muted-foreground">Preview</p>
-        <div className="aspect-video w-full max-w-md overflow-hidden rounded-md border border-border bg-black">
-          <iframe
-            src={url}
-            className="h-full w-full"
-            allow="autoplay; fullscreen; picture-in-picture"
-          />
+        <p className="text-muted-foreground text-[10px] font-medium">Preview</p>
+        <div className="border-border aspect-video w-full max-w-md overflow-hidden rounded-md border bg-black">
+          <iframe src={url} className="h-full w-full" allow="autoplay; fullscreen; picture-in-picture" />
         </div>
       </div>
     );
@@ -210,8 +200,8 @@ function VimeoPreview({ src }: { src: string }) {
   if (/^https?:\/\//.test(src)) {
     return (
       <div className="space-y-1">
-        <p className="text-[10px] font-medium text-muted-foreground">Preview</p>
-        <div className="aspect-video w-full max-w-md overflow-hidden rounded-md border border-border bg-black">
+        <p className="text-muted-foreground text-[10px] font-medium">Preview</p>
+        <div className="border-border aspect-video w-full max-w-md overflow-hidden rounded-md border bg-black">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video src={src} controls className="h-full w-full" />
         </div>
@@ -235,16 +225,10 @@ function VimeoPreview({ src }: { src: string }) {
  */
 const VIDEO_BUCKET = 'videos';
 const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
-const VIDEO_ALLOWED_MIME = new Set([
-  'video/mp4',
-  'video/webm',
-  'video/quicktime',
-]);
+const VIDEO_ALLOWED_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 
 function buildVideoStoragePath(userId: string, file: File) {
-  const ext =
-    (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') ||
-    'mp4';
+  const ext = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
   const baseName =
     file.name
       .replace(/\.[^.]+$/, '')
@@ -255,11 +239,7 @@ function buildVideoStoragePath(userId: string, file: File) {
   return `${userId}/${Date.now()}-${baseName}.${ext}`;
 }
 
-function VideoUploadButton({
-  onUploaded,
-}: {
-  onUploaded: (url: string) => void;
-}) {
+function VideoUploadButton({ onUploaded }: { onUploaded: (url: string) => void }) {
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
@@ -292,15 +272,11 @@ function VideoUploadButton({
       return;
     }
     if (file.size > VIDEO_MAX_BYTES) {
-      toast.error(
-        `Vidéo trop volumineuse (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum 200 MB.`,
-      );
+      toast.error(`Vidéo trop volumineuse (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum 200 MB.`);
       return;
     }
     if (!VIDEO_ALLOWED_MIME.has(file.type)) {
-      toast.error(
-        `Format non supporté (${file.type || 'inconnu'}). Utilise mp4, webm ou mov.`,
-      );
+      toast.error(`Format non supporté (${file.type || 'inconnu'}). Utilise mp4, webm ou mov.`);
       return;
     }
 
@@ -376,9 +352,7 @@ function VideoUploadButton({
       reset();
     } catch (e) {
       console.error('[VideoUploadButton] upload failed', e);
-      toast.error(
-        `Upload échoué : ${e instanceof Error ? e.message : String(e)}`,
-      );
+      toast.error(`Upload échoué : ${e instanceof Error ? e.message : String(e)}`);
       reset();
     }
   }
@@ -396,13 +370,7 @@ function VideoUploadButton({
             if (file) void handleFile(file);
           }}
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={pending}
-          onClick={() => inputRef.current?.click()}
-        >
+        <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => inputRef.current?.click()}>
           <Upload className="h-3.5 w-3.5" />
           {pending ? 'Upload en cours…' : 'Uploader une vidéo'}
         </Button>
@@ -411,19 +379,17 @@ function VideoUploadButton({
             Annuler
           </Button>
         )}
-        {statusLabel && !pending && (
-          <span className="text-[10px] text-emerald-700">{statusLabel}</span>
-        )}
+        {statusLabel && !pending && <span className="text-[10px] text-emerald-700">{statusLabel}</span>}
       </div>
       {pending && progress != null && (
         <div className="space-y-1">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
             <div
-              className="h-full bg-brand-primary-500 transition-[width] duration-150"
+              className="bg-brand-primary-500 h-full transition-[width] duration-150"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-[10px] text-muted-foreground">{statusLabel}</p>
+          <p className="text-muted-foreground text-[10px]">{statusLabel}</p>
         </div>
       )}
     </div>
@@ -455,9 +421,7 @@ export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPa
       toast.success('Illustration uploadée.');
     } catch (e) {
       console.error('[HeroTitleEditor] image upload failed', e);
-      toast.error(
-        `Upload échoué : ${e instanceof Error ? e.message : String(e)}`,
-      );
+      toast.error(`Upload échoué : ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -467,10 +431,7 @@ export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPa
   return (
     <div className="space-y-3">
       <Field label="Titre" path="title">
-        <Input
-          value={payload.title ?? ''}
-          onChange={(e) => onChange({ ...payload, title: e.target.value })}
-        />
+        <Input value={payload.title ?? ''} onChange={(e) => onChange({ ...payload, title: e.target.value })} />
       </Field>
       <Field
         label="Sur-titre (section)"
@@ -479,9 +440,7 @@ export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPa
       >
         <Input
           value={payload.sectionTitle ?? ''}
-          onChange={(e) =>
-            onChange({ ...payload, sectionTitle: e.target.value || undefined })
-          }
+          onChange={(e) => onChange({ ...payload, sectionTitle: e.target.value || undefined })}
           placeholder="Ex. : Partie 2"
         />
       </Field>
@@ -500,9 +459,7 @@ export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPa
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={payload.illustration ?? ''}
-            onChange={(e) =>
-              onChange({ ...payload, illustration: e.target.value || undefined })
-            }
+            onChange={(e) => onChange({ ...payload, illustration: e.target.value || undefined })}
             placeholder="/illustrations/toolbox1-header.webp ou URL"
             className="h-8 flex-1 text-xs"
           />
@@ -533,11 +490,15 @@ export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPa
               <img
                 src={payload.illustration}
                 alt="Aperçu illustration"
-                className="mt-1 h-32 w-auto rounded border border-border object-contain"
+                className="border-border mt-1 h-32 w-auto rounded border object-contain"
               />
             </div>
           )}
         </div>
+      </Field>
+      <TagsHelpBanner contextHint="Décris ici ce que l'illustration représente (ex. fiche patient, agenda, page d'accueil)." />
+      <Field label="Tags de maintenance" path="tags">
+        <TagsField />
       </Field>
     </div>
   );
@@ -549,8 +510,7 @@ interface CustomComponentMeta {
   description: string;
 }
 
-const CLIENT_URL =
-  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_CLIENT_URL) || 'http://localhost:3100';
+const CLIENT_URL = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_CLIENT_URL) || 'http://localhost:3100';
 
 export function ComponentRefEditor({
   payload,
@@ -593,7 +553,7 @@ export function ComponentRefEditor({
         }
       >
         <select
-          className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+          className="border-border h-9 w-full rounded-md border bg-white px-3 text-sm"
           value={payload.name ?? ''}
           onChange={(e) => onChange({ ...payload, name: e.target.value || undefined })}
           disabled={!list}
@@ -604,54 +564,46 @@ export function ComponentRefEditor({
               {c.name}
             </option>
           ))}
-          {isUnknown && (
-            <option value={payload.name}>{payload.name} (introuvable dans le registre)</option>
-          )}
+          {isUnknown && <option value={payload.name}>{payload.name} (introuvable dans le registre)</option>}
         </select>
       </Field>
 
       {selected && (
-        <div className="rounded-md border border-border bg-muted/30 p-2 text-xs text-muted-foreground">
+        <div className="border-border bg-muted/30 text-muted-foreground rounded-md border p-2 text-xs">
           {selected.description}
         </div>
       )}
 
-      <ComponentRefPropsEditor
-        value={payload.props}
-        onChange={(props) => onChange({ ...payload, props })}
-      />
+      <ComponentRefPropsEditor value={payload.props} onChange={(props) => onChange({ ...payload, props })} />
 
       {isUnknown && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
-          Le composant <code>{payload.name}</code> n&apos;est pas enregistré dans l&apos;app cliente.
-          Ajoute-le dans <code>src/components/modules/home/renderer/customComponents.tsx</code> ET
-          dans <code>customComponents.meta.ts</code> pour qu&apos;il apparaisse ici.
+        <div className="border-destructive/40 bg-destructive/5 text-destructive rounded-md border p-2 text-xs">
+          Le composant <code>{payload.name}</code> n&apos;est pas enregistré dans l&apos;app cliente. Ajoute-le dans{' '}
+          <code>src/components/modules/home/renderer/customComponents.tsx</code> ET dans{' '}
+          <code>customComponents.meta.ts</code> pour qu&apos;il apparaisse ici.
         </div>
       )}
 
-      <details className="rounded-md border border-border bg-white p-2 text-xs">
-        <summary className="cursor-pointer font-medium text-muted-foreground">
+      <details className="border-border rounded-md border bg-white p-2 text-xs">
+        <summary className="text-muted-foreground cursor-pointer font-medium">
           Comment importer un nouveau composant custom ?
         </summary>
-        <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
+        <ol className="text-muted-foreground mt-2 list-decimal space-y-1 pl-4">
           <li>
-            Crée ton composant Solid quelque part dans <code>src/components/</code> de l&apos;app
-            cliente (signature : <code>Component&lt;HOME_SECTION_PROPS&gt;</code>).
+            Crée ton composant Solid quelque part dans <code>src/components/</code> de l&apos;app cliente (signature :{' '}
+            <code>Component&lt;HOME_SECTION_PROPS&gt;</code>).
           </li>
           <li>
-            Ouvre{' '}
-            <code>src/components/modules/home/renderer/customComponents.meta.ts</code> et ajoute une
-            entrée <code>{'{ name, description }'}</code>.
+            Ouvre <code>src/components/modules/home/renderer/customComponents.meta.ts</code> et ajoute une entrée{' '}
+            <code>{'{ name, description }'}</code>.
           </li>
           <li>
-            Ouvre{' '}
-            <code>src/components/modules/home/renderer/customComponents.tsx</code> et importe ton
-            composant + ajoute-le au record <code>CUSTOM_COMPONENT_RUNTIME</code> avec le même{' '}
-            <code>name</code>.
+            Ouvre <code>src/components/modules/home/renderer/customComponents.tsx</code> et importe ton composant +
+            ajoute-le au record <code>CUSTOM_COMPONENT_RUNTIME</code> avec le même <code>name</code>.
           </li>
           <li>
-            Recharge cette page : ton composant apparaît dans le dropdown et peut être référencé
-            depuis n&apos;importe quel bloc <code>componentRef</code>.
+            Recharge cette page : ton composant apparaît dans le dropdown et peut être référencé depuis n&apos;importe
+            quel bloc <code>componentRef</code>.
           </li>
         </ol>
       </details>
@@ -713,10 +665,10 @@ function ComponentRefPropsEditor({
         value={draft}
         onChange={(e) => handleChange(e.target.value)}
         rows={5}
-        className="w-full rounded-md border border-border bg-white p-2 font-mono text-xs"
+        className="border-border w-full rounded-md border bg-white p-2 font-mono text-xs"
         placeholder='{"subTitle": "Découvrez MadeForMed"}'
       />
-      {error && <p className="mt-1 text-[10px] text-destructive">JSON invalide : {error}</p>}
+      {error && <p className="text-destructive mt-1 text-[10px]">JSON invalide : {error}</p>}
     </Field>
   );
 }

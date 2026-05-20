@@ -1,0 +1,31 @@
+-- =====================================================================
+-- Apply migration 0037 (disable RLS on tag + block_tag) on CLOUD.
+-- =====================================================================
+-- Project ref : cixcaysppiwxkqjvlkrd (decouverte.madeformed.com)
+--
+-- Supabase auto-enables RLS on freshly-created tables. Since migration
+-- 0036's `tag` and `block_tag` tables shipped without explicit
+-- policies, every INSERT / UPDATE / DELETE is rejected with
+-- `new row violates row-level security policy for table "tag"`.
+--
+-- The rest of the schema (`block`, `chapter`, `parcours`,
+-- `parcours_version`, `variable`, …) runs WITHOUT RLS — the manager
+-- talks to Supabase via the service role / admin keys and there's no
+-- multi-tenant per-row gating in this project. We align the new tag
+-- tables with that convention.
+--
+-- If a future iteration introduces multi-user auth or row-level
+-- gating, RLS can be re-enabled here with explicit `create policy`
+-- statements (see migration 0026/0029 for reference).
+--
+-- Idempotent.
+--
+-- How to apply :
+--   1. Open Supabase Studio of project cixcaysppiwxkqjvlkrd
+--   2. SQL Editor → New query
+--   3. Paste this file's contents
+--   4. Run
+-- =====================================================================
+
+alter table public.tag disable row level security;
+alter table public.block_tag disable row level security;

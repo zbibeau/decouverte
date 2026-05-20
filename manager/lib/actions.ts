@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { BLANK_PAYLOADS } from '@/lib/blockDefaults';
-import { extractBlockSearchText } from '@/lib/blockSearch';
+import { extractBlockSearchTextWeighted } from '@/lib/blockSearch';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { slugifyForParcours } from '@/lib/parcoursSlug';
 import { randomPastel } from '@/lib/pastelColors';
@@ -112,17 +112,10 @@ async function getOrCreateDraftVersionId(parcoursSlug: string): Promise<string> 
  * Throws when the chapter belongs to neither the draft nor the published
  * version (e.g. an archived version).
  */
-export async function ensureDraftChapterId(
-  parcoursSlug: string,
-  chapterId: string,
-): Promise<string> {
+export async function ensureDraftChapterId(parcoursSlug: string, chapterId: string): Promise<string> {
   const supabase = await createClient();
   // Which version does this chapter belong to?
-  const { data: chapter } = await supabase
-    .from('chapter')
-    .select('id, version_id')
-    .eq('id', chapterId)
-    .maybeSingle();
+  const { data: chapter } = await supabase.from('chapter').select('id, version_id').eq('id', chapterId).maybeSingle();
   if (!chapter) throw new Error(`Chapter ${chapterId} introuvable`);
 
   const info = await getParcoursVersionInfo(parcoursSlug);
@@ -130,9 +123,7 @@ export async function ensureDraftChapterId(
     return chapterId;
   }
   if (chapter.version_id !== info.publishedVersionId) {
-    throw new Error(
-      `Chapter ${chapterId} n'appartient ni à la version publiée ni au brouillon`,
-    );
+    throw new Error(`Chapter ${chapterId} n'appartient ni à la version publiée ni au brouillon`);
   }
 
   // Published chapter → ensure draft exists + find the twin.
@@ -144,9 +135,7 @@ export async function ensureDraftChapterId(
     .eq('cloned_from_chapter_id', chapterId)
     .maybeSingle();
   if (!twin?.id) {
-    throw new Error(
-      `Pas de jumeau draft trouvé pour chapter ${chapterId} (version ${draftVersionId})`,
-    );
+    throw new Error(`Pas de jumeau draft trouvé pour chapter ${chapterId} (version ${draftVersionId})`);
   }
   return twin.id;
 }
@@ -159,10 +148,7 @@ export async function ensureDraftChapterId(
  * Returns the possibly-translated block id. Safe to call even if no
  * translation is needed.
  */
-export async function ensureDraftBlockId(
-  parcoursSlug: string,
-  blockId: string,
-): Promise<string> {
+export async function ensureDraftBlockId(parcoursSlug: string, blockId: string): Promise<string> {
   const supabase = await createClient();
   const { data: block } = await supabase
     .from('block')
@@ -182,18 +168,12 @@ export async function ensureDraftBlockId(
   const info = await getParcoursVersionInfo(parcoursSlug);
   if (info.draftVersionId && blockVersionId === info.draftVersionId) return blockId;
   if (blockVersionId !== info.publishedVersionId) {
-    throw new Error(
-      `Block ${blockId} n'appartient ni à la version publiée ni au brouillon`,
-    );
+    throw new Error(`Block ${blockId} n'appartient ni à la version publiée ni au brouillon`);
   }
 
   // Published block → ensure draft exists + find the twin.
   await getOrCreateDraftVersionId(parcoursSlug);
-  const { data: twin } = await supabase
-    .from('block')
-    .select('id')
-    .eq('cloned_from_block_id', blockId)
-    .maybeSingle();
+  const { data: twin } = await supabase.from('block').select('id').eq('cloned_from_block_id', blockId).maybeSingle();
   if (!twin?.id) {
     throw new Error(`Pas de jumeau draft trouvé pour block ${blockId}`);
   }
@@ -240,9 +220,7 @@ export type DraftDiffStatus = 'new' | 'modified' | 'pristine';
  *
  * Returns an empty map if no draft exists.
  */
-export async function getDraftChapterDiffs(
-  parcoursSlug: string,
-): Promise<Map<string, DraftDiffStatus>> {
+export async function getDraftChapterDiffs(parcoursSlug: string): Promise<Map<string, DraftDiffStatus>> {
   const info = await getParcoursVersionInfo(parcoursSlug);
   if (!info.draftVersionId) return new Map();
   const supabase = await createClient();
@@ -279,7 +257,7 @@ export async function getDraftChapterDiffs(
       .from('chapter')
       .select(CHAPTER_DIFF_FIELDS)
       .eq('version_id', info.publishedVersionId);
-    if (pubs) publishedChapters.push(...((pubs as unknown) as typeof publishedChapters));
+    if (pubs) publishedChapters.push(...(pubs as unknown as typeof publishedChapters));
   }
   const publishedChapterBySlug = new Map<string, (typeof publishedChapters)[number]>();
   for (const p of publishedChapters) publishedChapterBySlug.set(p.slug, p);
@@ -288,7 +266,10 @@ export async function getDraftChapterDiffs(
   const { data: draftBlocks } = await supabase
     .from('block')
     .select('id, chapter_id, "order", type, payload')
-    .in('chapter_id', draftChapters.map((c) => c.id));
+    .in(
+      'chapter_id',
+      draftChapters.map((c) => c.id),
+    );
   // Fetch published blocks for every matching published chapter.
   const publishedBlocks: Array<{
     chapter_id: string;
@@ -304,7 +285,7 @@ export async function getDraftChapterDiffs(
         'chapter_id',
         publishedChapters.map((p) => p.id),
       );
-    if (pubBlocks) publishedBlocks.push(...((pubBlocks as unknown) as typeof publishedBlocks));
+    if (pubBlocks) publishedBlocks.push(...(pubBlocks as unknown as typeof publishedBlocks));
   }
   // Key published blocks by (chapter_slug, order) for cross-version matching.
   const publishedChapterIdToSlug = new Map<string, string>();
@@ -319,10 +300,7 @@ export async function getDraftChapterDiffs(
   for (const b of publishedBlocks) {
     const slug = publishedChapterIdToSlug.get(b.chapter_id);
     if (!slug) continue;
-    publishedBlockCountByChapterSlug.set(
-      slug,
-      (publishedBlockCountByChapterSlug.get(slug) ?? 0) + 1,
-    );
+    publishedBlockCountByChapterSlug.set(slug, (publishedBlockCountByChapterSlug.get(slug) ?? 0) + 1);
   }
   const draftBlocksByChapter = new Map<string, NonNullable<typeof draftBlocks>>();
   for (const b of draftBlocks ?? []) {
@@ -352,8 +330,7 @@ export async function getDraftChapterDiffs(
       (pub.section_order ?? null) !== (c.section_order ?? null) ||
       (pub.card_image ?? null) !== (c.card_image ?? null) ||
       (pub.card_short_title ?? null) !== (c.card_short_title ?? null) ||
-      JSON.stringify(pub.branching_next ?? []) !==
-        JSON.stringify(c.branching_next ?? []);
+      JSON.stringify(pub.branching_next ?? []) !== JSON.stringify(c.branching_next ?? []);
 
     const dBlocks = draftBlocksByChapter.get(c.id) ?? [];
     const pubCount = publishedBlockCountByChapterSlug.get(c.slug) ?? 0;
@@ -361,11 +338,7 @@ export async function getDraftChapterDiffs(
     if (!blocksChanged) {
       for (const b of dBlocks) {
         const pb = publishedBlockByKey.get(`${c.slug}::${b.order}`);
-        if (
-          !pb ||
-          pb.type !== b.type ||
-          JSON.stringify(pb.payload) !== JSON.stringify(b.payload)
-        ) {
+        if (!pb || pb.type !== b.type || JSON.stringify(pb.payload) !== JSON.stringify(b.payload)) {
           blocksChanged = true;
           break;
         }
@@ -386,21 +359,13 @@ export async function getDraftChapterDiffs(
  * publish" when the only change was a deletion. Returns 0 when there is no
  * draft yet.
  */
-export async function getDraftDeletedChapterCount(
-  parcoursSlug: string,
-): Promise<number> {
+export async function getDraftDeletedChapterCount(parcoursSlug: string): Promise<number> {
   const info = await getParcoursVersionInfo(parcoursSlug);
   if (!info.draftVersionId || !info.publishedVersionId) return 0;
   const supabase = await createClient();
   const [draftRes, pubRes] = await Promise.all([
-    supabase
-      .from('chapter')
-      .select('slug')
-      .eq('version_id', info.draftVersionId),
-    supabase
-      .from('chapter')
-      .select('slug')
-      .eq('version_id', info.publishedVersionId),
+    supabase.from('chapter').select('slug').eq('version_id', info.draftVersionId),
+    supabase.from('chapter').select('slug').eq('version_id', info.publishedVersionId),
   ]);
   const draftSlugs = new Set((draftRes.data ?? []).map((r) => r.slug as string));
   let removed = 0;
@@ -416,9 +381,7 @@ export async function getDraftDeletedChapterCount(
  * published" summary panel. Returns null source when the block is brand new
  * in the draft (no `cloned_from_block_id`).
  */
-export async function getBlockDraftDiff(
-  blockId: string,
-): Promise<{
+export async function getBlockDraftDiff(blockId: string): Promise<{
   status: DraftDiffStatus;
   sourcePayload: Record<string, unknown> | null;
 }> {
@@ -474,9 +437,7 @@ export async function getBlockDraftDiff(
     .maybeSingle();
   if (!src) return { status: 'new', sourcePayload: null };
 
-  const changed =
-    src.type !== block.type ||
-    JSON.stringify(src.payload) !== JSON.stringify(block.payload);
+  const changed = src.type !== block.type || JSON.stringify(src.payload) !== JSON.stringify(block.payload);
   return {
     status: changed ? 'modified' : 'pristine',
     sourcePayload: (src.payload ?? {}) as Record<string, unknown>,
@@ -505,11 +466,7 @@ export async function getDraftBlockDiffs(
   // and compare blocks by `order`. This is robust to draft-from-restore
   // (where `cloned_from_block_id` points to the restored old version, not
   // the current published one).
-  const { data: draftChapter } = await supabase
-    .from('chapter')
-    .select('slug')
-    .eq('id', draftChapterId)
-    .maybeSingle();
+  const { data: draftChapter } = await supabase.from('chapter').select('slug').eq('id', draftChapterId).maybeSingle();
   const result = new Map<string, DraftDiffStatus>();
   if (!draftChapter || !info.publishedVersionId) {
     // No published version → everything is new.
@@ -557,10 +514,7 @@ export async function discardDraft(parcoursSlug: string) {
   const info = await getParcoursVersionInfo(parcoursSlug);
   if (info.draftVersionId) {
     const supabase = await createClient();
-    const { error } = await supabase
-      .from('parcours_version')
-      .delete()
-      .eq('id', info.draftVersionId);
+    const { error } = await supabase.from('parcours_version').delete().eq('id', info.draftVersionId);
     if (error) throw error;
     revalidatePath(`/parcours/${parcoursSlug}`, 'layout');
   }
@@ -610,10 +564,7 @@ export async function listVersions(parcoursSlug: string): Promise<VersionSummary
   // Aggregate counts in a single roundtrip per version family. For V1, a
   // simple per-version count is fine (10s of versions max in practice).
   const ids = rows.map((r) => r.id);
-  const { data: chapterRows } = await supabase
-    .from('chapter')
-    .select('id, version_id')
-    .in('version_id', ids);
+  const { data: chapterRows } = await supabase.from('chapter').select('id, version_id').in('version_id', ids);
   const chaptersByVersion = new Map<string, string[]>();
   for (const c of chapterRows ?? []) {
     const arr = chaptersByVersion.get(c.version_id) ?? [];
@@ -623,10 +574,7 @@ export async function listVersions(parcoursSlug: string): Promise<VersionSummary
   const allChapterIds = (chapterRows ?? []).map((c) => c.id);
   let blocksByChapter = new Map<string, number>();
   if (allChapterIds.length > 0) {
-    const { data: blockRows } = await supabase
-      .from('block')
-      .select('id, chapter_id')
-      .in('chapter_id', allChapterIds);
+    const { data: blockRows } = await supabase.from('block').select('id, chapter_id').in('chapter_id', allChapterIds);
     for (const b of blockRows ?? []) {
       blocksByChapter.set(b.chapter_id, (blocksByChapter.get(b.chapter_id) ?? 0) + 1);
     }
@@ -634,10 +582,7 @@ export async function listVersions(parcoursSlug: string): Promise<VersionSummary
 
   return rows.map((r) => {
     const chapters = chaptersByVersion.get(r.id) ?? [];
-    const blockCount = chapters.reduce(
-      (sum, cid) => sum + (blocksByChapter.get(cid) ?? 0),
-      0,
-    );
+    const blockCount = chapters.reduce((sum, cid) => sum + (blocksByChapter.get(cid) ?? 0), 0);
     return {
       id: r.id,
       versionNumber: r.version_number,
@@ -657,15 +602,10 @@ export async function listVersions(parcoursSlug: string): Promise<VersionSummary
  *
  * Returns the new draft version id.
  */
-export async function restoreVersionAsDraft(
-  parcoursSlug: string,
-  sourceVersionId: string,
-): Promise<string> {
+export async function restoreVersionAsDraft(parcoursSlug: string, sourceVersionId: string): Promise<string> {
   const info = await getParcoursVersionInfo(parcoursSlug);
   if (info.draftVersionId) {
-    throw new Error(
-      'Un brouillon existe déjà. Jette-le ou publie-le avant de restaurer une autre version.',
-    );
+    throw new Error('Un brouillon existe déjà. Jette-le ou publie-le avant de restaurer une autre version.');
   }
   const supabase = await createClient();
 
@@ -678,7 +618,7 @@ export async function restoreVersionAsDraft(
     .maybeSingle();
   if (!src) throw new Error(`Version ${sourceVersionId} introuvable.`);
   if (src.parcours_id !== info.parcoursId) {
-    throw new Error('Cette version n\'appartient pas à ce parcours.');
+    throw new Error("Cette version n'appartient pas à ce parcours.");
   }
 
   const { data, error } = await supabase.rpc('clone_version_as_draft', {
@@ -724,9 +664,7 @@ export async function createChapter(parcoursSlug: string, formData: FormData) {
     .eq('slug', slug)
     .maybeSingle();
   if (existing) {
-    throw new Error(
-      `Un chapitre avec le slug « ${slug} » existe déjà dans ce parcours. Choisis un slug différent.`,
-    );
+    throw new Error(`Un chapitre avec le slug « ${slug} » existe déjà dans ce parcours. Choisis un slug différent.`);
   }
 
   const { data: maxOrder } = await supabase
@@ -744,8 +682,7 @@ export async function createChapter(parcoursSlug: string, formData: FormData) {
   // right edge. `w-full` lets the chapter take whatever space its parent
   // gives ; `min-h-dvh` ensures the wrapper still fills the screen
   // vertically even when the content is short.
-  const DEFAULT_WRAPPER_CLASS =
-    'min-h-dvh w-full overflow-x-hidden bg-secondary-50 space-y-8';
+  const DEFAULT_WRAPPER_CLASS = 'min-h-dvh w-full overflow-x-hidden bg-secondary-50 space-y-8';
 
   const { error } = await supabase.from('chapter').insert({
     version_id: versionId,
@@ -869,11 +806,7 @@ export async function duplicateChapter(parcoursSlug: string, chapterId: string) 
   return { id: created.id as string, slug: created.slug as string };
 }
 
-export async function updateChapterMeta(
-  parcoursSlug: string,
-  chapterId: string,
-  formData: FormData,
-) {
+export async function updateChapterMeta(parcoursSlug: string, chapterId: string, formData: FormData) {
   const supabase = await createClient();
   const draftChapterId = await ensureDraftChapterId(parcoursSlug, chapterId);
   const title = String(formData.get('title') ?? '').trim();
@@ -915,10 +848,7 @@ export async function updateChapterMeta(
     update.card_short_title = v === '' ? null : v;
   }
 
-  const { error } = await supabase
-    .from('chapter')
-    .update(update)
-    .eq('id', draftChapterId);
+  const { error } = await supabase.from('chapter').update(update).eq('id', draftChapterId);
   if (error) throw error;
   revalidatePath(`/parcours/${parcoursSlug}`);
 }
@@ -932,12 +862,7 @@ export async function updateChapterMeta(
  * the user might bail out without filling anything in. The actual insert
  * happens on first manual save via `createBlockWithPayload`.
  */
-export async function createBlock(
-  parcoursSlug: string,
-  chapterSlug: string,
-  _chapterId: string,
-  type: string,
-) {
+export async function createBlock(parcoursSlug: string, chapterSlug: string, _chapterId: string, type: string) {
   if (!BLANK_PAYLOADS[type as keyof typeof BLANK_PAYLOADS]) {
     throw new Error(`Type de bloc inconnu : ${type}`);
   }
@@ -1000,19 +925,9 @@ export async function insertSampleBlock(
   payload: Record<string, unknown>,
 ): Promise<{ blockId: string; chapterSlug: string }> {
   const supabase = await createClient();
-  const { data: chapter } = await supabase
-    .from('chapter')
-    .select('slug')
-    .eq('id', targetChapterId)
-    .maybeSingle();
+  const { data: chapter } = await supabase.from('chapter').select('slug').eq('id', targetChapterId).maybeSingle();
   if (!chapter?.slug) throw new Error(`Chapter ${targetChapterId} introuvable`);
-  const blockId = await createBlockWithPayload(
-    parcoursSlug,
-    chapter.slug,
-    targetChapterId,
-    type,
-    payload,
-  );
+  const blockId = await createBlockWithPayload(parcoursSlug, chapter.slug, targetChapterId, type, payload);
   return { blockId, chapterSlug: chapter.slug };
 }
 
@@ -1055,11 +970,7 @@ export async function deleteBlock(parcoursSlug: string, chapterSlug: string, blo
  *   inside `card` / `conditional` payloads are still copied because they
  *   live inside the payload JSON — they're not separate rows.
  */
-export async function duplicateBlock(
-  parcoursSlug: string,
-  chapterSlug: string,
-  blockId: string,
-): Promise<string> {
+export async function duplicateBlock(parcoursSlug: string, chapterSlug: string, blockId: string): Promise<string> {
   const supabase = await createClient();
   const draftBlockId = await ensureDraftBlockId(parcoursSlug, blockId);
 
@@ -1070,9 +981,7 @@ export async function duplicateBlock(
     .maybeSingle();
   if (!src) throw new Error(`Block ${draftBlockId} introuvable`);
   if (src.parent_block_id) {
-    throw new Error(
-      'La duplication des blocs imbriqués (parent_block_id != null) n\'est pas encore supportée.',
-    );
+    throw new Error("La duplication des blocs imbriqués (parent_block_id != null) n'est pas encore supportée.");
   }
 
   const targetOrder = src.order + 1;
@@ -1149,9 +1058,7 @@ export async function copyBlockToChapter(
     .maybeSingle();
   if (!src) throw new Error(`Block ${draftSourceBlockId} introuvable`);
   if (src.parent_block_id) {
-    throw new Error(
-      'La copie des blocs imbriqués (parent_block_id != null) n\'est pas encore supportée.',
-    );
+    throw new Error("La copie des blocs imbriqués (parent_block_id != null) n'est pas encore supportée.");
   }
 
   // Append at the end of the target chapter.
@@ -1248,9 +1155,7 @@ export async function reorderBlocks(
 ) {
   const supabase = await createClient();
   const draftChapterId = await ensureDraftChapterId(parcoursSlug, chapterId);
-  const draftOrderedIds = await Promise.all(
-    orderedIds.map((id) => ensureDraftBlockId(parcoursSlug, id)),
-  );
+  const draftOrderedIds = await Promise.all(orderedIds.map((id) => ensureDraftBlockId(parcoursSlug, id)));
 
   // Phase 1 — move everything into a temporary range (negative).
   for (let i = 0; i < draftOrderedIds.length; i++) {
@@ -1336,9 +1241,7 @@ export async function moveSectionRelative(
   sectionsOrdered[idx] = b;
   sectionsOrdered[swapIdx] = a;
 
-  const orderedIds = sectionsOrdered.flatMap((k) =>
-    (groups.get(k) ?? []).map((r) => r.id),
-  );
+  const orderedIds = sectionsOrdered.flatMap((k) => (groups.get(k) ?? []).map((r) => r.id));
   return reorderChapters(parcoursSlug, orderedIds);
 }
 
@@ -1391,17 +1294,11 @@ export async function renameVariable(
   const label = nextLabel.trim();
   if (!key || !label) throw new Error('Clé et label requis.');
   if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) {
-    throw new Error(
-      'La clé doit commencer par une lettre et ne contenir que des lettres, chiffres et underscores.',
-    );
+    throw new Error('La clé doit commencer par une lettre et ne contenir que des lettres, chiffres et underscores.');
   }
 
   const supabase = await createClient();
-  const { data: parcours } = await supabase
-    .from('parcours')
-    .select('id')
-    .eq('slug', parcoursSlug)
-    .maybeSingle();
+  const { data: parcours } = await supabase.from('parcours').select('id').eq('slug', parcoursSlug).maybeSingle();
   if (!parcours) throw new Error('Parcours introuvable.');
 
   // Reject key collisions early with a friendly error.
@@ -1416,21 +1313,14 @@ export async function renameVariable(
     throw new Error(`Une autre variable utilise déjà la clé « ${key} ».`);
   }
 
-  const { error } = await supabase
-    .from('variable')
-    .update({ key, label })
-    .eq('id', variableId);
+  const { error } = await supabase.from('variable').update({ key, label }).eq('id', variableId);
   if (error) throw error;
   revalidatePath(`/parcours/${parcoursSlug}/variables`);
 }
 
 export async function createVariable(parcoursSlug: string, formData: FormData) {
   const supabase = await createClient();
-  const { data: parcours } = await supabase
-    .from('parcours')
-    .select('id')
-    .eq('slug', parcoursSlug)
-    .maybeSingle();
+  const { data: parcours } = await supabase.from('parcours').select('id').eq('slug', parcoursSlug).maybeSingle();
   if (!parcours) throw new Error('Parcours introuvable');
 
   const key = String(formData.get('key') ?? '').trim();
@@ -1472,11 +1362,7 @@ export async function createVariable(parcoursSlug: string, formData: FormData) {
   revalidatePath(`/parcours/${parcoursSlug}/variables`);
 }
 
-export async function updateVariableHubspotMapping(
-  parcoursSlug: string,
-  variableId: string,
-  formData: FormData,
-) {
+export async function updateVariableHubspotMapping(parcoursSlug: string, variableId: string, formData: FormData) {
   const supabase = await createClient();
   const hsProperty = String(formData.get('hsProperty') ?? '').trim();
   const hsValueMapRaw = String(formData.get('hsValueMap') ?? '').trim();
@@ -1494,20 +1380,13 @@ export async function updateVariableHubspotMapping(
     hubspot_mapping = { property: hsProperty, ...(valueMap ? { valueMap } : {}) };
   }
 
-  const { error } = await supabase
-    .from('variable')
-    .update({ hubspot_mapping })
-    .eq('id', variableId);
+  const { error } = await supabase.from('variable').update({ hubspot_mapping }).eq('id', variableId);
 
   if (error) throw error;
   revalidatePath(`/parcours/${parcoursSlug}/variables`);
 }
 
-export async function updateVariableOptions(
-  parcoursSlug: string,
-  variableId: string,
-  formData: FormData,
-) {
+export async function updateVariableOptions(parcoursSlug: string, variableId: string, formData: FormData) {
   const supabase = await createClient();
   const optionsRaw = String(formData.get('options') ?? '[]');
   let options: unknown;
@@ -1519,10 +1398,7 @@ export async function updateVariableOptions(
   if (!Array.isArray(options)) {
     throw new Error('options doit être un tableau');
   }
-  const { error } = await supabase
-    .from('variable')
-    .update({ options })
-    .eq('id', variableId);
+  const { error } = await supabase.from('variable').update({ options }).eq('id', variableId);
   if (error) throw error;
   revalidatePath(`/parcours/${parcoursSlug}/variables`);
 }
@@ -1547,6 +1423,14 @@ export interface PaletteChapter {
   id: string;
   slug: string;
   title: string;
+  /** Aggregated `block.searchText.full` of every block of the chapter. Lets
+   *  the chapter row match its own content (typing "saturation" surfaces
+   *  the chapter where the word lives, not only the matching block). */
+  searchText: string;
+  /** Maintenance tags attached to this chapter's `card_image`. Same
+   *  shape as `PaletteBlock.tags` so the palette can render colored
+   *  chips and inject the labels into searchText. */
+  tags: { id: string; label: string; color: string }[];
 }
 export interface PaletteBlock {
   id: string;
@@ -1556,8 +1440,26 @@ export interface PaletteBlock {
   chapterTitle: string;
   /** Short label produced by `summarizeBlock` — shown as the row primary text. */
   summary: string;
-  /** Pre-extracted lower-case text harvested from the payload for full-text match. */
+  /** High-signal labels (titles, subtitles, button labels). Duplicated in
+   *  the palette's `keywords` array to boost ranking when the query
+   *  matches a title vs being buried in the body. */
+  primaryText: string;
+  /** Body content (html, descriptions, alt text). Lower weight in the search. */
+  secondaryText: string;
+  /** `primary + secondary` lowercased. Used for snippet extraction in the row. */
   searchText: string;
+  /** Raw block payload, shipped to the client so the PreviewPane can
+   *  render a schematic of the block when its row is highlighted. ~1 KB
+   *  per block × ~50 blocks per parcours = negligible bundle impact.
+   *  `payload.tags` is synthetically injected from the `block_tag` JOIN
+   *  before the search walker indexes the block ; the stored payload
+   *  itself does not carry tags (since migration 0036). */
+  payload: Record<string, unknown>;
+  /** Maintenance tags attached to this block, with their palette color.
+   *  Used by the PreviewPane to render colored chips. Indexed for
+   *  search via the synthetic `payload.tags` array above (which holds
+   *  the labels only). */
+  tags: { id: string; label: string; color: string }[];
 }
 export interface PaletteVariable {
   id: string;
@@ -1623,7 +1525,43 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
       .order('key', { ascending: true }),
   ]);
 
-  result.chapters = (chapters ?? []).map((c) => ({ id: c.id, slug: c.slug, title: c.title }));
+  // Fetch the maintenance tags attached to each chapter's card_image
+  // via `chapter_tag` (migration 0038), in a single roundtrip.
+  const chapterIdList = (chapters ?? []).map((c) => c.id as string);
+  const tagsByChapter = new Map<string, { id: string; label: string; color: string }[]>();
+  if (chapterIdList.length > 0) {
+    const { data: chTagRows } = await supabase
+      .from('chapter_tag')
+      .select('chapter_id, tag:tag(id, label, color)')
+      .in('chapter_id', chapterIdList);
+    for (const row of chTagRows ?? []) {
+      const cid = (row as { chapter_id: string }).chapter_id;
+      const t = (
+        row as {
+          tag: { id: string; label: string; color: string } | { id: string; label: string; color: string }[] | null;
+        }
+      ).tag;
+      if (!t) continue;
+      const tag = Array.isArray(t) ? t[0] : t;
+      if (!tag) continue;
+      const arr = tagsByChapter.get(cid) ?? [];
+      arr.push({ id: tag.id, label: tag.label, color: tag.color });
+      tagsByChapter.set(cid, arr);
+    }
+  }
+
+  // Initialise chapter rows with an empty searchText. We'll fold every
+  // block's `full` text into it in the loop below so the chapter row in
+  // the palette can match against its aggregated content. Tags attached
+  // to the chapter card_image are seeded right away so they're picked
+  // up by the search even if the chapter has no blocks yet.
+  result.chapters = (chapters ?? []).map((c) => ({
+    id: c.id,
+    slug: c.slug,
+    title: c.title,
+    searchText: (tagsByChapter.get(c.id) ?? []).map((t) => t.label).join(' '),
+    tags: tagsByChapter.get(c.id) ?? [],
+  }));
   result.variables = (variables ?? []).map((v) => ({
     id: v.id,
     key: v.key,
@@ -1641,10 +1579,52 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
     .in('chapter_id', chapterIds)
     .order('order', { ascending: true });
 
+  // Fetch the maintenance tags attached to each block in this parcours
+  // via the `block_tag` bridge (migration 0036). Done in a single
+  // roundtrip so the palette can ship tag-aware search + colored chip
+  // previews without N+1 queries.
+  const blockIds = (blocks ?? []).map((b) => b.id as string);
+  const tagsByBlock = new Map<string, { id: string; label: string; color: string }[]>();
+  if (blockIds.length > 0) {
+    const { data: tagRows } = await supabase
+      .from('block_tag')
+      .select('block_id, tag:tag(id, label, color)')
+      .in('block_id', blockIds);
+    for (const row of tagRows ?? []) {
+      const bid = (row as { block_id: string }).block_id;
+      const t = (
+        row as {
+          tag: { id: string; label: string; color: string } | { id: string; label: string; color: string }[] | null;
+        }
+      ).tag;
+      if (!t) continue;
+      const tag = Array.isArray(t) ? t[0] : t;
+      if (!tag) continue;
+      const arr = tagsByBlock.get(bid) ?? [];
+      arr.push({ id: tag.id, label: tag.label, color: tag.color });
+      tagsByBlock.set(bid, arr);
+    }
+  }
+
   const chapterById = new Map(result.chapters.map((c) => [c.id, c] as const));
+  const chapterSearchAcc = new Map<string, string[]>();
   result.blocks = (blocks ?? []).map((b) => {
     const ch = chapterById.get(b.chapter_id);
-    const payload = (b.payload ?? {}) as Record<string, unknown>;
+    const rawPayload = (b.payload ?? {}) as Record<string, unknown>;
+    const blockTags = tagsByBlock.get(b.id) ?? [];
+    // Synthetic payload : the stored payload + a `tags: string[]` of
+    // tag labels injected from the JOIN. The walker (with 'tags' in
+    // PRIMARY_KEYS) then harvests them as boosted search terms — same
+    // effect as if the labels lived in the payload, minus the actual
+    // storage.
+    const payload: Record<string, unknown> = {
+      ...rawPayload,
+      tags: blockTags.map((t) => t.label),
+    };
+    const weighted = extractBlockSearchTextWeighted(payload);
+    const acc = chapterSearchAcc.get(b.chapter_id) ?? [];
+    if (weighted.full) acc.push(weighted.full);
+    chapterSearchAcc.set(b.chapter_id, acc);
     return {
       id: b.id,
       type: b.type,
@@ -1652,12 +1632,31 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
       chapterSlug: ch?.slug ?? '',
       chapterTitle: ch?.title ?? '',
       summary: summarizeBlock(b.type, payload),
-      searchText: extractBlockSearchText(payload),
+      primaryText: weighted.primary,
+      secondaryText: weighted.secondary,
+      searchText: weighted.full,
+      payload,
+      tags: blockTags,
     };
   });
+  // Write the aggregated chapter searchText back into the chapter rows.
+  // Append (don't overwrite) — the chapter row was seeded with its own
+  // tag labels above, and the block-derived parts add on top.
+  for (const c of result.chapters) {
+    const parts = chapterSearchAcc.get(c.id);
+    if (parts && parts.length > 0) {
+      c.searchText = c.searchText ? `${c.searchText} ${parts.join(' ')}` : parts.join(' ');
+    }
+  }
 
   return result;
 }
+
+// `loadAllTags()` has moved to `manager/lib/tags.ts` (reads from the
+// dedicated `tag` table rather than scanning payloads — see migration
+// 0036). Re-exporting here would violate Next's "use server" rule
+// (only async function declarations can be exported from a server
+// module), so import it directly from `@/lib/tags`.
 
 // ============================================================
 // Parcours creation (wizard)
@@ -1686,24 +1685,14 @@ export async function createParcours(input: {
   const supabase = await createClient();
 
   // Reject collisions early with a clear error message.
-  const { data: existing } = await supabase
-    .from('parcours')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle();
+  const { data: existing } = await supabase.from('parcours').select('id').eq('slug', slug).maybeSingle();
   if (existing) {
     throw new Error(`Un parcours avec le slug « ${slug} » existe déjà.`);
   }
   if (input.host) {
-    const { data: hostClash } = await supabase
-      .from('parcours')
-      .select('id, slug')
-      .eq('host', input.host)
-      .maybeSingle();
+    const { data: hostClash } = await supabase.from('parcours').select('id, slug').eq('host', input.host).maybeSingle();
     if (hostClash) {
-      throw new Error(
-        `Le host « ${input.host} » est déjà attribué au parcours « ${hostClash.slug} ».`,
-      );
+      throw new Error(`Le host « ${input.host} » est déjà attribué au parcours « ${hostClash.slug} ».`);
     }
   }
 
@@ -1734,18 +1723,10 @@ export async function createParcours(input: {
   // Retry without `theme_color` if the column doesn't exist yet on the
   // target DB (migration 0035 not applied). Same tolerance as `host` :
   // we don't want a fresh deploy to break parcours creation.
-  if (
-    pErr &&
-    insertPayload.theme_color &&
-    /column .*theme_color.* does not exist/i.test(pErr.message)
-  ) {
+  if (pErr && insertPayload.theme_color && /column .*theme_color.* does not exist/i.test(pErr.message)) {
     const { theme_color: _omit, ...fallbackPayload } = insertPayload;
     void _omit;
-    const retry = await supabase
-      .from('parcours')
-      .insert(fallbackPayload)
-      .select('id, slug')
-      .single();
+    const retry = await supabase.from('parcours').insert(fallbackPayload).select('id, slug').single();
     parcours = retry.data;
     pErr = retry.error;
   }
@@ -1754,13 +1735,11 @@ export async function createParcours(input: {
   }
 
   // 2. first draft version (v1).
-  const { error: vErr } = await supabase
-    .from('parcours_version')
-    .insert({
-      parcours_id: parcours.id,
-      version_number: 1,
-      status: 'draft',
-    });
+  const { error: vErr } = await supabase.from('parcours_version').insert({
+    parcours_id: parcours.id,
+    version_number: 1,
+    status: 'draft',
+  });
   if (vErr) {
     // Rollback the parcours row to avoid orphans.
     await supabase.from('parcours').delete().eq('id', parcours.id);
@@ -1791,11 +1770,7 @@ export interface NavbarVariant {
  */
 export async function getNavbarVariants(parcoursSlug: string): Promise<NavbarVariant[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from('parcours')
-    .select('navbar_variants')
-    .eq('slug', parcoursSlug)
-    .maybeSingle();
+  const { data } = await supabase.from('parcours').select('navbar_variants').eq('slug', parcoursSlug).maybeSingle();
   const raw = (data as { navbar_variants?: unknown } | null)?.navbar_variants;
   return Array.isArray(raw) ? (raw as NavbarVariant[]) : [];
 }
@@ -1813,10 +1788,7 @@ function normalizeVariantKey(input: string): string {
  * Replace the entire variants registry of a parcours. Validates keys are
  * unique + non-empty + slug-safe. Used by the manager admin UI.
  */
-export async function setNavbarVariants(
-  parcoursSlug: string,
-  variants: NavbarVariant[],
-): Promise<void> {
+export async function setNavbarVariants(parcoursSlug: string, variants: NavbarVariant[]): Promise<void> {
   // Server-side validation : drop empty rows + de-duplicate keys + clamp percent.
   const clean: NavbarVariant[] = [];
   const seen = new Set<string>();
@@ -1838,10 +1810,7 @@ export async function setNavbarVariants(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from('parcours')
-    .update({ navbar_variants: clean })
-    .eq('slug', parcoursSlug);
+  const { error } = await supabase.from('parcours').update({ navbar_variants: clean }).eq('slug', parcoursSlug);
   if (error) throw new Error(`Mise à jour des variants échouée : ${error.message}`);
 
   revalidatePath(`/parcours/${parcoursSlug}`, 'layout');

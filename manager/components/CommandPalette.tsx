@@ -1,28 +1,18 @@
 'use client';
 
 import { Command } from 'cmdk';
-import {
-  Book,
-  FileText,
-  Hash,
-  Layers,
-  Plus,
-  Search,
-  Variable,
-} from 'lucide-react';
+import { Book, FileText, Hash, Layers, Plus, Search, Variable } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 
 import { PaletteItem } from '@/components/palette/PaletteItem';
+import { PreviewPane } from '@/components/palette/PreviewPane';
 import { useToast } from '@/components/Toaster';
 import { useAddActionScopes, useSelectedScopeId } from '@/components/blocks/AddActionsContext';
-import {
-  loadPaletteData,
-  insertSampleBlock,
-  type PaletteData,
-} from '@/lib/actions';
+import { loadPaletteData, insertSampleBlock, type PaletteData } from '@/lib/actions';
 import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
+import { extractSnippet } from '@/lib/blockSearch';
 import { parsePathContext } from '@/lib/palette/parsePathContext';
 import { useCommandPaletteHotkeys } from '@/lib/palette/useCommandPaletteHotkeys';
 
@@ -52,6 +42,10 @@ export function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState('');
+  // cmdk controlled value — fires on ↑↓ AND on mouse hover, lets the
+  // right-hand PreviewPane mirror whichever row is highlighted right
+  // now (without waiting for Enter).
+  const [highlightedValue, setHighlightedValue] = useState('');
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
@@ -97,10 +91,23 @@ export function CommandPalette() {
     };
   }, [open, ctx.parcoursSlug]);
 
-  // Reset query when closing so re-opening feels fresh.
+  // Reset query + highlight when closing so re-opening feels fresh
+  // (otherwise a phantom row stays highlighted from the previous session,
+  // and the preview pane would show stale content on re-open).
   useEffect(() => {
-    if (!open) setSearch('');
+    if (!open) {
+      setSearch('');
+      setHighlightedValue('');
+    }
   }, [open]);
+
+  // The chapter we're currently inside (URL-derived). Passed to the
+  // preview pane so the "+ Add block" preview tells the user where the
+  // block will land.
+  const currentChapterTitle = useMemo(() => {
+    if (!ctx.chapterSlug) return null;
+    return data?.chapters.find((c) => c.slug === ctx.chapterSlug)?.title ?? null;
+  }, [data?.chapters, ctx.chapterSlug]);
 
   function go(href: string) {
     setOpen(false);
@@ -121,17 +128,10 @@ export function CommandPalette() {
     }
     startTransition(async () => {
       try {
-        const { blockId, chapterSlug } = await insertSampleBlock(
-          ctx.parcoursSlug!,
-          chapter.id,
-          type,
-          sample.payload,
-        );
+        const { blockId, chapterSlug } = await insertSampleBlock(ctx.parcoursSlug!, chapter.id, type, sample.payload);
         toast.success(`Bloc « ${(BLOCK_TYPE_LABELS as Record<string, string>)[type] ?? type} » ajouté`);
         setOpen(false);
-        router.push(
-          `/parcours/${ctx.parcoursSlug}/chapters/${chapterSlug}/blocks/${blockId}`,
-        );
+        router.push(`/parcours/${ctx.parcoursSlug}/chapters/${chapterSlug}/blocks/${blockId}`);
       } catch (e) {
         toast.error(`Échec de l'insertion : ${(e as Error).message}`);
       }
@@ -154,73 +154,70 @@ export function CommandPalette() {
     >
       <Command
         label="Palette de commandes"
-        className="w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-white shadow-2xl"
+        value={highlightedValue}
+        onValueChange={setHighlightedValue}
+        className="border-border w-full max-w-5xl overflow-hidden rounded-xl border bg-white shadow-2xl"
       >
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
+        <div className="border-border flex items-center gap-2 border-b px-3 py-2">
+          <Search className="text-muted-foreground h-4 w-4" />
           <Command.Input
             autoFocus
             value={search}
             onValueChange={setSearch}
-            placeholder={
-              ctx.parcoursSlug
-                ? 'Cherche un chapitre, un bloc, une variable…'
-                : 'Cherche un parcours…'
-            }
-            className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={ctx.parcoursSlug ? 'Cherche un chapitre, un bloc, une variable…' : 'Cherche un parcours…'}
+            className="placeholder:text-muted-foreground h-9 flex-1 bg-transparent text-sm outline-none"
           />
-          <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <kbd className="border-border bg-muted text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]">
             esc
           </kbd>
         </div>
 
-        <Command.List className="max-h-[60vh] overflow-y-auto p-2">
-          {loading && !data ? (
-            <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-              Chargement…
-            </div>
-          ) : (
-            <>
-              <Command.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">
-                Aucun résultat.
-              </Command.Empty>
+        {/* Split layout : Command.List on the left (results), PreviewPane
+              on the right (schematic preview of the currently-highlighted row).
+              Below md the preview pane is hidden — the palette remains
+              fully functional on narrow screens. */}
+        <div className="grid h-[60vh] md:grid-cols-2">
+          <Command.List className="border-border overflow-y-auto border-r p-2">
+            {loading && !data ? (
+              <div className="text-muted-foreground px-3 py-6 text-center text-sm">Chargement…</div>
+            ) : (
+              <>
+                <Command.Empty className="text-muted-foreground px-3 py-6 text-center text-sm">
+                  Aucun résultat.
+                </Command.Empty>
 
-              {/* === Add actions registered by nested editors (deepest first) ===
+                {/* === Add actions registered by nested editors (deepest first) ===
                     The user is editing somewhere — these are the most local
                     actions ("Ajouter un point" in the open list, "Ajouter une
                     question" in the FAQ, etc.). Always shown first. */}
-              {registeredScopes.map((scope) => (
-                <Command.Group
-                  key={scope.id}
-                  heading={
-                    scope.id === selectedScopeId ? `★ ${scope.label} (sélection)` : scope.label
-                  }
-                >
-                  {scope.actions.map((a) => (
-                    <PaletteItem
-                      key={`${scope.id}-${a.id}`}
-                      icon={<Plus className="h-3.5 w-3.5 text-emerald-600" />}
-                      label={a.label}
-                      hint={a.description}
-                      value={`scope-${scope.id}-${a.id}`}
-                      keywords={[scope.label, a.label, a.description ?? '', 'ajouter', 'add']}
-                      onSelect={async () => {
-                        await a.run();
-                        setOpen(false);
-                      }}
-                    />
-                  ))}
-                </Command.Group>
-              ))}
+                {registeredScopes.map((scope) => (
+                  <Command.Group
+                    key={scope.id}
+                    heading={scope.id === selectedScopeId ? `★ ${scope.label} (sélection)` : scope.label}
+                  >
+                    {scope.actions.map((a) => (
+                      <PaletteItem
+                        key={`${scope.id}-${a.id}`}
+                        icon={<Plus className="h-3.5 w-3.5 text-emerald-600" />}
+                        label={a.label}
+                        hint={a.description}
+                        value={`scope-${scope.id}-${a.id}`}
+                        keywords={[scope.label, a.label, a.description ?? '', 'ajouter', 'add']}
+                        onSelect={async () => {
+                          await a.run();
+                          setOpen(false);
+                        }}
+                      />
+                    ))}
+                  </Command.Group>
+                ))}
 
-              {/* === Ajouter un bloc au chapitre ===
+                {/* === Ajouter un bloc au chapitre ===
                     On chapter list pages this is the natural insert target.
                     On block edit pages we still show it but only when no
                     nested-scope action was registered (avoids confusing the
                     user with two competing "Add a block" entry points). */}
-              {ctx.parcoursSlug &&
-                ctx.chapterSlug &&
-                (!onBlockEditPage || registeredScopes.length === 0) && (
+                {ctx.parcoursSlug && ctx.chapterSlug && (!onBlockEditPage || registeredScopes.length === 0) && (
                   <Command.Group heading="Ajouter un bloc au chapitre">
                     {BLOCK_TYPES_ORDER.filter((t) => SAMPLE_PAYLOADS[t]).map((t) => (
                       <PaletteItem
@@ -229,7 +226,13 @@ export function CommandPalette() {
                         label={`+ ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}`}
                         hint="Insère dans le chapitre courant avec l'exemple"
                         value={`add-${t}`}
-                        keywords={[t, (BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t, 'ajouter', 'add', 'insert']}
+                        keywords={[
+                          t,
+                          (BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t,
+                          'ajouter',
+                          'add',
+                          'insert',
+                        ]}
                         disabled={isPending}
                         onSelect={() => void handleInsertBlock(t)}
                       />
@@ -237,97 +240,133 @@ export function CommandPalette() {
                   </Command.Group>
                 )}
 
-              {/* === Chapitres (current parcours) === */}
-              {(data?.chapters?.length ?? 0) > 0 && (
-                <Command.Group heading="Chapitres">
-                  {data!.chapters.map((c) => (
-                    <PaletteItem
-                      key={c.id}
-                      icon={<Hash className="h-3.5 w-3.5 text-primary" />}
-                      label={c.title}
-                      hint={c.slug}
-                      value={`chapter-${c.id}`}
-                      keywords={[c.title, c.slug]}
-                      onSelect={() =>
-                        go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`)
-                      }
-                    />
-                  ))}
-                </Command.Group>
-              )}
+                {/* === Chapitres (current parcours) === */}
+                {(data?.chapters?.length ?? 0) > 0 && (
+                  <Command.Group heading="Chapitres">
+                    {data!.chapters.map((c) => {
+                      // Show a snippet under the chapter title when the query
+                      // matched inside an *aggregated* block (and not in the
+                      // title itself — that's already visible above). Lets
+                      // "saturation" surface the chapter, with a teaser of
+                      // where the word lives.
+                      const titleMatches = c.title.toLowerCase().includes(search.trim().toLowerCase());
+                      const snippet =
+                        search.trim() && !titleMatches
+                          ? (extractSnippet(c.searchText, search, 32) ?? undefined)
+                          : undefined;
+                      return (
+                        <PaletteItem
+                          key={c.id}
+                          icon={<Hash className="text-primary h-3.5 w-3.5" />}
+                          label={c.title}
+                          hint={c.slug}
+                          snippet={snippet}
+                          highlight={search}
+                          value={`chapter-${c.id}`}
+                          keywords={[c.title, c.title, c.slug, c.searchText]}
+                          onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`)}
+                        />
+                      );
+                    })}
+                  </Command.Group>
+                )}
 
-              {/* === Blocs (current parcours, full-text searchable) === */}
-              {(data?.blocks?.length ?? 0) > 0 && (
-                <Command.Group heading="Blocs">
-                  {data!.blocks.map((b) => (
-                    <PaletteItem
-                      key={b.id}
-                      icon={<Layers className="h-3.5 w-3.5 text-violet-600" />}
-                      label={b.summary || `Bloc ${b.type}`}
-                      hint={`${(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type} · ${b.chapterTitle}`}
-                      value={`block-${b.id}`}
-                      keywords={[
-                        b.summary,
-                        b.type,
-                        b.chapterTitle,
-                        b.chapterSlug,
-                        b.searchText,
-                      ]}
-                      onSelect={() =>
-                        go(
-                          `/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`,
-                        )
-                      }
-                    />
-                  ))}
-                </Command.Group>
-              )}
+                {/* === Blocs (current parcours, full-text searchable) === */}
+                {(data?.blocks?.length ?? 0) > 0 && (
+                  <Command.Group heading="Blocs">
+                    {data!.blocks.map((b) => {
+                      // Snippet rendered only when the query matched deep in
+                      // the payload — if it matched the summary we already
+                      // show that. Hides noise when there's no query (palette
+                      // just opened) by passing undefined.
+                      const summaryMatches = b.summary.toLowerCase().includes(search.trim().toLowerCase());
+                      const snippet =
+                        search.trim() && !summaryMatches
+                          ? (extractSnippet(b.searchText, search, 32) ?? undefined)
+                          : undefined;
+                      return (
+                        <PaletteItem
+                          key={b.id}
+                          icon={<Layers className="h-3.5 w-3.5 text-violet-600" />}
+                          label={b.summary || `Bloc ${b.type}`}
+                          hint={`${(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type} · ${b.chapterTitle}`}
+                          snippet={snippet}
+                          highlight={search}
+                          value={`block-${b.id}`}
+                          // primaryText duplicated so cmdk's fuzzy matcher
+                          // weighs a hit on titles/labels above one buried
+                          // in the body. summary is also high-signal so it
+                          // stays at the front. secondaryText is the long
+                          // body content — present but unweighted.
+                          keywords={[
+                            b.summary,
+                            b.summary,
+                            b.primaryText,
+                            b.primaryText,
+                            b.type,
+                            b.chapterTitle,
+                            b.chapterSlug,
+                            b.secondaryText,
+                          ]}
+                          onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`)}
+                        />
+                      );
+                    })}
+                  </Command.Group>
+                )}
 
-              {/* === Variables (current parcours) === */}
-              {(data?.variables?.length ?? 0) > 0 && (
-                <Command.Group heading="Variables">
-                  {data!.variables.map((v) => (
-                    <PaletteItem
-                      key={v.id}
-                      icon={<Variable className="h-3.5 w-3.5 text-amber-600" />}
-                      label={v.key}
-                      hint={`${v.label} · ${v.type}`}
-                      value={`var-${v.id}`}
-                      keywords={[v.key, v.label, v.type]}
-                      onSelect={() => go(`/parcours/${ctx.parcoursSlug}/variables`)}
-                    />
-                  ))}
-                </Command.Group>
-              )}
+                {/* === Variables (current parcours) === */}
+                {(data?.variables?.length ?? 0) > 0 && (
+                  <Command.Group heading="Variables">
+                    {data!.variables.map((v) => (
+                      <PaletteItem
+                        key={v.id}
+                        icon={<Variable className="h-3.5 w-3.5 text-amber-600" />}
+                        label={v.key}
+                        hint={`${v.label} · ${v.type}`}
+                        value={`var-${v.id}`}
+                        keywords={[v.key, v.label, v.type]}
+                        onSelect={() => go(`/parcours/${ctx.parcoursSlug}/variables`)}
+                      />
+                    ))}
+                  </Command.Group>
+                )}
 
-              {/* === Parcours (always shown) === */}
-              {(data?.parcours?.length ?? 0) > 0 && (
-                <Command.Group heading="Parcours">
-                  {data!.parcours.map((p) => (
-                    <PaletteItem
-                      key={p.id}
-                      icon={<Book className="h-3.5 w-3.5 text-rose-600" />}
-                      label={p.name}
-                      hint={p.slug}
-                      value={`parcours-${p.id}`}
-                      keywords={[p.name, p.slug]}
-                      onSelect={() => go(`/parcours/${p.slug}`)}
-                    />
-                  ))}
-                </Command.Group>
-              )}
-            </>
-          )}
-        </Command.List>
+                {/* === Parcours (always shown) === */}
+                {(data?.parcours?.length ?? 0) > 0 && (
+                  <Command.Group heading="Parcours">
+                    {data!.parcours.map((p) => (
+                      <PaletteItem
+                        key={p.id}
+                        icon={<Book className="h-3.5 w-3.5 text-rose-600" />}
+                        label={p.name}
+                        hint={p.slug}
+                        value={`parcours-${p.id}`}
+                        keywords={[p.name, p.slug]}
+                        onSelect={() => go(`/parcours/${p.slug}`)}
+                      />
+                    ))}
+                  </Command.Group>
+                )}
+              </>
+            )}
+          </Command.List>
+          <div className="hidden overflow-hidden md:block">
+            <PreviewPane
+              value={highlightedValue}
+              data={data}
+              currentParcoursSlug={ctx.parcoursSlug ?? null}
+              currentChapterTitle={currentChapterTitle}
+              scopes={registeredScopes}
+            />
+          </div>
+        </div>
 
-        <div className="flex items-center justify-between border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] text-muted-foreground">
+        <div className="border-border bg-muted/30 text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-[10px]">
           <span>
-            <kbd className="rounded border border-border bg-white px-1 py-0.5">↑↓</kbd>{' '}
-            naviguer ·{' '}
-            <kbd className="rounded border border-border bg-white px-1 py-0.5">↵</kbd>{' '}
-            valider ·{' '}
-            <kbd className="rounded border border-border bg-white px-1 py-0.5">esc</kbd>{' '}
-            fermer
+            <kbd className="border-border rounded border bg-white px-1 py-0.5">↑↓</kbd> naviguer ·{' '}
+            <kbd className="border-border rounded border bg-white px-1 py-0.5">↵</kbd> valider ·{' '}
+            <kbd className="border-border rounded border bg-white px-1 py-0.5">esc</kbd> fermer
           </span>
           <span className="flex items-center gap-1">
             <FileText className="h-3 w-3" />
@@ -338,4 +377,3 @@ export function CommandPalette() {
     </div>
   );
 }
-
