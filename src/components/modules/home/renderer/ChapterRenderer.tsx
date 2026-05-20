@@ -1093,8 +1093,16 @@ export const ChapterRenderer: Component<{
            The active card is the current chapter ; clicking its
            "Découvrir" CTA scrolls back down to the first block instead
            of a no-op re-mount (see ChapterTransitionGrid's onClick guard
-           for `mode === 'current' && currentChapterFirstBlockId`). */}
-      <ChapterTransitionGrid activeChapter="current" currentChapterFirstBlockId={props.chapter.blocks[0]?.id} />
+           for `mode === 'current' && currentChapterFirstBlockId`).
+
+           Hidden in the **isolated block preview** (manager's library
+           page, where each card renders a single sample block inside a
+           synthesized chapter with id 'isolated') — the panorama would
+           pull in the parcours' heroTitle as the "active card",
+           bleeding unrelated content into every preview. */}
+      <Show when={props.chapter.id !== 'isolated'}>
+        <ChapterTransitionGrid activeChapter="current" currentChapterFirstBlockId={props.chapter.blocks[0]?.id} />
+      </Show>
       <For each={props.chapter.blocks}>
         {(originalBlock, idx) => {
           // Memo recomputes when an override for this block id is added/cleared.
@@ -1165,8 +1173,9 @@ export const ChapterRenderer: Component<{
           chapter, so the last chapter of the parcours stays clean.
           Hidden behind `formCompleted()` when this chapter has a form
           block — same rationale as the For loop above (no peeking past
-          the form). */}
-      <Show when={formCompleted()}>
+          the form). Also skipped in isolated preview mode (see top
+          panorama guard above for the same reason). */}
+      <Show when={formCompleted() && props.chapter.id !== 'isolated'}>
         <ChapterTransitionGrid activeChapter="next" />
       </Show>
       {/* End-of-parcours celebration : when the visitor reaches the LAST
