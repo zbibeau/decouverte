@@ -5,16 +5,16 @@ import { HomeTool2_Summary } from '../sections/HomeTool2-Summary';
 import { HomeTool3_Summary as HomeTool3_SummaryRaw } from '../sections/HomeTool3-Summary';
 import { HOME_SECTION_PROPS } from '../utils/HomeUtils';
 import { CUSTOM_COMPONENTS_META } from './customComponents.meta';
+import { HomeEndBody } from './customSnippets/EndParts';
 import { IntroFormFields } from './customSnippets/IntroFormFields';
 import { DoctorToolboxStepsRef } from './customSnippets/ObservationParts';
-import { HomeOurPricingBody, NextStepsRef } from './customSnippets/PricingParts';
-import { HomeTransitionBody } from './customSnippets/TransitionParts';
-import { HomeEndBody } from './customSnippets/EndParts';
 import {
   PresentationBrandHeader,
   PresentationInlineVideo,
   PresentationNextButton,
 } from './customSnippets/PresentationParts';
+import { HomeOurPricingBody, NextStepsRef } from './customSnippets/PricingParts';
+import { HomeTransitionBody } from './customSnippets/TransitionParts';
 
 /**
  * Runtime registry: maps a custom-component `name` to its Solid component

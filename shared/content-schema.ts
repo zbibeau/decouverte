@@ -446,10 +446,7 @@ export interface Parcours {
  * Handles arbitrary nesting of leaf / all / any. Returns false on
  * missing variable or comparator mismatch — never throws.
  */
-export function evaluateCondition(
-  condition: BranchingCondition,
-  variables: Record<string, unknown>,
-): boolean {
+export function evaluateCondition(condition: BranchingCondition, variables: Record<string, unknown>): boolean {
   if (isAllCondition(condition)) {
     return condition.all.every((sub) => evaluateCondition(sub, variables));
   }
@@ -468,4 +465,36 @@ export function evaluateCondition(
     default:
       return false;
   }
+}
+
+/**
+ * Compile-time exhaustiveness helper. Call it in the `default:` arm of
+ * a switch over a discriminated union — when a new variant is added to
+ * the union and not handled above, `value` is no longer narrowed to
+ * `never` at this point and the call fails to type-check.
+ *
+ * Pragmatic alternative to enabling the type-aware ESLint rule
+ * `@typescript-eslint/switch-exhaustiveness-check`, which requires
+ * `parserOptions.project` (not configured in this monorepo) and adds
+ * lint pass cost. This helper has zero runtime overhead.
+ *
+ * Returns `void` (not `never`) on purpose : the assertion is decoupled
+ * from control flow so any callers that want to keep a runtime
+ * fallback (e.g. "type de bloc inconnu" JSX) after the assertion
+ * stay reachable. The runtime `console.warn` surfaces legacy rows
+ * that slip in from DB with an out-of-union `type` discriminator.
+ *
+ * Usage :
+ *   switch (block.type) {
+ *     case 'text': return renderText(...);
+ *     case 'video': return renderVideo(...);
+ *     // ... every variant ...
+ *     default:
+ *       assertNever(block);           // compile error if variants missing
+ *       return renderUnknownBlock();  // runtime fallback
+ *   }
+ */
+export function assertNever(value: never): void {
+  // eslint-disable-next-line no-console
+  console.warn('[assertNever] Unhandled discriminated union variant:', value);
 }

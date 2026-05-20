@@ -20,14 +20,7 @@ export interface PreviewParams {
   isolatedBlockType?: string;
 }
 
-const RESERVED_KEYS = new Set([
-  'preview',
-  'step',
-  'isolated',
-  'isolatedBlockId',
-  'isolatedBlockType',
-  '_n',
-]);
+const RESERVED_KEYS = new Set(['preview', 'step', 'isolated', 'isolatedBlockId', 'isolatedBlockType', '_n']);
 
 export function getPreviewParams(): PreviewParams | null {
   if (typeof window === 'undefined') return null;

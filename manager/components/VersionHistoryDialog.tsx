@@ -3,6 +3,7 @@
 import { ExternalLink, History, RotateCcw, X } from 'lucide-react';
 import { useEffect, useState, useTransition } from 'react';
 
+import { useConfirm } from '@/components/ConfirmDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import type { VersionSummary } from '@/lib/actions';
@@ -44,13 +45,16 @@ export function VersionHistoryDialog({
   const [versions, setVersions] = useState(initialVersions);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   // Refresh the list whenever the dialog opens — covers the case where the
   // user published / discarded a draft from elsewhere in the meantime.
   useEffect(() => {
     if (!open) return;
     setError(null);
-    void loadVersions().then(setVersions).catch((e: Error) => setError(e.message));
+    void loadVersions()
+      .then(setVersions)
+      .catch((e: Error) => setError(e.message));
   }, [open, loadVersions]);
 
   // Close on Escape.
@@ -63,7 +67,7 @@ export function VersionHistoryDialog({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  function handleRestore(version: VersionSummary) {
+  async function handleRestore(version: VersionSummary) {
     if (hasDraft) {
       setError(
         `Un brouillon existe déjà (v${
@@ -72,11 +76,12 @@ export function VersionHistoryDialog({
       );
       return;
     }
-    const ok = window.confirm(
-      `Restaurer la v${version.versionNumber} (${formatRelative(version.createdAt)}) ?\n\n` +
-        `Un nouveau brouillon sera créé à partir de cette version. La version publiée actuelle reste en place ` +
-        `tant que tu ne publies pas le brouillon.`,
-    );
+    const ok = await confirm({
+      title: `Restaurer la v${version.versionNumber} (${formatRelative(version.createdAt)}) ?`,
+      message:
+        'Un nouveau brouillon sera créé à partir de cette version. La version publiée actuelle reste en place tant que tu ne publies pas le brouillon.',
+      confirmLabel: 'Restaurer',
+    });
     if (!ok) return;
     setError(null);
     startTransition(async () => {
@@ -91,15 +96,10 @@ export function VersionHistoryDialog({
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => setOpen(true)}
-        className="gap-1.5"
-      >
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-1.5">
         <History className="h-3.5 w-3.5" />
         Historique
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+        <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
           {versions.length}
         </span>
       </Button>
@@ -116,16 +116,16 @@ export function VersionHistoryDialog({
         >
           <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-5 py-3">
+            <div className="border-border bg-muted/30 flex items-center justify-between border-b px-5 py-3">
               <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-muted-foreground" />
+                <History className="text-muted-foreground h-4 w-4" />
                 <h2 className="text-sm font-semibold">Historique de versions</h2>
-                <span className="text-xs text-muted-foreground">— {parcoursSlug}</span>
+                <span className="text-muted-foreground text-xs">— {parcoursSlug}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md p-1 transition"
                 aria-label="Fermer"
               >
                 <X className="h-4 w-4" />
@@ -134,7 +134,7 @@ export function VersionHistoryDialog({
 
             {/* Error banner */}
             {error && (
-              <div className="border-b border-destructive/20 bg-destructive/10 px-5 py-2 text-xs text-destructive">
+              <div className="border-destructive/20 bg-destructive/10 text-destructive border-b px-5 py-2 text-xs">
                 {error}
               </div>
             )}
@@ -142,11 +142,9 @@ export function VersionHistoryDialog({
             {/* List */}
             <div className="flex-1 overflow-y-auto">
               {versions.length === 0 ? (
-                <p className="px-5 py-10 text-center text-sm text-muted-foreground">
-                  Aucune version pour ce parcours.
-                </p>
+                <p className="text-muted-foreground px-5 py-10 text-center text-sm">Aucune version pour ce parcours.</p>
               ) : (
-                <ul className="divide-y divide-border">
+                <ul className="divide-border divide-y">
                   {versions.map((v) => (
                     <VersionRow
                       key={v.id}
@@ -163,16 +161,15 @@ export function VersionHistoryDialog({
             </div>
 
             {/* Footer hint */}
-            <div className="border-t border-border bg-muted/30 px-5 py-2 text-[11px] text-muted-foreground">
+            <div className="border-border bg-muted/30 text-muted-foreground border-t px-5 py-2 text-[11px]">
               {hasDraft ? (
                 <span>
-                  Un brouillon est en cours. Pour restaurer une autre version, jette-le ou
-                  publie-le d&apos;abord.
+                  Un brouillon est en cours. Pour restaurer une autre version, jette-le ou publie-le d&apos;abord.
                 </span>
               ) : (
                 <span>
-                  La restauration crée un nouveau brouillon — la version publiée reste
-                  intacte tant que tu ne le publies pas.
+                  La restauration crée un nouveau brouillon — la version publiée reste intacte tant que tu ne le publies
+                  pas.
                 </span>
               )}
             </div>
@@ -201,18 +198,16 @@ function VersionRow({
   const previewUrl = `${clientUrl}/parcours/${parcoursSlug}?version=${version.id}`;
 
   return (
-    <li className="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-muted/30">
+    <li className="hover:bg-muted/30 flex items-center justify-between gap-3 px-5 py-3 transition">
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold">v{version.versionNumber}</span>
           <StatusBadge status={version.status} isCurrentPublished={version.isCurrentPublished} />
-          <span className="text-[11px] text-muted-foreground">
-            · {formatRelative(version.createdAt)}
-          </span>
+          <span className="text-muted-foreground text-[11px]">· {formatRelative(version.createdAt)}</span>
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          {version.chapterCount} chapitre{version.chapterCount > 1 ? 's' : ''} ·{' '}
-          {version.blockCount} bloc{version.blockCount > 1 ? 's' : ''}
+        <p className="text-muted-foreground text-[11px]">
+          {version.chapterCount} chapitre{version.chapterCount > 1 ? 's' : ''} · {version.blockCount} bloc
+          {version.blockCount > 1 ? 's' : ''}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -220,7 +215,7 @@ function VersionRow({
           href={previewUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-xs text-foreground transition hover:border-primary hover:text-primary"
+          className="border-border text-foreground hover:border-primary hover:text-primary inline-flex items-center gap-1 rounded-md border bg-white px-2.5 py-1 text-xs transition"
           title="Ouvrir cette version dans un nouvel onglet (lecture seule)"
         >
           <ExternalLink className="h-3 w-3" />
@@ -233,8 +228,8 @@ function VersionRow({
           className={
             'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs transition ' +
             (canRestore
-              ? 'border-border bg-white text-foreground hover:border-primary hover:text-primary'
-              : 'cursor-not-allowed border-border/40 bg-muted/30 text-muted-foreground')
+              ? 'border-border text-foreground hover:border-primary hover:text-primary bg-white'
+              : 'border-border/40 bg-muted/30 text-muted-foreground cursor-not-allowed')
           }
           title={
             !canRestore

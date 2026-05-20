@@ -4,6 +4,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
+import { useConfirm } from '@/components/ConfirmDialog';
 import { IconPicker } from '@/components/IconPicker';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
@@ -31,6 +32,7 @@ interface Props {
 export function NavbarVariantsEditor({ initial, saveAction }: Props) {
   const toast = useToast();
   const router = useRouter();
+  const confirm = useConfirm();
   const [variants, setVariants] = useState<NavbarVariant[]>(() => initial.map((v) => ({ ...v })));
   const [pending, startTransition] = useTransition();
 
@@ -41,10 +43,7 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
     setVariants((prev) => prev.filter((_, i) => i !== idx));
   }
   function add() {
-    setVariants((prev) => [
-      ...prev,
-      { key: '', title: '', icon: '', color: '#a78bfa' },
-    ]);
+    setVariants((prev) => [...prev, { key: '', title: '', icon: '', color: '#a78bfa' }]);
   }
   function save() {
     startTransition(async () => {
@@ -54,9 +53,7 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
         router.refresh();
       } catch (e) {
         console.error('[NavbarVariantsEditor] save failed', e);
-        toast.error(
-          `Échec de l'enregistrement : ${e instanceof Error ? e.message : String(e)}`,
-        );
+        toast.error(`Échec de l'enregistrement : ${e instanceof Error ? e.message : String(e)}`);
       }
     });
   }
@@ -66,40 +63,36 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
       <div className="space-y-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
         <p className="font-semibold">💡 À quoi sert une navbar « pilote Tool 1 » ?</p>
         <p>
-          Les navbars te permettent de <strong>découper un chapitre en sous-parties
-          visuelles</strong>. Chaque bloc (vidéo, card, FAQ, keyPoints) peut
-          choisir une navbar : un bandeau coloré apparaît alors au-dessus du
-          contenu et signale au visiteur dans quelle sous-partie il se trouve.
+          Les navbars te permettent de <strong>découper un chapitre en sous-parties visuelles</strong>. Chaque bloc
+          (vidéo, card, FAQ, keyPoints) peut choisir une navbar : un bandeau coloré apparaît alors au-dessus du contenu
+          et signale au visiteur dans quelle sous-partie il se trouve.
         </p>
         <p>
-          Exemple : un chapitre « Filtrer les demandes » peut contenir deux
-          sous-parties — « Les demandes de rendez-vous » et « Les demandes de
-          contact » — chacune marquée par sa propre navbar.
+          Exemple : un chapitre « Filtrer les demandes » peut contenir deux sous-parties — « Les demandes de rendez-vous
+          » et « Les demandes de contact » — chacune marquée par sa propre navbar.
         </p>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         Chaque variant a une <strong>clé</strong> (référencée par
         <code> payload.navbar.variant</code> dans les blocs), un
         <strong> titre</strong>, une <strong>icône</strong>, une
-        <strong> couleur</strong>, et un <strong>pourcentage</strong> optionnel
-        (l'anneau de progression à droite, façon « 40% / 60% »).
+        <strong> couleur</strong>, et un <strong>pourcentage</strong> optionnel (l'anneau de progression à droite, façon
+        « 40% / 60% »).
       </p>
 
       <div className="space-y-3">
         {variants.length === 0 && (
-          <p className="rounded-md border border-dashed border-border bg-muted/30 p-4 text-center text-sm text-muted-foreground">
+          <p className="border-border bg-muted/30 text-muted-foreground rounded-md border border-dashed p-4 text-center text-sm">
             Aucun variant. Ajoute-en un pour commencer.
           </p>
         )}
         {variants.map((v, idx) => (
           <div
             key={idx}
-            className="grid grid-cols-1 gap-3 rounded-md border border-border bg-white p-3 md:grid-cols-[160px_1fr_180px_120px_100px_auto]"
+            className="border-border grid grid-cols-1 gap-3 rounded-md border bg-white p-3 md:grid-cols-[160px_1fr_180px_120px_100px_auto]"
           >
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Clé
-              </label>
+              <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">Clé</label>
               <Input
                 value={v.key}
                 onChange={(e) => update(idx, { key: e.target.value })}
@@ -108,9 +101,7 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Titre
-              </label>
+              <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">Titre</label>
               <Input
                 value={v.title}
                 onChange={(e) => update(idx, { title: e.target.value })}
@@ -118,24 +109,17 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Icône
-              </label>
-              <IconPicker
-                value={v.icon ?? ''}
-                onChange={(icon) => update(idx, { icon: icon || undefined })}
-              />
+              <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">Icône</label>
+              <IconPicker value={v.icon ?? ''} onChange={(icon) => update(idx, { icon: icon || undefined })} />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Couleur
-              </label>
+              <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">Couleur</label>
               <div className="flex items-center gap-1">
                 <input
                   type="color"
                   value={v.color ?? '#a78bfa'}
                   onChange={(e) => update(idx, { color: e.target.value })}
-                  className="h-9 w-12 cursor-pointer rounded border border-border"
+                  className="border-border h-9 w-12 cursor-pointer rounded border"
                 />
                 <Input
                   value={v.color ?? ''}
@@ -146,7 +130,7 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
                 % (opt.)
               </label>
               <Input
@@ -167,13 +151,16 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
                 variant="ghost"
                 size="sm"
                 title="Supprimer ce variant"
-                onClick={() => {
-                  if (window.confirm(`Supprimer le variant « ${v.key || '(sans clé)'} » ?`)) {
-                    remove(idx);
-                  }
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Supprimer le variant « ${v.key || '(sans clé)'} » ?`,
+                    confirmLabel: 'Supprimer',
+                    destructive: true,
+                  });
+                  if (ok) remove(idx);
                 }}
               >
-                <Trash2 className="h-4 w-4 text-destructive" />
+                <Trash2 className="text-destructive h-4 w-4" />
               </Button>
             </div>
           </div>

@@ -8,13 +8,6 @@ import { HOME_SECTION_PROPS } from '../../utils/HomeUtils';
  * Kept as a custom component because the component reads `HOME_STEPS` to
  * navigate — not representable as a generic block.
  */
-export const DoctorToolboxStepsRef: Component<
-  HOME_SECTION_PROPS & { currentStep?: number }
-> = (props) => {
-  return (
-    <DoctorToolboxStepsSection
-      currentStep={props.currentStep ?? 1}
-      setCurrentStep={props.setCurrentStep}
-    />
-  );
+export const DoctorToolboxStepsRef: Component<HOME_SECTION_PROPS & { currentStep?: number }> = (props) => {
+  return <DoctorToolboxStepsSection currentStep={props.currentStep ?? 1} setCurrentStep={props.setCurrentStep} />;
 };

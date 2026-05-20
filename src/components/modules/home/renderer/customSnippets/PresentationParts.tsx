@@ -3,8 +3,8 @@ import { createElementSize } from '@solid-primitives/resize-observer';
 import { clientOnly } from '@solidjs/start';
 import { Component, createSignal } from 'solid-js';
 
-import { defaultVideoI18nPropsFR } from '../../../../primitives/Video';
 import { Title } from '../../../../primitives/Title';
+import { defaultVideoI18nPropsFR } from '../../../../primitives/Video';
 import { SectionNextButton } from '../../components/SectionNextButton';
 import { HOME_STEPS, HOME_STEPS_KEYS } from '../../utils/HomeSteps';
 import { HOME_SECTION_PROPS } from '../../utils/HomeUtils';
@@ -24,23 +24,16 @@ import { HOME_SECTION_PROPS } from '../../utils/HomeUtils';
 // Brand header (logo + centered subtitle)
 // ============================================================
 
-const Video = clientOnly(() =>
-  import('../../../../primitives/Video').then((m) => ({ default: m.Video })),
-);
+const Video = clientOnly(() => import('../../../../primitives/Video').then((m) => ({ default: m.Video })));
 
-export const PresentationBrandHeader: Component<HOME_SECTION_PROPS & { subTitle?: string }> = (
-  props,
-) => {
+export const PresentationBrandHeader: Component<HOME_SECTION_PROPS & { subTitle?: string }> = (props) => {
   const [parentLogoRef, setParentLogoRef] = createSignal<HTMLElement>();
   const size = createElementSize(parentLogoRef);
 
   return (
     <div class="m-auto max-w-[620px] space-y-6 pb-12 pt-32" ref={setParentLogoRef}>
       <div class="m-auto w-fit">
-        <i
-          class="brand icon-brand-logo block h-8 max-w-60 bg-secondary-900"
-          style={{ width: `${size.width}px` }}
-        />
+        <i class="brand icon-brand-logo block h-8 max-w-60 bg-secondary-900" style={{ width: `${size.width}px` }} />
       </div>
       <Title variant="h5" tag="h2" class="text-center text-secondary-900">
         {props.subTitle ?? 'Découvrez MadeForMed'}
@@ -65,11 +58,11 @@ export const PresentationInlineVideo: Component<HOME_SECTION_PROPS & { src?: str
 // Next button (chrome — drives the stepper)
 // ============================================================
 
-export const PresentationNextButton: Component<
-  HOME_SECTION_PROPS & { text?: string; nextStep?: HOME_STEPS_KEYS }
-> = (props) => {
+export const PresentationNextButton: Component<HOME_SECTION_PROPS & { text?: string; nextStep?: HOME_STEPS_KEYS }> = (
+  props,
+) => {
   return (
-    <div class="m-auto flex max-w-[620px] justify-end pt-6 pb-12">
+    <div class="m-auto flex max-w-[620px] justify-end pb-12 pt-6">
       <div>
         <SectionNextButton
           text={props.text ?? "C'est parti"}

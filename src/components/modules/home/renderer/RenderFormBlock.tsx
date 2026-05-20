@@ -1,6 +1,6 @@
 /* eslint-disable solid/no-innerhtml */
-import type { FormBlock, FormField } from '@shared/content-schema';
 import { createForm, getValues, setValue, validate, zodForm } from '@modular-forms/solid';
+import type { FormBlock, FormField } from '@shared/content-schema';
 import { Component, createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import { z } from 'zod';
 
@@ -65,12 +65,7 @@ export const RenderFormBlock: Component<{
   const [mounted, setMounted] = createSignal(false);
   onMount(() => setMounted(true));
 
-  const {
-    data: existingData,
-    setData,
-    chapters: homeChapters,
-    currentStep: homeCurrentStep,
-  } = useHome();
+  const { data: existingData, setData, chapters: homeChapters, currentStep: homeCurrentStep } = useHome();
 
   /** Same logical-order helper as the chapter renderer : walk sections in
    *  first-appearance order, then within a section by sectionOrder then by
@@ -144,115 +139,101 @@ export const RenderFormBlock: Component<{
       <div class="flex grow items-center">
         <Show when={mounted()} fallback={<div class="m-auto w-full max-w-[600px] px-2 pb-12" />}>
           <div class="m-auto w-full max-w-[600px] px-2 pb-12">
-        <Form class="space-y-6" onSubmit={() => {}}>
-          <Card>
-            <div class="space-y-4">
-              <Show when={payload().title || payload().icon}>
-                <div class="flex items-center gap-3">
-                  <Show when={payload().icon}>
-                    <div>
-                      <Icon
-                        icon={`icon ${payload().icon}`}
-                        variant="secondary100Icon400"
-                        size="xs"
-                      />
+            <Form class="space-y-6" onSubmit={() => {}}>
+              <Card>
+                <div class="space-y-4">
+                  <Show when={payload().title || payload().icon}>
+                    <div class="flex items-center gap-3">
+                      <Show when={payload().icon}>
+                        <div>
+                          <Icon icon={`icon ${payload().icon}`} variant="secondary100Icon400" size="xs" />
+                        </div>
+                      </Show>
+                      <Show when={payload().title}>
+                        <div>
+                          <Title tag="p" variant="h5">
+                            {payload().title}
+                          </Title>
+                        </div>
+                      </Show>
                     </div>
                   </Show>
-                  <Show when={payload().title}>
-                    <div>
-                      <Title tag="p" variant="h5">
-                        {payload().title}
-                      </Title>
-                    </div>
+
+                  <Show when={payload().description}>
+                    <Text fontWeight="normal">
+                      <span innerHTML={payload().description!} />
+                    </Text>
                   </Show>
+
+                  <div class="space-y-4">
+                    <For each={payload().fields ?? []}>
+                      {(f) => <RenderField field={f} form={form} Field={Field} />}
+                    </For>
+                  </div>
                 </div>
-              </Show>
+              </Card>
 
-              <Show when={payload().description}>
-                <Text fontWeight="normal">
-                  <span innerHTML={payload().description!} />
-                </Text>
-              </Show>
-
-              <div class="space-y-4">
-                <For each={payload().fields ?? []}>
-                  {(f) => <RenderField field={f} form={form} Field={Field} />}
-                </For>
+              <div class="flex justify-end pt-6">
+                <div>
+                  <SectionNextButton
+                    text={payload().nextButtonText ?? 'Continuer'}
+                    onClick={() => {
+                      const merged = { ...(existingData?.() ?? {}), ...data() };
+                      setData(merged as never);
+                      // Advance to the very next block. Two cases:
+                      //
+                      // (a) There is at least one block AFTER the form in
+                      //     the SAME chapter (e.g. a conditional that branches
+                      //     on the form answers, or a text wrap-up) → scroll
+                      //     smoothly to it. Do NOT change chapter.
+                      // (b) The form is the LAST block of the chapter →
+                      //     navigate to the next chapter in the parcours'
+                      //     logical reading order.
+                      //
+                      // The post-form blocks are gated by `formCompleted()` in
+                      // ChapterRenderer's `shouldRenderAt`. `setData` above
+                      // flips that to true, but Solid hasn't yet flushed the
+                      // re-render — so we defer the DOM query by one task tick.
+                      // setTimeout(0) is enough in practice (microtask queue
+                      // drains first), but 50ms gives margin for slower
+                      // machines / animations.
+                      setTimeout(() => {
+                        // `FormBlock` doesn't expose `id` in the schema type
+                        // (id lives on `BlockWithId = ContentBlock & { id }`),
+                        // but the runtime value coming from the chapter loader
+                        // always carries it. Cast locally.
+                        const formId = (props.block as FormBlock & { id?: string }).id;
+                        const formWrapper = formId ? document.getElementById(`block-${formId}`) : null;
+                        let next: Element | null = formWrapper?.nextElementSibling ?? null;
+                        while (next && !(next as HTMLElement).dataset.blockId) {
+                          next = next.nextElementSibling;
+                        }
+                        if (next) {
+                          (next as HTMLElement).scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start',
+                          });
+                          return;
+                        }
+                        // Fallback (case b) — no sibling block in DOM. Move
+                        // to the next chapter in the parcours' logical
+                        // section-aware reading order.
+                        const all = homeChapters?.() ?? [];
+                        const ordered = logicallyOrdered(all);
+                        const curIdx = ordered.findIndex((c) => c.slug === homeCurrentStep?.());
+                        const fallback = (HOME_STEPS as Record<string, HOME_STEPS_KEYS>).INTRO;
+                        const targetSlug =
+                          curIdx >= 0 && curIdx + 1 < ordered.length
+                            ? (ordered[curIdx + 1].slug as HOME_STEPS_KEYS)
+                            : fallback;
+                        props.sectionProps.setCurrentStep(targetSlug);
+                      }, 50);
+                    }}
+                    disabled={form.invalid}
+                  />
+                </div>
               </div>
-            </div>
-          </Card>
-
-          <div class="flex justify-end pt-6">
-            <div>
-              <SectionNextButton
-                text={payload().nextButtonText ?? 'Continuer'}
-                onClick={() => {
-                  const merged = { ...(existingData?.() ?? {}), ...data() };
-                  setData(merged as never);
-                  // Advance to the very next block. Two cases:
-                  //
-                  // (a) There is at least one block AFTER the form in
-                  //     the SAME chapter (e.g. a conditional that branches
-                  //     on the form answers, or a text wrap-up) → scroll
-                  //     smoothly to it. Do NOT change chapter.
-                  // (b) The form is the LAST block of the chapter →
-                  //     navigate to the next chapter in the parcours'
-                  //     logical reading order.
-                  //
-                  // The post-form blocks are gated by `formCompleted()` in
-                  // ChapterRenderer's `shouldRenderAt`. `setData` above
-                  // flips that to true, but Solid hasn't yet flushed the
-                  // re-render — so we defer the DOM query by one task tick.
-                  // setTimeout(0) is enough in practice (microtask queue
-                  // drains first), but 50ms gives margin for slower
-                  // machines / animations.
-                  setTimeout(() => {
-                    // `FormBlock` doesn't expose `id` in the schema type
-                    // (id lives on `BlockWithId = ContentBlock & { id }`),
-                    // but the runtime value coming from the chapter loader
-                    // always carries it. Cast locally.
-                    const formId = (props.block as FormBlock & { id?: string })
-                      .id;
-                    const formWrapper = formId
-                      ? document.getElementById(`block-${formId}`)
-                      : null;
-                    let next: Element | null =
-                      formWrapper?.nextElementSibling ?? null;
-                    while (
-                      next &&
-                      !(next as HTMLElement).dataset.blockId
-                    ) {
-                      next = next.nextElementSibling;
-                    }
-                    if (next) {
-                      (next as HTMLElement).scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start',
-                      });
-                      return;
-                    }
-                    // Fallback (case b) — no sibling block in DOM. Move
-                    // to the next chapter in the parcours' logical
-                    // section-aware reading order.
-                    const all = homeChapters?.() ?? [];
-                    const ordered = logicallyOrdered(all);
-                    const curIdx = ordered.findIndex(
-                      (c) => c.slug === homeCurrentStep?.(),
-                    );
-                    const fallback =
-                      (HOME_STEPS as Record<string, HOME_STEPS_KEYS>).INTRO;
-                    const targetSlug =
-                      curIdx >= 0 && curIdx + 1 < ordered.length
-                        ? (ordered[curIdx + 1].slug as HOME_STEPS_KEYS)
-                        : fallback;
-                    props.sectionProps.setCurrentStep(targetSlug);
-                  }, 50);
-                }}
-                disabled={form.invalid}
-              />
-            </div>
-          </div>
-        </Form>
+            </Form>
           </div>
         </Show>
       </div>

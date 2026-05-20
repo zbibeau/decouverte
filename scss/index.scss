@@ -1,8 +1,35 @@
-@import "./font.scss";
+@import './font.scss';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------------------------------------------------------------------- */
+/* Accessibility : respect the user's OS-level reduced-motion preference. */
+/*                                                                        */
+/* WCAG 2.1 SC 2.3.3 (AAA, but treated as A for medical content audiences */
+/* sensitive to vestibular disorders / vertigo). When the OS reports      */
+/* `prefers-reduced-motion: reduce`, ALL animations, transitions and CSS  */
+/* scroll-behavior smoothing are reduced to a no-op (effectively 0.01ms   */
+/* = instant). The `!important` is necessary to win against Tailwind's    */
+/* utility classes (`transition-*`, `animate-*`) and Vidstack's CSS that  */
+/* sets `transition` inline on its players.                               */
+/*                                                                        */
+/* Components that need a special handling beyond just disabling          */
+/* (e.g. confetti, parallax) should additionally consult                  */
+/* `matchMedia('(prefers-reduced-motion: reduce)').matches` in JS so they */
+/* can skip rendering entirely rather than just freezing the animation.   */
+/* ---------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 // For video player
 .player {
@@ -16,7 +43,7 @@
   }
 }
 
-@import "./icons.scss";
+@import './icons.scss';
 
 .slide-fade-enter-active,
 .slide-fade-exit-active {
@@ -38,10 +65,24 @@
   }
 }
 
+/* Skeleton loader shimmer (see src/components/atoms/Skeleton.tsx). The
+ * `translate(-100%)` start + `translate(100%)` end slides the white
+ * highlight band across the placeholder. Linear timing, infinite loop.
+ * Disabled automatically under `prefers-reduced-motion: reduce` via the
+ * global rule at the top of this file. */
+@keyframes mfm-skeleton-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
 /* Bilan FONT */
 /* ----------------- */
 @font-face {
-  font-family: "Doctorline";
+  font-family: 'Doctorline';
   font-weight: normal;
   font-style: normal;
   src: url(/fonts/doctorline.ttf);

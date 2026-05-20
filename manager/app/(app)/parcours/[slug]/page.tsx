@@ -14,11 +14,7 @@ import {
 } from '@/lib/actions';
 import { createClient } from '@/lib/supabase/server';
 
-export default async function ChapterListPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function ChapterListPage({ params }: { params: Promise<{ slug: string }> }) {
   const raw = await params;
   const slug = decodeURIComponent(raw.slug);
   const supabase = await createClient();
@@ -28,9 +24,7 @@ export default async function ChapterListPage({
 
   const { data: chapters } = await supabase
     .from('chapter')
-    .select(
-      'id, slug, title, "order", section_label, section_order, card_image, card_short_title',
-    )
+    .select('id, slug, title, "order", section_label, section_order, card_image, card_short_title')
     .eq('version_id', versionId ?? '')
     .order('order', { ascending: true });
 
@@ -67,10 +61,7 @@ export default async function ChapterListPage({
     fd.set('cardShortTitle', cardShortTitle ?? '');
     await updateChapterMeta(slug, chapterId, fd);
   }
-  async function moveSectionAction(
-    sectionLabel: string | null,
-    direction: -1 | 1,
-  ) {
+  async function moveSectionAction(sectionLabel: string | null, direction: -1 | 1) {
     'use server';
     await moveSectionRelative(slug, sectionLabel, direction);
   }
@@ -84,13 +75,9 @@ export default async function ChapterListPage({
   const navbarUsageByChapter = new Map<string, string[]>();
   const allNavbarVariants = await getNavbarVariants(slug);
   if (chapterIds.length > 0) {
-    const { data: blockRows } = await supabase
-      .from('block')
-      .select('chapter_id, payload')
-      .in('chapter_id', chapterIds);
+    const { data: blockRows } = await supabase.from('block').select('chapter_id, payload').in('chapter_id', chapterIds);
     for (const b of blockRows ?? []) {
-      const variant = (b.payload as { navbar?: { variant?: string } } | null)?.navbar
-        ?.variant;
+      const variant = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
       if (!variant) continue;
       const arr = navbarUsageByChapter.get(b.chapter_id) ?? [];
       if (!arr.includes(variant)) arr.push(variant);
@@ -100,16 +87,14 @@ export default async function ChapterListPage({
   // Tiny lookup so the list shows the human title + colour rather than the
   // raw key (falls back to the key when a variant is missing in the
   // registry — typically an undeclared legacy value).
-  const navbarVariantByKey = new Map(
-    allNavbarVariants.map((v) => [v.key, v]),
-  );
+  const navbarVariantByKey = new Map(allNavbarVariants.map((v) => [v.key, v]));
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Chapitres</CardTitle>
-          <p className="text-xs text-muted-foreground">{(chapters ?? []).length} chapitre(s)</p>
+          <p className="text-muted-foreground text-xs">{(chapters ?? []).length} chapitre(s)</p>
         </CardHeader>
         <CardContent>
           <ChapterList
@@ -143,7 +128,7 @@ export default async function ChapterListPage({
           <CardTitle>Ajouter un chapitre</CardTitle>
         </CardHeader>
         <CardContent>
-          <CreateChapterForm createAction={createChapterAction} />
+          <CreateChapterForm createAction={createChapterAction} existingSlugs={(chapters ?? []).map((c) => c.slug)} />
         </CardContent>
       </Card>
     </div>

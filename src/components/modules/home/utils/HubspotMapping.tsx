@@ -1,9 +1,5 @@
 import { PERSON_WHO_HANDLE_CALLS } from '../context/HomeContext';
-import {
-  applyDemoToHubspotDynamic,
-  applyHubspotToDemoDynamic,
-  DynamicHubspotMapping,
-} from './dynamicHubspotMapping';
+import { applyDemoToHubspotDynamic, applyHubspotToDemoDynamic, DynamicHubspotMapping } from './dynamicHubspotMapping';
 import { HOME_STEPS } from './HomeSteps';
 
 type Entries<T> = {
@@ -192,7 +188,7 @@ export const DemoObjectToHubspotObject = (data: DemoObject) => {
         switch (value) {
           case PERSON_WHO_HANDLE_CALLS['REMOTE-SECRETARY']:
             // eslint-disable-next-line prettier/prettier
-            result.current_solution = 'J\'ai délégué les appels à une télésecrétaire';
+            result.current_solution = "J'ai délégué les appels à une télésecrétaire";
             break;
 
           case PERSON_WHO_HANDLE_CALLS.DOCTOR:
@@ -201,7 +197,7 @@ export const DemoObjectToHubspotObject = (data: DemoObject) => {
 
           case PERSON_WHO_HANDLE_CALLS.SECRETARY:
             // eslint-disable-next-line prettier/prettier
-            result.current_solution = 'J\'ai embauché une secrétaire';
+            result.current_solution = "J'ai embauché une secrétaire";
             break;
         }
         break;

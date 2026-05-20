@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toaster';
 
 interface Props {
@@ -31,28 +32,31 @@ interface Props {
  *
  * Keeps the same `window.confirm()` UX as the previous `ConfirmForm`.
  */
-export function PublishDraftButton({
-  publishAction,
-  confirmMessage,
-  disabled = false,
-  label = 'Publier',
-}: Props) {
+export function PublishDraftButton({ publishAction, confirmMessage, disabled = false, label = 'Publier' }: Props) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const [isPending, startTransition] = useTransition();
 
-  function handleClick() {
+  async function handleClick() {
     if (disabled) return;
-    if (!window.confirm(confirmMessage)) return;
+    // Split the legacy single-string `confirmMessage` so the first line
+    // (typically "Publier la vX ?") becomes the dialog title and the
+    // body lists the diff bullets ("• 3 nouveau(x)", etc.).
+    const [firstLine, ...rest] = confirmMessage.split('\n').filter(Boolean);
+    const ok = await confirm({
+      title: firstLine ?? 'Publier le brouillon ?',
+      message: rest.length > 0 ? rest.join('\n') : undefined,
+      confirmLabel: 'Publier',
+    });
+    if (!ok) return;
     startTransition(async () => {
       try {
         await publishAction();
         router.refresh();
         toast.success('Brouillon publié.');
       } catch (e) {
-        toast.error(
-          `Publication échouée : ${e instanceof Error ? e.message : String(e)}`,
-        );
+        toast.error(`Publication échouée : ${e instanceof Error ? e.message : String(e)}`);
       }
     });
   }
@@ -62,7 +66,7 @@ export function PublishDraftButton({
       type="button"
       onClick={handleClick}
       disabled={disabled || isPending}
-      className="inline-flex h-8 items-center justify-center rounded-lg bg-brand-primary-600 px-3 text-xs font-medium text-white shadow-brand transition-all hover:bg-brand-primary-700 active:bg-brand-primary-800 disabled:pointer-events-none disabled:opacity-50"
+      className="bg-brand-primary-600 shadow-brand hover:bg-brand-primary-700 active:bg-brand-primary-800 inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium text-white transition-all disabled:pointer-events-none disabled:opacity-50"
     >
       {isPending ? 'Publication…' : label}
     </button>

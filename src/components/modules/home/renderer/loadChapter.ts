@@ -76,11 +76,8 @@ export async function loadPublishedChapter(
     wrapperClass: chapter.wrapper_class ?? undefined,
     blocks,
     branchingNext: chapter.branching_next ?? [],
-    cardImage:
-      (chapter as { card_image?: string | null }).card_image ?? undefined,
-    cardShortTitle:
-      (chapter as { card_short_title?: string | null }).card_short_title ??
-      undefined,
+    cardImage: (chapter as { card_image?: string | null }).card_image ?? undefined,
+    cardShortTitle: (chapter as { card_short_title?: string | null }).card_short_title ?? undefined,
   };
 }
 
@@ -112,10 +109,7 @@ export interface ChapterStub {
    *  in the reading flow so visitors (and the dev) can revisit their answers. */
   hasForm?: boolean;
 }
-export async function loadChapterSequence(
-  parcoursSlug: string,
-  versionId?: string,
-): Promise<ChapterStub[]> {
+export async function loadChapterSequence(parcoursSlug: string, versionId?: string): Promise<ChapterStub[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -149,9 +143,7 @@ export async function loadChapterSequence(
 
   const { data: rows } = await supabase
     .from('chapter')
-    .select(
-      'id, slug, title, "order", section_label, section_order, card_image, card_short_title',
-    )
+    .select('id, slug, title, "order", section_label, section_order, card_image, card_short_title')
     .eq('version_id', effectiveVersionId)
     .order('order', { ascending: true });
 
@@ -202,11 +194,7 @@ export interface NavbarVariant {
 export async function loadNavbarVariants(parcoursSlug: string): Promise<NavbarVariant[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
-    .from('parcours')
-    .select('navbar_variants')
-    .eq('slug', parcoursSlug)
-    .maybeSingle();
+  const { data } = await supabase.from('parcours').select('navbar_variants').eq('slug', parcoursSlug).maybeSingle();
   const raw = (data as { navbar_variants?: unknown } | null)?.navbar_variants;
   return Array.isArray(raw) ? (raw as NavbarVariant[]) : [];
 }

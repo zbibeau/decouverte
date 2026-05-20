@@ -17,18 +17,14 @@ import { ChapterRenderer } from './ChapterRenderer';
  * (e.g. heroTitle.title), which would otherwise surface as a Next.js
  * error overlay in the manager iframe.
  */
-export const IsolatedBlockPreview: Component<
-  HOME_SECTION_PROPS & { blockId: string; blockType: string }
-> = (props) => {
+export const IsolatedBlockPreview: Component<HOME_SECTION_PROPS & { blockId: string; blockType: string }> = (props) => {
   // We capture the full block (type + payload) from the parent's postMessage
   // and use it DIRECTLY in the synthesized chapter — instead of relying on
   // `ChapterRenderer`'s own `setBlockOverride` listener. That listener would
   // miss the first message because ChapterRenderer is only mounted once
   // `hasContent` flips to true, which happens AFTER the message has been
   // dispatched. Storing the block locally avoids that race.
-  const [liveBlock, setLiveBlock] = createSignal<
-    (ContentBlock & { id: string }) | null
-  >(null);
+  const [liveBlock, setLiveBlock] = createSignal<(ContentBlock & { id: string }) | null>(null);
 
   onMount(() => {
     if (typeof window === 'undefined') return;
@@ -42,8 +38,7 @@ export const IsolatedBlockPreview: Component<
       ) {
         const incoming = e.data.block as { type?: string; payload?: unknown };
         const payload = incoming.payload;
-        const hasKeys =
-          payload && typeof payload === 'object' && Object.keys(payload as object).length > 0;
+        const hasKeys = payload && typeof payload === 'object' && Object.keys(payload as object).length > 0;
         if (!hasKeys) return;
         setLiveBlock({
           id: props.blockId,
@@ -59,10 +54,7 @@ export const IsolatedBlockPreview: Component<
     // on iframe load, but Solid's onMount runs slightly later — so without
     // this handshake the first push can be missed.
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage(
-        { type: 'preview:isolatedReady', blockId: props.blockId },
-        '*',
-      );
+      window.parent.postMessage({ type: 'preview:isolatedReady', blockId: props.blockId }, '*');
     }
 
     onCleanup(() => window.removeEventListener('message', handler));
@@ -87,12 +79,11 @@ export const IsolatedBlockPreview: Component<
           <div class="flex min-h-dvh items-center justify-center p-8">
             <div class="max-w-md space-y-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
               <div class="text-4xl">✏️</div>
-              <h2 class="text-lg font-semibold text-slate-700">
-                En attente de votre contenu
-              </h2>
+              <h2 class="text-lg font-semibold text-slate-700">En attente de votre contenu</h2>
               <p class="text-sm text-slate-500">
-                Commencez à remplir les champs du bloc <code class="rounded bg-white px-1 py-0.5 text-xs">{props.blockType}</code>{' '}
-                à gauche — la prévisualisation s&apos;affichera ici en direct.
+                Commencez à remplir les champs du bloc{' '}
+                <code class="rounded bg-white px-1 py-0.5 text-xs">{props.blockType}</code> à gauche — la
+                prévisualisation s&apos;affichera ici en direct.
               </p>
             </div>
           </div>

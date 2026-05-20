@@ -1,20 +1,11 @@
 'use client';
 
-import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  ChevronRight,
-  Copy,
-  Pencil,
-  Trash2,
-  Upload,
-  X,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronRight, Copy, Pencil, Trash2, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 
+import { useConfirm } from '@/components/ConfirmDialog';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
@@ -63,10 +54,7 @@ interface Props {
   ) => Promise<void>;
   /** Server action swapping a section with its neighbour in the global
    *  chapter order. Powers the ↑ / ↓ buttons in each section header. */
-  moveSectionAction: (
-    sectionLabel: string | null,
-    direction: -1 | 1,
-  ) => Promise<void>;
+  moveSectionAction: (sectionLabel: string | null, direction: -1 | 1) => Promise<void>;
 }
 
 function DiffBadge({ diff }: { diff?: ChapterRow['diff'] }) {
@@ -98,6 +86,7 @@ export function ChapterList({
 }: Props) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const [isPending, startTransition] = useTransition();
   // Local "edit mode" state — only one row at a time. When set, the row
   // renders an inline edit form instead of the static link.
@@ -116,9 +105,7 @@ export function ChapterList({
     setEditTitle(c.title);
     setEditSlug(c.slug);
     setEditSectionLabel(c.sectionLabel ?? '');
-    setEditSectionOrder(
-      c.sectionOrder == null ? '' : String(c.sectionOrder),
-    );
+    setEditSectionOrder(c.sectionOrder == null ? '' : String(c.sectionOrder));
     setEditCardImage(c.cardImage ?? '');
     setEditCardShortTitle(c.cardShortTitle ?? '');
   }
@@ -146,9 +133,7 @@ export function ChapterList({
       toast.success('Image carte uploadée.');
     } catch (e) {
       console.error('[ChapterList] card image upload failed', e);
-      toast.error(
-        `Upload échoué : ${e instanceof Error ? e.message : String(e)}`,
-      );
+      toast.error(`Upload échoué : ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setCardImageUploading(false);
       if (cardImageInputRef.current) cardImageInputRef.current.value = '';
@@ -173,11 +158,7 @@ export function ChapterList({
         router.refresh();
       } catch (e) {
         console.error('[ChapterList] update failed', e);
-        toast.error(
-          `Échec de la mise à jour de « ${originalTitle} » — ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        );
+        toast.error(`Échec de la mise à jour de « ${originalTitle} » — ${e instanceof Error ? e.message : String(e)}`);
       }
     });
   }
@@ -207,14 +188,15 @@ export function ChapterList({
       }
     });
   }
-  function handleDelete(id: string, title: string) {
-    if (
-      !window.confirm(
-        `Supprimer le chapitre « ${title} » ?\n\nCette action ouvre/modifie le brouillon ; elle ne touche pas la version publiée tant que tu n'as pas cliqué « Publier ».`,
-      )
-    ) {
-      return;
-    }
+  async function handleDelete(id: string, title: string) {
+    const ok = await confirm({
+      title: `Supprimer le chapitre « ${title} » ?`,
+      message:
+        "Cette action ouvre / modifie le brouillon ; elle ne touche pas la version publiée tant que tu n'as pas cliqué « Publier ».",
+      confirmLabel: 'Supprimer',
+      destructive: true,
+    });
+    if (!ok) return;
     startTransition(async () => {
       try {
         await deleteAction(id);
@@ -228,7 +210,22 @@ export function ChapterList({
   }
 
   if (chapters.length === 0) {
-    return <p className="py-6 text-center text-sm text-muted-foreground">Aucun chapitre.</p>;
+    // Empty state with an explicit affordance : the previous "Aucun
+    // chapitre." line was correct but felt like a dead-end. Surfacing
+    // the CreateChapterForm right here turns the empty state into the
+    // landing CTA — one click and the author is off.
+    return (
+      <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
+        <div className="text-3xl" aria-hidden="true">
+          📖
+        </div>
+        <p className="text-sm font-medium">Aucun chapitre pour l&apos;instant</p>
+        <p className="text-muted-foreground max-w-md text-xs">
+          Un chapitre regroupe les blocs (texte, vidéo, formulaire…) qu&apos;un visiteur va parcourir. Crée le premier
+          ci-dessous.
+        </p>
+      </div>
+    );
   }
 
   // Group chapters by section. Order of sections = order in which each
@@ -255,9 +252,7 @@ export function ChapterList({
   // Flat list of distinct existing section labels — fuels the dropdown in
   // the edit form so the author picks from existing sections rather than
   // re-typing (and accidentally creating a duplicate).
-  const existingSections = groupedChapters
-    .filter((g) => g.sectionLabel != null)
-    .map((g) => g.sectionLabel as string);
+  const existingSections = groupedChapters.filter((g) => g.sectionLabel != null).map((g) => g.sectionLabel as string);
 
   // Cross-section drag : when SortableList returns the reordered ids of a
   // section's slice, we splice them back into the full list at the correct
@@ -270,11 +265,7 @@ export function ChapterList({
     // Find the position where the first chapter of this section currently is.
     const firstIdxInGlobal = all.findIndex((id) => sectionIds.has(id));
     const insertAt = Math.max(0, firstIdxInGlobal);
-    const reassembled = [
-      ...remaining.slice(0, insertAt),
-      ...newOrder,
-      ...remaining.slice(insertAt),
-    ];
+    const reassembled = [...remaining.slice(0, insertAt), ...newOrder, ...remaining.slice(insertAt)];
     handleReorder(reassembled);
     void sectionLabel; // currently unused, kept for future per-section logic
   }
@@ -282,15 +273,10 @@ export function ChapterList({
   return (
     <div className="space-y-3">
       {groupedChapters.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 p-2 text-xs">
-          <span className="font-semibold text-muted-foreground">
-            {groupedChapters.length} section(s) :
-          </span>
+        <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2 rounded-md border p-2 text-xs">
+          <span className="text-muted-foreground font-semibold">{groupedChapters.length} section(s) :</span>
           {groupedChapters.map((g, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5"
-            >
+            <span key={i} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5">
               {g.sectionLabel ? (
                 <strong className="text-foreground">{g.sectionLabel}</strong>
               ) : (
@@ -303,15 +289,13 @@ export function ChapterList({
       )}
       {groupedChapters.map((group, groupIdx) => (
         <div key={group.sectionLabel ?? '__none__'} className="space-y-0">
-          <div className="flex items-center gap-2 rounded-t-md border border-b-0 border-border bg-muted/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-primary-700">
+          <div className="border-border bg-muted/40 text-brand-primary-700 flex items-center gap-2 rounded-t-md border border-b-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide">
             {group.sectionLabel ? (
               <span>📁 {group.sectionLabel}</span>
             ) : (
-              <span className="italic text-muted-foreground">(sans section)</span>
+              <span className="text-muted-foreground italic">(sans section)</span>
             )}
-            <span className="text-muted-foreground/70">
-              · {group.items.length} chapitre(s)
-            </span>
+            <span className="text-muted-foreground/70">· {group.items.length} chapitre(s)</span>
             {/* Section reorder ↑/↓ — swaps the whole group with its
                  neighbour in the chapter list. Disabled at the boundaries
                  so the first section can't go higher and the last can't
@@ -328,11 +312,7 @@ export function ChapterList({
                       await moveSectionAction(group.sectionLabel, -1);
                       router.refresh();
                     } catch (e) {
-                      toast.error(
-                        `Déplacement échoué : ${
-                          e instanceof Error ? e.message : String(e)
-                        }`,
-                      );
+                      toast.error(`Déplacement échoué : ${e instanceof Error ? e.message : String(e)}`);
                     }
                   });
                 }}
@@ -350,11 +330,7 @@ export function ChapterList({
                       await moveSectionAction(group.sectionLabel, 1);
                       router.refresh();
                     } catch (e) {
-                      toast.error(
-                        `Déplacement échoué : ${
-                          e instanceof Error ? e.message : String(e)
-                        }`,
-                      );
+                      toast.error(`Déplacement échoué : ${e instanceof Error ? e.message : String(e)}`);
                     }
                   });
                 }}
@@ -363,71 +339,63 @@ export function ChapterList({
               </Button>
             </div>
           </div>
-          <div className="rounded-b-md border border-border">
-    <SortableList
-      items={group.items}
-      onReorder={(ids) => handleSectionReorder(group.sectionLabel, ids)}
-      itemClassName="border-b border-border last:border-b-0"
-      renderItem={(c, dragHandle, idx) => {
-        const isEditing = editingId === c.id;
-        // Section header is now rendered above each section group, not
-        // inline per row, so we no longer emit it here.
-        void idx;
-        function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commitEdit(c.id, c.title);
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            cancelEdit();
-          }
-        }
-        return (
-          <div
-            className="rounded px-2 py-3 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              {dragHandle}
-            {isEditing ? (
-              <>
-                <span className="font-mono text-xs text-muted-foreground">{c.order}.</span>
-                <Input
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  placeholder="Titre du chapitre"
-                  className="h-8 flex-1 text-sm"
-                  autoFocus
-                  onKeyDown={handleKey}
-                />
-                <Input
-                  value={editSlug}
-                  onChange={(e) => setEditSlug(e.target.value)}
-                  placeholder="STEP_SLUG"
-                  className="h-8 w-[180px] font-mono text-xs"
-                  onKeyDown={handleKey}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="Enregistrer"
-                  disabled={isPending}
-                  onClick={() => commitEdit(c.id, c.title)}
-                >
-                  <Check className="h-4 w-4 text-emerald-600" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="Annuler"
-                  disabled={isPending}
-                  onClick={cancelEdit}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </>
-            ) : (
-              <>
-                {/*
+          <div className="border-border rounded-b-md border">
+            <SortableList
+              items={group.items}
+              onReorder={(ids) => handleSectionReorder(group.sectionLabel, ids)}
+              itemClassName="border-b border-border last:border-b-0"
+              renderItem={(c, dragHandle, idx) => {
+                const isEditing = editingId === c.id;
+                // Section header is now rendered above each section group, not
+                // inline per row, so we no longer emit it here.
+                void idx;
+                function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitEdit(c.id, c.title);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelEdit();
+                  }
+                }
+                return (
+                  <div className="rounded px-2 py-3 transition-colors">
+                    <div className="flex items-center gap-2">
+                      {dragHandle}
+                      {isEditing ? (
+                        <>
+                          <span className="text-muted-foreground font-mono text-xs">{c.order}.</span>
+                          <Input
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            placeholder="Titre du chapitre"
+                            className="h-8 flex-1 text-sm"
+                            autoFocus
+                            onKeyDown={handleKey}
+                          />
+                          <Input
+                            value={editSlug}
+                            onChange={(e) => setEditSlug(e.target.value)}
+                            placeholder="STEP_SLUG"
+                            className="h-8 w-[180px] font-mono text-xs"
+                            onKeyDown={handleKey}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Enregistrer"
+                            disabled={isPending}
+                            onClick={() => commitEdit(c.id, c.title)}
+                          >
+                            <Check className="h-4 w-4 text-emerald-600" />
+                          </Button>
+                          <Button variant="ghost" size="sm" title="Annuler" disabled={isPending} onClick={cancelEdit}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          {/*
                   Row layout : the "open chapter" Link is split into two
                   segments around the Pencil button so the pencil sits
                   visually right after the title — per UX feedback, the user
@@ -444,154 +412,154 @@ export function ChapterList({
                   share the same href + `hover:underline` so the row reads
                   visually as a single clickable area.
                 */}
-                <Link
-                  href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
-                  className="flex items-center gap-3 hover:underline"
-                >
-                  <span className="font-mono text-xs text-muted-foreground">{c.order}.</span>
-                  {c.cardImage && (
-                    // Small thumbnail of the chapter card image — gives the
-                    // author a visual marker to spot a chapter at a glance
-                    // (same image as the section-panorama card).
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={c.cardImage}
-                      alt=""
-                      className="h-8 w-12 shrink-0 rounded border border-border object-cover"
-                    />
-                  )}
-                  <span className="font-medium">{c.title}</span>
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="Renommer (titre + slug + section + carte)"
-                  disabled={isPending}
-                  onClick={() => startEdit(c)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Link
-                  href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
-                  className="flex flex-1 items-center gap-3 hover:underline"
-                >
-                  <code className="text-xs text-muted-foreground">({c.slug})</code>
-                  <DiffBadge diff={c.diff} />
-                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="Dupliquer"
-                  disabled={isPending}
-                  onClick={() => handleDuplicate(c.id, c.title)}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="Supprimer"
-                  disabled={isPending}
-                  onClick={() => handleDelete(c.id, c.title)}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </>
-            )}
-            </div>
-            {isEditing && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
-                <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Section sidebar
-                </label>
-                <SectionPicker
-                  value={editSectionLabel}
-                  onChange={setEditSectionLabel}
-                  existingSections={existingSections}
-                  currentSection={c.sectionLabel ?? null}
-                />
-                <p className="basis-full text-[10px] text-muted-foreground">
-                  Choisis une section existante dans le dropdown, ou « + Nouvelle
-                  section… » pour en créer une. Vide = chapitre non groupé.
-                </p>
-                <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Ordre
-                </label>
-                <Input
-                  type="number"
-                  value={editSectionOrder}
-                  onChange={(e) => setEditSectionOrder(e.target.value)}
-                  placeholder="(auto)"
-                  className="h-8 w-[80px] text-xs"
-                  onKeyDown={handleKey}
-                />
-                <div className="basis-full" />
-                <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Titre carte
-                </label>
-                <Input
-                  value={editCardShortTitle}
-                  onChange={(e) => setEditCardShortTitle(e.target.value)}
-                  placeholder={`(défaut : ${c.title})`}
-                  className="h-8 flex-1 text-sm"
-                  onKeyDown={handleKey}
-                />
-                <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Image carte
-                </label>
-                <Input
-                  value={editCardImage}
-                  onChange={(e) => setEditCardImage(e.target.value)}
-                  placeholder="URL ou upload"
-                  className="h-8 flex-1 text-xs"
-                  onKeyDown={handleKey}
-                />
-                <input
-                  ref={cardImageInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleCardImageUpload(file);
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={cardImageUploading}
-                  onClick={() => cardImageInputRef.current?.click()}
-                  title="Uploader une image"
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                  {cardImageUploading ? '…' : ''}
-                </Button>
-                {editCardImage && (
-                  <div className="basis-full">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={editCardImage}
-                      alt={`Aperçu ${c.title}`}
-                      className="mt-1 h-24 w-auto rounded border border-border object-cover"
-                    />
-                  </div>
-                )}
-                <p className="basis-full text-[10px] text-muted-foreground">
-                  Le titre court et l'image servent au visuel de transition de
-                  chapitre (panorama de section) en fin de chapitre.
-                </p>
-              </div>
-            )}
-            {/* Navbar chips removed from this row per UX feedback : too
+                          <Link
+                            href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
+                            className="flex items-center gap-3 hover:underline"
+                          >
+                            <span className="text-muted-foreground font-mono text-xs">{c.order}.</span>
+                            {c.cardImage && (
+                              // Small thumbnail of the chapter card image — gives the
+                              // author a visual marker to spot a chapter at a glance
+                              // (same image as the section-panorama card).
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={c.cardImage}
+                                alt=""
+                                className="border-border h-8 w-12 shrink-0 rounded border object-cover"
+                              />
+                            )}
+                            <span className="font-medium">{c.title}</span>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Renommer (titre + slug + section + carte)"
+                            disabled={isPending}
+                            onClick={() => startEdit(c)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Link
+                            href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
+                            className="flex flex-1 items-center gap-3 hover:underline"
+                          >
+                            <code className="text-muted-foreground text-xs">({c.slug})</code>
+                            <DiffBadge diff={c.diff} />
+                            <ChevronRight className="text-muted-foreground ml-auto h-4 w-4" />
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Dupliquer"
+                            disabled={isPending}
+                            onClick={() => handleDuplicate(c.id, c.title)}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Supprimer"
+                            disabled={isPending}
+                            onClick={() => handleDelete(c.id, c.title)}
+                          >
+                            <Trash2 className="text-destructive h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {isEditing && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
+                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                          Section sidebar
+                        </label>
+                        <SectionPicker
+                          value={editSectionLabel}
+                          onChange={setEditSectionLabel}
+                          existingSections={existingSections}
+                          currentSection={c.sectionLabel ?? null}
+                        />
+                        <p className="text-muted-foreground basis-full text-[10px]">
+                          Choisis une section existante dans le dropdown, ou « + Nouvelle section… » pour en créer une.
+                          Vide = chapitre non groupé.
+                        </p>
+                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                          Ordre
+                        </label>
+                        <Input
+                          type="number"
+                          value={editSectionOrder}
+                          onChange={(e) => setEditSectionOrder(e.target.value)}
+                          placeholder="(auto)"
+                          className="h-8 w-[80px] text-xs"
+                          onKeyDown={handleKey}
+                        />
+                        <div className="basis-full" />
+                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                          Titre carte
+                        </label>
+                        <Input
+                          value={editCardShortTitle}
+                          onChange={(e) => setEditCardShortTitle(e.target.value)}
+                          placeholder={`(défaut : ${c.title})`}
+                          className="h-8 flex-1 text-sm"
+                          onKeyDown={handleKey}
+                        />
+                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                          Image carte
+                        </label>
+                        <Input
+                          value={editCardImage}
+                          onChange={(e) => setEditCardImage(e.target.value)}
+                          placeholder="URL ou upload"
+                          className="h-8 flex-1 text-xs"
+                          onKeyDown={handleKey}
+                        />
+                        <input
+                          ref={cardImageInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void handleCardImageUpload(file);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={cardImageUploading}
+                          onClick={() => cardImageInputRef.current?.click()}
+                          title="Uploader une image"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          {cardImageUploading ? '…' : ''}
+                        </Button>
+                        {editCardImage && (
+                          <div className="basis-full">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={editCardImage}
+                              alt={`Aperçu ${c.title}`}
+                              className="border-border mt-1 h-24 w-auto rounded border object-cover"
+                            />
+                          </div>
+                        )}
+                        <p className="text-muted-foreground basis-full text-[10px]">
+                          Le titre court et l'image servent au visuel de transition de chapitre (panorama de section) en
+                          fin de chapitre.
+                        </p>
+                      </div>
+                    )}
+                    {/* Navbar chips removed from this row per UX feedback : too
                 noisy in a list of 10+ chapters. The chips are still rendered
                 INSIDE the chapter detail view (`ChapterEditor.tsx`), per
                 block, where the context makes the variant relevant. */}
-          </div>
-        );
-      }}
-    />
+                  </div>
+                );
+              }}
+            />
           </div>
         </div>
       ))}
@@ -618,10 +586,7 @@ function SectionPicker({
 }) {
   // When the current value isn't in the existing list, expose a text input
   // (the user is typing a new section name).
-  const isCustom =
-    value !== '' &&
-    !existingSections.includes(value) &&
-    value !== currentSection;
+  const isCustom = value !== '' && !existingSections.includes(value) && value !== currentSection;
   const [mode, setMode] = useState<'select' | 'custom'>(isCustom ? 'custom' : 'select');
 
   if (mode === 'custom') {
@@ -652,7 +617,7 @@ function SectionPicker({
 
   return (
     <select
-      className="h-8 flex-1 rounded-md border border-border bg-white px-2 text-sm"
+      className="border-border h-8 flex-1 rounded-md border bg-white px-2 text-sm"
       value={value}
       onChange={(e) => {
         const v = e.target.value;

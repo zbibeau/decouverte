@@ -1,6 +1,5 @@
-import { Component, For, JSX, Show } from 'solid-js';
-
 import type { ContentBlock, ToolContentSectionBlock } from '@shared/content-schema';
+import { Component, For, JSX, Show } from 'solid-js';
 
 import { Card } from '../../../atoms/Card';
 import { Icon } from '../../../atoms/Icon';
@@ -35,10 +34,7 @@ export const ToolContentSection: Component<{
   };
 
   return (
-    <AfterHeroContainerWide
-      contentId={props.payload.anchorId}
-      preChildren={props.navbar}
-    >
+    <AfterHeroContainerWide contentId={props.payload.anchorId} preChildren={props.navbar}>
       <div class="mx-auto w-full py-6 md:py-12">
         <div class="m-auto w-full max-w-[800px] space-y-8 px-3 md:px-1">
           <div class="space-y-8">
@@ -78,9 +74,7 @@ export const ToolContentSection: Component<{
 
                     <Show when={props.payload.advantagePoints?.length}>
                       <div class="space-y-2 rounded-2xl p-4">
-                        <For each={props.payload.advantagePoints}>
-                          {(p) => <CheckListItem text={p} />}
-                        </For>
+                        <For each={props.payload.advantagePoints}>{(p) => <CheckListItem text={p} />}</For>
                       </div>
                     </Show>
                     <Show when={props.payload.advantageText}>
@@ -93,9 +87,7 @@ export const ToolContentSection: Component<{
 
             <Show when={(props.payload.children?.length ?? 0) > 0 && props.renderChild}>
               <div class="space-y-6" data-field-path="children" data-field-rail="children">
-                <For each={props.payload.children ?? []}>
-                  {(child) => props.renderChild!(child)}
-                </For>
+                <For each={props.payload.children ?? []}>{(child) => props.renderChild!(child)}</For>
               </div>
             </Show>
           </div>

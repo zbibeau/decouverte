@@ -18,7 +18,16 @@
   },
   "type": "module",
   "lint-staged": {
-    "*.{ts,tsx}": "eslint --fix"
+    "*.{ts,tsx,json,scss,css,md}": "prettier --write --ignore-unknown"
+  },
+  "pnpm": {
+    "overrides": {
+      "braces@<3.0.3": ">=3.0.3",
+      "rollup@>=4.0.0 <4.22.4": ">=4.22.4",
+      "path-to-regexp@>=4.0.0 <6.3.0": ">=6.3.0",
+      "cross-spawn@>=7.0.0 <7.0.5": ">=7.0.5",
+      "dset@<3.1.4": ">=3.1.4"
+    }
   },
   "devDependencies": {
     "@commitlint/cli": "^19.3.0",

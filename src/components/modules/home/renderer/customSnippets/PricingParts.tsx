@@ -16,7 +16,13 @@ import { HOME_SECTION_PROPS } from '../../utils/HomeUtils';
 const FR = {
   pricingCalc: '<span class="text-4xl">{{price}}€</span> TTC',
   pricingCalcValues: {
-    '1': '299', '2': '290', '3': '281', '4': '272', '5': '263', '6': '254', '7': '250',
+    '1': '299',
+    '2': '290',
+    '3': '281',
+    '4': '272',
+    '5': '263',
+    '6': '254',
+    '7': '250',
   },
   byMonthAndByDoctor: 'par mois et par médecin',
   doctor: '1 médecin',
@@ -38,13 +44,18 @@ const FR = {
   parteners: {
     title: 'Au besoin, activez les services de nos partenaires',
     telesec: { title: 'Télésecrétariat', details: 'pour vos patients assistés : télésecrétariat : 1€ / appel ' },
-    tpe: { title: 'TPE virtuel', details: 'gratuit jusqu’à 20 télépaiements/mois, puis 0,8% au-delà (21 cts pour 26,50€)' },
+    tpe: {
+      title: 'TPE virtuel',
+      details: 'gratuit jusqu’à 20 télépaiements/mois, puis 0,8% au-delà (21 cts pour 26,50€)',
+    },
     campaign: {
       title: 'Campagne sms/email',
-      details: 'offerte au démarrage dans la limite de 1500 patients et dans la limite de 100 euros par médecin, puis 0,02€/email ou 0,07€/sms (devis calculé en temps réel)',
+      details:
+        'offerte au démarrage dans la limite de 1500 patients et dans la limite de 100 euros par médecin, puis 0,02€/email ou 0,07€/sms (devis calculé en temps réel)',
     },
   },
-  telesec: 'En moyenne, et même avec quelques options,<br/>nos utilisateurs divisent par 2 leur facture actuelle de télésecrétariat.',
+  telesec:
+    'En moyenne, et même avec quelques options,<br/>nos utilisateurs divisent par 2 leur facture actuelle de télésecrétariat.',
 };
 
 /** Carte interactive de pricing (calculateur nb médecins + partenaires + bandeau conditionnel). */
@@ -103,8 +114,13 @@ export const HomeOurPricingBody: Component<HOME_SECTION_PROPS> = () => {
             <CheckListGroup
               variant="primary50"
               text={[
-                t()('point1')!, t()('point2')!, t()('point3')!, t()('point4')!,
-                t()('point5')!, t()('point6')!, t()('point7')!,
+                t()('point1')!,
+                t()('point2')!,
+                t()('point3')!,
+                t()('point4')!,
+                t()('point5')!,
+                t()('point6')!,
+                t()('point7')!,
               ]}
             />
           </div>
@@ -123,7 +139,9 @@ export const HomeOurPricingBody: Component<HOME_SECTION_PROPS> = () => {
         </Card>
 
         <Card class="space-y-6">
-          <Title variant="h6" class="text-center">{t()('parteners.title')}</Title>
+          <Title variant="h6" class="text-center">
+            {t()('parteners.title')}
+          </Title>
           <div class="grid items-stretch gap-2 md:grid-cols-3">
             <For each={['telesec', 'tpe', 'campaign']}>
               {(v) => (

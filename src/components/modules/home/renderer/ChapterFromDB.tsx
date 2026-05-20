@@ -40,18 +40,18 @@ export const ChapterFromDB: Component<
 
   return (
     <Show when={mounted()} fallback={<div />}>
-    <Show
-      when={chapter()}
-      fallback={
-        <Show when={!chapter.loading}>
-          <div class="p-8 text-center text-sm text-dark-950 opacity-60">
-            Chapitre « {props.chapterSlug} » introuvable dans Supabase.
-          </div>
-        </Show>
-      }
-    >
-      {(c) => <ChapterRenderer chapter={c()} sectionProps={props} />}
-    </Show>
+      <Show
+        when={chapter()}
+        fallback={
+          <Show when={!chapter.loading}>
+            <div class="p-8 text-center text-sm text-dark-950 opacity-60">
+              Chapitre « {props.chapterSlug} » introuvable dans Supabase.
+            </div>
+          </Show>
+        }
+      >
+        {(c) => <ChapterRenderer chapter={c()} sectionProps={props} />}
+      </Show>
     </Show>
   );
 };

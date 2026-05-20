@@ -30,11 +30,7 @@ export async function loadDynamicHubspotMappings(parcoursSlug: string): Promise<
   }
 
   loadPromise = (async () => {
-    const { data: parcours } = await supabase
-      .from('parcours')
-      .select('id')
-      .eq('slug', parcoursSlug)
-      .maybeSingle();
+    const { data: parcours } = await supabase.from('parcours').select('id').eq('slug', parcoursSlug).maybeSingle();
     if (!parcours?.id) return [];
 
     const { data } = await supabase

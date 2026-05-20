@@ -23,15 +23,13 @@ export default async function ParcoursLayout({
   // select if the column doesn't exist yet on this DB (migration 0035 not
   // applied). Same defensive pattern as `(app)/layout.tsx` so a fresh
   // deploy doesn't 404 every parcours page until someone runs the SQL.
-  let parcours:
-    | {
-        id: string;
-        slug: string;
-        name: string;
-        published_version_id: string | null;
-        theme_color?: string | null;
-      }
-    | null = null;
+  let parcours: {
+    id: string;
+    slug: string;
+    name: string;
+    published_version_id: string | null;
+    theme_color?: string | null;
+  } | null = null;
   {
     const { data, error } = await supabase
       .from('parcours')
@@ -44,9 +42,7 @@ export default async function ParcoursLayout({
         .select('id, slug, name, published_version_id')
         .eq('slug', slug)
         .maybeSingle();
-      parcours = fallback.data
-        ? { ...fallback.data, theme_color: null }
-        : null;
+      parcours = fallback.data ? { ...fallback.data, theme_color: null } : null;
     } else {
       parcours = data as typeof parcours;
     }
@@ -58,15 +54,10 @@ export default async function ParcoursLayout({
   // a deterministic pastel computed from the slug so existing rows still
   // look distinct without a manual migration. `safeThemeColor` validates
   // the hex format and guards against legacy garbage.
-  const themeColor = safeThemeColor(
-    parcours.theme_color ?? pastelForString(slug),
-  );
+  const themeColor = safeThemeColor(parcours.theme_color ?? pastelForString(slug));
 
   // Initial snapshot for the history dialog — the client refetches when opened.
-  const [versions, draftStatus] = await Promise.all([
-    listVersions(slug),
-    getDraftStatus(slug),
-  ]);
+  const [versions, draftStatus] = await Promise.all([listVersions(slug), getDraftStatus(slug)]);
 
   // Bound server action callbacks passed as props to the client dialog.
   async function loadVersionsAction() {
@@ -85,10 +76,7 @@ export default async function ParcoursLayout({
            used (rather than a Tailwind class) because the color is dynamic
            per-parcours. A subtle bottom border keeps the visual separation
            from the content area. */}
-      <div
-        className="border-b border-border"
-        style={{ background: themeColor }}
-      >
+      <div className="border-border border-b" style={{ background: themeColor }}>
         <div className="mx-auto max-w-[1400px] px-8 pt-6">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{parcours.name}</h1>
@@ -107,14 +95,23 @@ export default async function ParcoursLayout({
               />
             </div>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="text-muted-foreground mt-0.5 text-xs">
             slug : <code>{parcours.slug}</code>
           </p>
           <ParcoursTabs slug={slug} />
         </div>
       </div>
       <div className="mx-auto max-w-[1400px] space-y-4 px-8 py-6">
-        <DraftStatusBar parcoursSlug={slug} />
+        {/* DraftStatusBar pinned to the top of the viewport while the
+            visitor scrolls long chapter / block lists. Without sticky,
+            the author lost sight of whether the current edits land in
+            the draft or the published version once the page got tall —
+            led to surprise "Publier" clicks. z-30 keeps it above
+            chapter cards (z-10) and below the global CommandPalette
+            (z-50). */}
+        <div className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 -mx-4 px-4 py-2 backdrop-blur">
+          <DraftStatusBar parcoursSlug={slug} />
+        </div>
         {children}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import cx from 'classix';
-import { Component, For, Show, createMemo } from 'solid-js';
+import { Component, createMemo, For, Show } from 'solid-js';
 
 import { Title } from '../../../primitives/Title';
 import { DEFAULT_PARCOURS_SLUG, useHome } from '../context/HomeContext';
@@ -29,6 +29,15 @@ interface Props {
    *     of each chapter to nudge the visitor forward.
    */
   activeChapter?: 'current' | 'next';
+  /**
+   * When provided AND `activeChapter === 'current'`, the active card's
+   * "Découvrir" CTA scrolls smoothly to `block-<currentChapterFirstBlockId>`
+   * instead of calling `setCurrentStep(currentSlug)` (which would be a
+   * no-op re-mount — the visitor is already on the current chapter and
+   * just wants to "enter" it past the panorama). Set by `ChapterRenderer`
+   * for the top-of-chapter panorama instance. Ignored in `next` mode.
+   */
+  currentChapterFirstBlockId?: string;
 }
 
 /**
@@ -128,18 +137,15 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
       <div class="flex min-h-dvh w-full max-w-full snap-start snap-always flex-col justify-center overflow-hidden bg-gradient-to-b from-primary-100 to-primary-200 px-4 py-10 md:px-6 md:py-12">
         <div class="mx-auto w-full max-w-[1100px]">
           <Show when={sectionTitle()}>
-            <Title
-              variant="h3"
-              class="mb-8 text-center font-semibold text-primary-700"
-            >
+            <Title variant="h3" class="mb-8 text-center font-semibold text-primary-700">
               {sectionTitle()}
             </Title>
           </Show>
           <div
             class={cx(
               'grid w-full gap-3 md:gap-4',
-              sectionChapters().length === 1 && 'grid-cols-1 max-w-[360px] mx-auto',
-              sectionChapters().length === 2 && 'grid-cols-1 sm:grid-cols-2 max-w-[700px] mx-auto',
+              sectionChapters().length === 1 && 'mx-auto max-w-[360px] grid-cols-1',
+              sectionChapters().length === 2 && 'mx-auto max-w-[700px] grid-cols-1 sm:grid-cols-2',
               sectionChapters().length >= 3 && 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3',
             )}
           >
@@ -154,10 +160,8 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                 // the value at render time → the wrong card stays
                 // highlighted after `currentStep` changes.
                 const isActive = () => c.slug === anchor()?.slug;
-                const override = (): CardOverride =>
-                  props.cardOverrides?.[c.slug] ?? {};
-                const shortTitle = () =>
-                  override().shortTitle || c.cardShortTitle || c.title;
+                const override = (): CardOverride => props.cardOverrides?.[c.slug] ?? {};
+                const shortTitle = () => override().shortTitle || c.cardShortTitle || c.title;
                 const image = () => override().image || c.cardImage || undefined;
                 return (
                   <div
@@ -174,18 +178,14 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                     }}
                     class={cx(
                       'relative flex aspect-[4/5] flex-col overflow-hidden rounded-2xl transition-all',
-                      isActive()
-                        ? 'bg-white shadow-xl'
-                        : 'cursor-pointer bg-white/40 shadow-md hover:bg-white/60',
+                      isActive() ? 'bg-white shadow-xl' : 'cursor-pointer bg-white/40 shadow-md hover:bg-white/60',
                     )}
                   >
                     <div class="flex flex-1 flex-col p-4 md:p-5">
                       <div
                         class={cx(
                           'mb-3 flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold',
-                          isActive()
-                            ? 'bg-primary-400 text-white'
-                            : 'bg-white/70 text-primary-400',
+                          isActive() ? 'bg-primary-400 text-white' : 'bg-white/70 text-primary-400',
                         )}
                       >
                         {index() + 1}
@@ -193,10 +193,7 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                       <Title
                         variant="h5"
                         tag="p"
-                        class={cx(
-                          'font-semibold',
-                          isActive() ? 'text-primary-700' : 'text-primary-700/60',
-                        )}
+                        class={cx('font-semibold', isActive() ? 'text-primary-700' : 'text-primary-700/60')}
                       >
                         {shortTitle()}
                       </Title>
@@ -208,18 +205,13 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                            by the card's `overflow-hidden`. Takes 50% of the
                            card height — a touch more than the previous 40%
                            so the photo feels like the primary content. */}
-                      <div
-                        class={cx(
-                          'h-1/2 px-3 pb-3',
-                          !isActive() && 'opacity-50',
-                        )}
-                      >
+                      <div class={cx('h-1/2 px-3 pb-3', !isActive() && 'opacity-50')}>
                         <img
                           src={image()!}
                           alt=""
                           aria-hidden="true"
                           draggable={false}
-                          class="h-full w-full -rotate-2 rounded-2xl object-cover shadow-md"
+                          class="size-full -rotate-2 rounded-2xl object-cover shadow-md"
                         />
                       </div>
                     </Show>
@@ -230,6 +222,22 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                           class="rounded-full bg-primary-400 px-6 py-2 text-sm font-medium text-white shadow hover:bg-primary-500"
                           onClick={(e) => {
                             e.stopPropagation();
+                            // In `current` mode, the active card represents the
+                            // chapter the visitor is already on — re-calling
+                            // setCurrentStep would just re-mount the chapter
+                            // and reset scroll to the panorama (= no visible
+                            // change). When the host (ChapterRenderer) hands
+                            // us the first block id of the current chapter,
+                            // we use it to smooth-scroll "into" the chapter
+                            // past the top panorama instead.
+                            if (mode() === 'current' && props.currentChapterFirstBlockId) {
+                              const el = document.getElementById(`block-${props.currentChapterFirstBlockId}`);
+                              el?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start',
+                              });
+                              return;
+                            }
                             setCurrentStep(c.slug as HOME_STEPS_KEYS);
                           }}
                         >

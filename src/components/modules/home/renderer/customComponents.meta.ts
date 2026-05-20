@@ -52,7 +52,7 @@ export const CUSTOM_COMPONENTS_META: CustomComponentMeta[] = [
   },
   {
     name: 'PresentationBrandHeader',
-    description: 'Logo MadeForMed + sous-titre centré (chrome de l\'écran d\'accueil). Prop : subTitle',
+    description: "Logo MadeForMed + sous-titre centré (chrome de l'écran d'accueil). Prop : subTitle",
   },
   {
     name: 'PresentationInlineVideo',

@@ -4,17 +4,16 @@ import type {
   ContentBlock,
   FAQQuestionContent,
   KeyPointsCardBlock,
-  ToolContentSectionBlock,
   KeyPointsGroupItem,
+  ToolContentSectionBlock,
 } from '@shared/content-schema';
-import { evaluateCondition } from '@shared/content-schema';
-
-import { CheckListGroup } from '../../../organisms/CheckListGroup';
+import { assertNever, evaluateCondition } from '@shared/content-schema';
 import { Component, createMemo, createSignal, For, JSX, onCleanup, onMount, Show } from 'solid-js';
 
 import { Card } from '../../../atoms/Card';
 import { Icon } from '../../../atoms/Icon';
 import { CheckListItem } from '../../../molecules/CheckListItem';
+import { CheckListGroup } from '../../../organisms/CheckListGroup';
 import { AudioPlayer } from '../../../primitives/AudioPlayer';
 import { Text } from '../../../primitives/Text';
 import { Title } from '../../../primitives/Title';
@@ -49,9 +48,7 @@ import { RenderFormBlock } from './RenderFormBlock';
  */
 const Tool1Navbar: Component<{ variantKey: string }> = (props) => {
   const { navbarVariants } = useHome();
-  const variant = createMemo(() =>
-    navbarVariants().find((v) => v.key === props.variantKey),
-  );
+  const variant = createMemo(() => navbarVariants().find((v) => v.key === props.variantKey));
   return (
     <div class="sticky left-0 top-0 z-50 w-full">
       <div
@@ -64,21 +61,13 @@ const Tool1Navbar: Component<{ variantKey: string }> = (props) => {
       >
         <div class="flex items-center gap-3">
           <Show when={variant()?.icon}>
-            <Icon
-              icon={`icon icon-${variant()!.icon} h-6 w-6`}
-              variant="primary400"
-              size="default"
-            />
+            <Icon icon={`icon icon-${variant()!.icon} h-6 w-6`} variant="primary400" size="default" />
           </Show>
-          <Title variant="h4">
-            {variant()?.title ?? props.variantKey}
-          </Title>
+          <Title variant="h4">{variant()?.title ?? props.variantKey}</Title>
         </div>
         <Show when={typeof variant()?.percent === 'number'}>
           <div class="flex items-center gap-2">
-            <i
-              class={`icon bg-circle-${variant()!.percent}-percent block h-14 w-[100px]`}
-            />
+            <i class={`icon bg-circle-${variant()!.percent}-percent block h-14 w-[100px]`} />
           </div>
         </Show>
       </div>
@@ -95,8 +84,7 @@ const renderNavbar = (navbar?: { variant: string }): JSX.Element | undefined =>
  * HTML tag (e.g. between `</p>` and `<p>`) to avoid double spacing in
  * already-structured HTML.
  */
-const nl2br = (html: string | undefined): string =>
-  (html ?? '').replace(/(?<!>)\n/g, '<br>');
+const nl2br = (html: string | undefined): string => (html ?? '').replace(/(?<!>)\n/g, '<br>');
 
 // ============================================================
 // Block dispatcher
@@ -149,9 +137,7 @@ const RenderBlock: Component<BlockProps> = (props) => {
           case 'video':
             return (
               <AfterHeroContainerFullVideoSection
-                contentClass={
-                  blk.payload.contentClass ?? 'h-[calc(100dvh-144px)] md:!h-[calc(100dvh-88px)]'
-                }
+                contentClass={blk.payload.contentClass ?? 'h-[calc(100dvh-144px)] md:!h-[calc(100dvh-88px)]'}
                 contentId={blk.payload.contentId}
                 src={blk.payload.vimeoSrc}
               >
@@ -176,10 +162,7 @@ const RenderBlock: Component<BlockProps> = (props) => {
               return <div class="py-2">{textInner}</div>;
             }
             return (
-              <AfterHeroContainer
-                contentClass=""
-                preChildren={renderNavbar(blk.payload.navbar)}
-              >
+              <AfterHeroContainer contentClass="" preChildren={renderNavbar(blk.payload.navbar)}>
                 {textInner}
               </AfterHeroContainer>
             );
@@ -229,9 +212,7 @@ const RenderBlock: Component<BlockProps> = (props) => {
                   </Show>
                   <div data-field-rail="children" data-field-path="children" class="space-y-6">
                     <For each={blk.payload.children}>
-                      {(child) => (
-                        <RenderBlock block={child} sectionProps={props.sectionProps} nested />
-                      )}
+                      {(child) => <RenderBlock block={child} sectionProps={props.sectionProps} nested />}
                     </For>
                   </div>
                 </Card>
@@ -242,18 +223,10 @@ const RenderBlock: Component<BlockProps> = (props) => {
             return (
               <For
                 each={
-                  evaluateCondition(blk.payload.condition, data() ?? {})
-                    ? blk.payload.then
-                    : blk.payload.else ?? []
+                  evaluateCondition(blk.payload.condition, data() ?? {}) ? blk.payload.then : (blk.payload.else ?? [])
                 }
               >
-                {(child) => (
-                  <RenderBlock
-                    block={child}
-                    sectionProps={props.sectionProps}
-                    nested={props.nested}
-                  />
-                )}
+                {(child) => <RenderBlock block={child} sectionProps={props.sectionProps} nested={props.nested} />}
               </For>
             );
 
@@ -293,6 +266,11 @@ const RenderBlock: Component<BlockProps> = (props) => {
           // below (returns null silently) — no manual rendering needed.
 
           default:
+            // Exhaustiveness check : if a new variant is added to
+            // `ContentBlock` and not handled above, `blk` is no longer
+            // narrowed to `never` here and the call fails to type-check.
+            // Logs (not throws) so legacy DB rows still degrade gracefully.
+            assertNever(blk);
             return null;
         }
       }}
@@ -400,7 +378,7 @@ const RenderKeyPoints: Component<{ block: KeyPointsCardBlock; nested?: boolean }
       <div
         data-field-rail="exception"
         data-field-path="exception"
-        class="-mt-10 mx-2 -rotate-2 w-[calc(100%-1rem)] space-y-2 rounded-2xl bg-primary-400 p-4 text-white"
+        class="mx-2 -mt-10 w-[calc(100%-1rem)] -rotate-2 space-y-2 rounded-2xl bg-primary-400 p-4 text-white"
       >
         <div class="flex items-center gap-2">
           <div>{iconForKey(props.block.payload.exception!.icon, 'white')}</div>
@@ -440,9 +418,7 @@ const RenderKeyPoints: Component<{ block: KeyPointsCardBlock; nested?: boolean }
 
   // Fallback: no groups → exception (if any) hangs off the main block.
   const exceptionWithoutGroups = (
-    <Show when={(props.block.payload.groups ?? []).length === 0}>
-      {exceptionSticker()}
-    </Show>
+    <Show when={(props.block.payload.groups ?? []).length === 0}>{exceptionSticker()}</Show>
   );
 
   // Each section is wrapped in a [data-field-rail] div so the manager can
@@ -468,11 +444,7 @@ const RenderKeyPoints: Component<{ block: KeyPointsCardBlock; nested?: boolean }
       {exceptionWithoutGroups}
     </div>
   );
-  const cardInner = (
-    <KeyPointsCard hideHeader={props.block.payload.hideHeader}>
-      {bareInner}
-    </KeyPointsCard>
-  );
+  const cardInner = <KeyPointsCard hideHeader={props.block.payload.hideHeader}>{bareInner}</KeyPointsCard>;
 
   return (
     <Show
@@ -490,9 +462,7 @@ const RenderKeyPoints: Component<{ block: KeyPointsCardBlock; nested?: boolean }
           card, etc.) already supplies the outer Card frame. Render the bare
           content so we don't double-wrap and produce two visually-separate
           cards. */}
-      <div class={props.block.payload.contentClass ?? ''}>
-        {bareInner}
-      </div>
+      <div class={props.block.payload.contentClass ?? ''}>{bareInner}</div>
     </Show>
   );
 };
@@ -537,9 +507,7 @@ const RenderFaqContent: Component<{ blocks: FAQQuestionContent[] }> = (props) =>
               );
             case 'conditional':
               return (
-                <RenderFaqContent
-                  blocks={evaluateCondition(b.condition, data() ?? {}) ? b.then : b.else ?? []}
-                />
+                <RenderFaqContent blocks={evaluateCondition(b.condition, data() ?? {}) ? b.then : (b.else ?? [])} />
               );
             default:
               return null;
@@ -583,9 +551,7 @@ export const ChapterRenderer: Component<{
   // the auto-injected ChapterTransitionGrid) only render once the form's
   // required variables have been filled in. Stops the visitor from seeing
   // content that depends on variables they haven't answered yet.
-  const formIndex = createMemo(() =>
-    props.chapter.blocks.findIndex((b) => b.type === 'form'),
-  );
+  const formIndex = createMemo(() => props.chapter.blocks.findIndex((b) => b.type === 'form'));
   const formRequiredKeys = createMemo(() => {
     const idx = formIndex();
     if (idx < 0) return [] as string[];
@@ -593,9 +559,7 @@ export const ChapterRenderer: Component<{
       type: 'form';
       payload: { fields?: Array<{ key: string; required?: boolean }> };
     };
-    return (fb.payload.fields ?? [])
-      .filter((f) => f.required !== false)
-      .map((f) => f.key);
+    return (fb.payload.fields ?? []).filter((f) => f.required !== false).map((f) => f.key);
   });
   const formCompleted = createMemo(() => {
     const keys = formRequiredKeys();
@@ -703,6 +667,39 @@ export const ChapterRenderer: Component<{
     });
   });
 
+  // --- Skip past the top section panorama on chapter mount ------------
+  // The panorama (ChapterTransitionGrid activeChapter="current") sits at
+  // the very top of every chapter so the visitor can scroll UP to revisit
+  // it. We don't want them to LAND on it though — that would look like
+  // the chapter "starts" with a navigation grid. So immediately after the
+  // chapter mounts, scroll programmatically to the first block. This is
+  // an `instant` scroll (no easing) so the visitor never sees the panorama
+  // flash before the jump.
+  //
+  // Skipped in the manager's preview iframe (`?preview=1`) : the editor
+  // already controls scroll position via the `preview:scrollToBlock`
+  // postMessage protocol, and the auto-skip would fight it.
+  onMount(() => {
+    if (typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('preview') === '1') {
+      return;
+    }
+    const firstBlock = props.chapter.blocks[0];
+    if (!firstBlock) return;
+    let attempts = 0;
+    const skip = () => {
+      const el = document.getElementById(`block-${firstBlock.id}`);
+      if (!el) {
+        // Solid reactivity hasn't mounted the block yet — retry briefly.
+        // Bail after ~1s so we don't run forever in pathological cases.
+        if (attempts++ < 20) setTimeout(skip, 50);
+        return;
+      }
+      el.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
+    };
+    requestAnimationFrame(skip);
+  });
+
   onMount(() => {
     if (typeof window === 'undefined') return;
 
@@ -752,9 +749,7 @@ export const ChapterRenderer: Component<{
           // any existing highlight.
           const blockId = String(e.data.blockId ?? '');
           const fieldPath = e.data.fieldPath ? String(e.data.fieldPath) : null;
-          document
-            .querySelectorAll('.mfm-field-highlight')
-            .forEach((el) => el.classList.remove('mfm-field-highlight'));
+          document.querySelectorAll('.mfm-field-highlight').forEach((el) => el.classList.remove('mfm-field-highlight'));
           if (!blockId || !fieldPath) return;
           const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
           if (!blockEl) return;
@@ -767,9 +762,7 @@ export const ChapterRenderer: Component<{
           // being edited in the manager. Sending null/empty clears the
           // outline (e.g. when the user navigates away from a block).
           const blockId = e.data.blockId ? String(e.data.blockId) : null;
-          document
-            .querySelectorAll('.mfm-block-editing')
-            .forEach((el) => el.classList.remove('mfm-block-editing'));
+          document.querySelectorAll('.mfm-block-editing').forEach((el) => el.classList.remove('mfm-block-editing'));
           if (!blockId) {
             currentEditingBlockId = null;
             sendRails([]);
@@ -802,10 +795,7 @@ export const ChapterRenderer: Component<{
       const payload = JSON.stringify(rails);
       if (payload === lastRailsPayload) return;
       lastRailsPayload = payload;
-      window.parent.postMessage(
-        { type: 'preview:fieldRails', blockId: currentEditingBlockId, rails },
-        '*',
-      );
+      window.parent.postMessage({ type: 'preview:fieldRails', blockId: currentEditingBlockId, rails }, '*');
     }
 
     function measureRails() {
@@ -836,8 +826,7 @@ export const ChapterRenderer: Component<{
       requestAnimationFrame(measureRails);
     }
 
-    const railsResizeObserver =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleMeasure) : null;
+    const railsResizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleMeasure) : null;
     if (railsResizeObserver) railsResizeObserver.observe(document.body);
     // Listen for scroll events on the iframe window AND on any nested
     // scrollable container (capture phase). The chapter content can be
@@ -931,10 +920,7 @@ export const ChapterRenderer: Component<{
         if (best && best.id !== lastReported) {
           lastReported = best.id;
           if (window.parent && window.parent !== window) {
-            window.parent.postMessage(
-              { type: 'preview:visibleBlock', blockId: best.id },
-              '*',
-            );
+            window.parent.postMessage({ type: 'preview:visibleBlock', blockId: best.id }, '*');
           }
         }
       },
@@ -955,8 +941,7 @@ export const ChapterRenderer: Component<{
     // just emit a passive postMessage. Outside the preview iframe (live
     // public app) the listener is never installed.
     const inPreview =
-      typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('preview') === '1';
+      typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === '1';
     let clickHandler: ((e: MouseEvent) => void) | null = null;
     if (inPreview && window.parent && window.parent !== window) {
       clickHandler = (e: MouseEvent) => {
@@ -967,10 +952,7 @@ export const ChapterRenderer: Component<{
         const blockId = wrapper.getAttribute('data-block-id');
         const blockType = wrapper.getAttribute('data-block-type');
         if (!blockId) return;
-        window.parent.postMessage(
-          { type: 'preview:blockClicked', blockId, blockType },
-          '*',
-        );
+        window.parent.postMessage({ type: 'preview:blockClicked', blockId, blockType }, '*');
       };
       document.addEventListener('click', clickHandler, true);
 
@@ -1004,31 +986,22 @@ export const ChapterRenderer: Component<{
 
   return (
     <div class={props.chapter.wrapperClass ?? undefined}>
-      {/* The chapter-level "Retour au formulaire" button was removed.
-           Rationale: it only ever made sense for a block that immediately
-           follows a `form` block — i.e. the BLOCK-LEVEL variant rendered
-           below inside the For loop (see `isFirstAfterForm`). Surfacing
-           a Retour-au-formulaire button at the top of any chapter whose
-           PREVIOUS chapter happened to contain a form was confusing in
-           practice : the visitor sees the button on chapters that have
-           nothing to do with the form (e.g. observations after a generic
-           form), and it pollutes chapters with stale affordances. The
-           sidebar already lets them navigate back if they truly want to.
-           `cardImage` rendering at the top of the chapter was also
-           removed — the cardImage belongs to the chapter card in the
-           section panorama (ChapterTransitionGrid), not to the chapter
-           page itself. Rendering it both places duplicated the visual
-           and made chapter landings look like leftovers of the previous
-           chapter. */}
+      {/* The chapter-level "Retour au formulaire" button + cardImage at
+           the top were removed in a previous pass — see the git history.
+           Below : a section panorama (ChapterTransitionGrid mode="current")
+           is now rendered AT THE TOP of every chapter. The visitor doesn't
+           land on it (an `onMount` below scrolls past it to the first
+           block) but reaches it by scrolling UP from the chapter content.
+           The active card is the current chapter ; clicking its
+           "Découvrir" CTA scrolls back down to the first block instead
+           of a no-op re-mount (see ChapterTransitionGrid's onClick guard
+           for `mode === 'current' && currentChapterFirstBlockId`). */}
+      <ChapterTransitionGrid activeChapter="current" currentChapterFirstBlockId={props.chapter.blocks[0]?.id} />
       <For each={props.chapter.blocks}>
         {(originalBlock, idx) => {
           // Memo recomputes when an override for this block id is added/cleared.
-          const effective = createMemo<ContentBlock>(
-            () => overrides()[originalBlock.id] ?? originalBlock,
-          );
-          const isFirstAfterForm = createMemo(
-            () => formIndex() >= 0 && idx() === formIndex() + 1,
-          );
+          const effective = createMemo<ContentBlock>(() => overrides()[originalBlock.id] ?? originalBlock);
+          const isFirstAfterForm = createMemo(() => formIndex() >= 0 && idx() === formIndex() + 1);
           // Gate blocks placed AFTER a form so the visitor only sees them
           // once the form's required variables are filled — otherwise the
           // conditional content below would either crash on missing

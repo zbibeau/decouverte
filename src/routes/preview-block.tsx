@@ -13,9 +13,7 @@ import { clientOnly } from '@solidjs/start';
  * SSR/hydration mismatch — the manager just needs a live editable canvas,
  * not an SEO-optimized page.
  */
-const ClientPreview = clientOnly(
-  () => import('../components/modules/home/renderer/IsolatedBlockPreviewPage'),
-);
+const ClientPreview = clientOnly(() => import('../components/modules/home/renderer/IsolatedBlockPreviewPage'));
 
 export default function PreviewBlockRoute() {
   const location = useLocation();

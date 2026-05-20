@@ -4,21 +4,16 @@ import { boolean, object, string } from 'zod';
 import * as z from 'zod';
 
 import client from '../../../../services/api/RESTClient';
+import { type ChapterStub, loadChapterSequence, loadNavbarVariants, type NavbarVariant } from '../renderer/loadChapter';
+import { loadDynamicHubspotMappings } from '../utils/dynamicHubspotMapping';
 import {
   HubspotCookieName,
   LOCALSTORAGE_DATA_KEY,
   LOCALSTORAGE_MOST_ADVANCED_STEP_KEY,
   LOCALSTORAGE_STEP_KEY,
 } from '../utils/HomeIds';
-import {
-  type ChapterStub,
-  type NavbarVariant,
-  loadChapterSequence,
-  loadNavbarVariants,
-} from '../renderer/loadChapter';
 import { HOME_STEPS, HOME_STEPS_KEYS } from '../utils/HomeSteps';
 import { HOME_STEPS_LAYOUT_VALUE } from '../utils/HomeUtils';
-import { loadDynamicHubspotMappings } from '../utils/dynamicHubspotMapping';
 import {
   DemoObjectToHubspotObject,
   HubspotObject,
@@ -120,13 +115,9 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
   // parcours doesn't restore demo-ventes' last-known step. Demo-ventes
   // keeps the legacy unprefixed keys for back-compat with existing users.
   const stepKey = () =>
-    parcoursSlug() === DEFAULT_PARCOURS_SLUG
-      ? LOCALSTORAGE_STEP_KEY
-      : `${LOCALSTORAGE_STEP_KEY}.${parcoursSlug()}`;
+    parcoursSlug() === DEFAULT_PARCOURS_SLUG ? LOCALSTORAGE_STEP_KEY : `${LOCALSTORAGE_STEP_KEY}.${parcoursSlug()}`;
   const dataKey = () =>
-    parcoursSlug() === DEFAULT_PARCOURS_SLUG
-      ? LOCALSTORAGE_DATA_KEY
-      : `${LOCALSTORAGE_DATA_KEY}.${parcoursSlug()}`;
+    parcoursSlug() === DEFAULT_PARCOURS_SLUG ? LOCALSTORAGE_DATA_KEY : `${LOCALSTORAGE_DATA_KEY}.${parcoursSlug()}`;
   const mostAdvancedKey = () =>
     parcoursSlug() === DEFAULT_PARCOURS_SLUG
       ? LOCALSTORAGE_MOST_ADVANCED_STEP_KEY

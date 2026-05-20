@@ -1,6 +1,7 @@
 'use client';
 
 import type { ContentBlock } from '@shared/content-schema';
+import { assertNever } from '@shared/content-schema';
 
 import { CardEditor } from './CardEditor';
 import { ConditionalEditor } from './ConditionalEditor';
@@ -53,14 +54,7 @@ export function PayloadEditor({
         />
       );
     case 'heroTitle':
-      return (
-        <HeroTitleEditor
-          payload={block.payload}
-          onChange={updatePayload}
-          variables={variables}
-          depth={depth}
-        />
-      );
+      return <HeroTitleEditor payload={block.payload} onChange={updatePayload} variables={variables} depth={depth} />;
     case 'keyPointsCard':
       return (
         <KeyPointsCardEditor
@@ -92,14 +86,7 @@ export function PayloadEditor({
         />
       );
     case 'conditional':
-      return (
-        <ConditionalEditor
-          payload={block.payload}
-          onChange={updatePayload}
-          variables={variables}
-          depth={depth}
-        />
-      );
+      return <ConditionalEditor payload={block.payload} onChange={updatePayload} variables={variables} depth={depth} />;
     case 'toolContentSection':
       return (
         <ToolContentSectionEditor
@@ -111,12 +98,7 @@ export function PayloadEditor({
       );
     case 'componentRef':
       return (
-        <ComponentRefEditor
-          payload={block.payload}
-          onChange={updatePayload}
-          variables={variables}
-          depth={depth}
-        />
+        <ComponentRefEditor payload={block.payload} onChange={updatePayload} variables={variables} depth={depth} />
       );
     case 'form':
       return (
@@ -130,16 +112,16 @@ export function PayloadEditor({
       );
     case 'photoCarousel':
       return (
-        <PhotoCarouselEditor
-          payload={block.payload}
-          onChange={updatePayload}
-          variables={variables}
-          depth={depth}
-        />
+        <PhotoCarouselEditor payload={block.payload} onChange={updatePayload} variables={variables} depth={depth} />
       );
     default:
+      // Exhaustiveness check : if a new variant is added to `ContentBlock`
+      // and not handled above, `block` is no longer narrowed to `never`
+      // here and the call fails to type-check. Logs (not throws) so the
+      // JSX fallback below still renders if a legacy row sneaks in.
+      assertNever(block);
       return (
-        <p className="text-xs text-destructive">
+        <p className="text-destructive text-xs">
           Type de bloc inconnu : <code>{(block as ContentBlock).type}</code>
         </p>
       );

@@ -41,15 +41,17 @@ export const AfterHeroContainerWide: Component<{
   /** Pre-children slot (e.g. Tool1 navbar) rendered at the very top of the
    *  slide, before the main content. Mirrors `AfterHeroContainer`. */
   preChildren?: JSX.Element;
-}> = (
-  props,
-) => {
+}> = (props) => {
   const isMobile = isLayoutMobileDisplay();
 
   return (
     <div
       id={props.contentId}
-      class={cx('relative snap-start snap-always pb-8', props?.class, isMobile() ? 'min-h-[calc(100dvh-56px)]' : 'min-h-dvh')}
+      class={cx(
+        'relative snap-start snap-always pb-8',
+        props?.class,
+        isMobile() ? 'min-h-[calc(100dvh-56px)]' : 'min-h-dvh',
+      )}
     >
       {props.preChildren}
       <div class="m-auto w-full max-w-[960px] px-1 pt-8 md:px-0">{props.children}</div>
@@ -87,7 +89,10 @@ export const AfterHeroContainerFullVideoSection: Component<
   return (
     <div
       id={props.contentId}
-      class={cx('relative flex h-[calc(100dvh-56px)] max-w-[100dvw] snap-start snap-always flex-col md:h-dvh', props.class)}
+      class={cx(
+        'relative flex h-[calc(100dvh-56px)] max-w-[100dvw] snap-start snap-always flex-col md:h-dvh',
+        props.class,
+      )}
       ref={(ref) => setRef(ref)}
     >
       {/* {props.children && <div>{props.children}</div>} */}

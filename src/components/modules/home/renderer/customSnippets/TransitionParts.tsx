@@ -57,17 +57,39 @@ export const HomeTransitionBody: Component<HOME_SECTION_PROPS> = (props) => {
               </div>
 
               <div class="w-full space-y-2 rounded-2xl bg-primary-50 p-4">
-                <CheckRow><Text>{t()('infos.point1')}</Text></CheckRow>
-                <CheckRow><Text>{t()('infos.point2')}</Text></CheckRow>
                 <CheckRow>
-                  <Text><span innerHTML={t()('infos.point3')} /></Text>
+                  <Text>{t()('infos.point1')}</Text>
+                </CheckRow>
+                <CheckRow>
+                  <Text>{t()('infos.point2')}</Text>
+                </CheckRow>
+                <CheckRow>
+                  <Text>
+                    <span innerHTML={t()('infos.point3')} />
+                  </Text>
                   <div class="pl-1">
-                    <div><Text><span innerHTML={t()('infos.point3_1')} /></Text></div>
-                    <div><Text><span innerHTML={t()('infos.point3_2')} /></Text></div>
-                    <div><Text><span innerHTML={t()('infos.point3_3')} /></Text></div>
+                    <div>
+                      <Text>
+                        <span innerHTML={t()('infos.point3_1')} />
+                      </Text>
+                    </div>
+                    <div>
+                      <Text>
+                        <span innerHTML={t()('infos.point3_2')} />
+                      </Text>
+                    </div>
+                    <div>
+                      <Text>
+                        <span innerHTML={t()('infos.point3_3')} />
+                      </Text>
+                    </div>
                   </div>
                 </CheckRow>
-                <CheckRow><Text><span innerHTML={t()('infos.point4')} /></Text></CheckRow>
+                <CheckRow>
+                  <Text>
+                    <span innerHTML={t()('infos.point4')} />
+                  </Text>
+                </CheckRow>
               </div>
 
               <div class="text-center">

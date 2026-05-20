@@ -14,14 +14,10 @@ import { Icon } from '../atoms/Icon';
 import { Modal } from '../atoms/Modal';
 import { GotToNextPartButton } from '../modules/home/components/GoToNextPartButton';
 import { TakeAppointment } from '../modules/home/components/TakeAppointment';
-import { stepperContentId } from '../modules/home/utils/HomeIds';
 import { DEFAULT_PARCOURS_SLUG, useHome } from '../modules/home/context/HomeContext';
+import { stepperContentId } from '../modules/home/utils/HomeIds';
 import { HOME_STEPS, HOME_STEPS_KEYS } from '../modules/home/utils/HomeSteps';
-import {
-  HOME_SECTIONS_DATA,
-  HOME_STEPS_LAYOUT_VALUE,
-  buildDynamicSections,
-} from '../modules/home/utils/HomeUtils';
+import { buildDynamicSections, HOME_SECTIONS_DATA, HOME_STEPS_LAYOUT_VALUE } from '../modules/home/utils/HomeUtils';
 import { NavItem, NavItemStatus } from '../molecules/NavItem';
 import { NavGroup } from '../organisms/NavGroup';
 const MAX_MOBILE_WIDTH = 1200;
@@ -182,16 +178,8 @@ export const StepperLayout: Component<{
             />
 
             <NavGroup
-              data={
-                useDynamic()
-                  ? dynamic().data
-                  : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)
-              }
-              actualStep={
-                useDynamic()
-                  ? dynamic().actualStep
-                  : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]
-              }
+              data={useDynamic() ? dynamic().data : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)}
+              actualStep={useDynamic() ? dynamic().actualStep : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]}
               disableFromStep={
                 useDynamic()
                   ? undefined
@@ -235,16 +223,8 @@ export const StepperLayout: Component<{
                   />
 
                   <NavGroup
-                    data={
-                      useDynamic()
-                        ? dynamic().data
-                        : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)
-                    }
-                    actualStep={
-                      useDynamic()
-                        ? dynamic().actualStep
-                        : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]
-                    }
+                    data={useDynamic() ? dynamic().data : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)}
+                    actualStep={useDynamic() ? dynamic().actualStep : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]}
                     disableFromStep={
                       useDynamic()
                         ? undefined

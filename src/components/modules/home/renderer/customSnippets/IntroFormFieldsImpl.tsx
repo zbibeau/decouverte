@@ -10,12 +10,7 @@ import { InputLineSwitchForm } from '../../../../molecules/InputLineSwitch';
 import { Text } from '../../../../primitives/Text';
 import { Title } from '../../../../primitives/Title';
 import { SectionNextButton } from '../../components/SectionNextButton';
-import {
-  IntroSchema,
-  IntroSchemaType,
-  PERSON_WHO_HANDLE_CALLS,
-  useHome,
-} from '../../context/HomeContext';
+import { IntroSchema, IntroSchemaType, PERSON_WHO_HANDLE_CALLS, useHome } from '../../context/HomeContext';
 import { HOME_STEPS, HOME_STEPS_KEYS } from '../../utils/HomeSteps';
 import { HOME_SECTION_PROPS } from '../../utils/HomeUtils';
 
@@ -67,65 +62,40 @@ export const IntroFormFieldsImpl: Component<
 
   return (
     <Show when={mounted()} fallback={<div class="m-auto w-full max-w-[600px] px-2 pb-12" />}>
-    <div class="m-auto w-full max-w-[600px] px-2 pb-12">
-      {isLoading() && (
-        <Modal isOpen>
-          <div class="space-y-2">
-            <Icon
-              icon="icon icon-loop-right-line animate-spin"
-              variant="secondary100Icon400"
-              class="m-auto"
-            />
-            <p class="text-center italic">
-              {props.loadingText ??
-                'Veuillez patienter, nous accédons aux derniers échanges avec vous…'}
-            </p>
-          </div>
-        </Modal>
-      )}
-
-      <Form class="space-y-6" onSubmit={() => {}}>
-        <Card>
-          <div class="space-y-4">
-            <div class="flex items-center gap-3">
-              <div>
-                <Icon
-                  icon={`icon icon-${props.cardIcon ?? 'check-line'}`}
-                  variant="secondary100Icon400"
-                  size="xs"
-                />
-              </div>
-              <div>
-                <Title tag="p" variant="h5">
-                  {props.cardTitle ?? 'Pour une démo personnalisée'}
-                </Title>
-              </div>
+      <div class="m-auto w-full max-w-[600px] px-2 pb-12">
+        {isLoading() && (
+          <Modal isOpen>
+            <div class="space-y-2">
+              <Icon icon="icon icon-loop-right-line animate-spin" variant="secondary100Icon400" class="m-auto" />
+              <p class="text-center italic">
+                {props.loadingText ?? 'Veuillez patienter, nous accédons aux derniers échanges avec vous…'}
+              </p>
             </div>
+          </Modal>
+        )}
 
-            <Text fontWeight="normal">
-              <span innerHTML={props.cardDescription ?? 'Merci de répondre à ces quelques questions :'} />
-            </Text>
-
-            <Field name="isDoctor" type="boolean">
-              {(field, fProps) => (
-                <InputLineSwitchForm
-                  text="Êtes-vous médecin (ou un membre du cabinet) ?"
-                  name={fProps.name}
-                  value={field.value}
-                  error={field.touched ? field.error : undefined}
-                  form={form}
-                  trueText={yes}
-                  falseText={no}
-                  variant="secondary"
-                />
-              )}
-            </Field>
-
+        <Form class="space-y-6" onSubmit={() => {}}>
+          <Card>
             <div class="space-y-4">
-              <Field name="isInGroup" type="boolean">
+              <div class="flex items-center gap-3">
+                <div>
+                  <Icon icon={`icon icon-${props.cardIcon ?? 'check-line'}`} variant="secondary100Icon400" size="xs" />
+                </div>
+                <div>
+                  <Title tag="p" variant="h5">
+                    {props.cardTitle ?? 'Pour une démo personnalisée'}
+                  </Title>
+                </div>
+              </div>
+
+              <Text fontWeight="normal">
+                <span innerHTML={props.cardDescription ?? 'Merci de répondre à ces quelques questions :'} />
+              </Text>
+
+              <Field name="isDoctor" type="boolean">
                 {(field, fProps) => (
                   <InputLineSwitchForm
-                    text="Exercez-vous en groupe ?"
+                    text="Êtes-vous médecin (ou un membre du cabinet) ?"
                     name={fProps.name}
                     value={field.value}
                     error={field.touched ? field.error : undefined}
@@ -137,76 +107,92 @@ export const IntroFormFieldsImpl: Component<
                 )}
               </Field>
 
-              <Field name="acceptNewPatient" type="boolean">
-                {(field, fProps) => (
-                  <InputLineSwitchForm
-                    text="Acceptez-vous les nouveaux patients ?"
-                    name={fProps.name}
-                    value={field.value}
-                    error={field.touched ? field.error : undefined}
-                    form={form}
-                    trueText={yes}
-                    falseText={no}
-                    variant="secondary"
-                  />
-                )}
-              </Field>
-
-              <Field name="isDoingVAD" type="boolean">
-                {(field, fProps) => (
-                  <InputLineSwitchForm
-                    text="Effectuez-vous des visites à domicile ?"
-                    name={fProps.name}
-                    value={field.value}
-                    error={field.touched ? field.error : undefined}
-                    form={form}
-                    trueText={yes}
-                    falseText={no}
-                    variant="secondary"
-                  />
-                )}
-              </Field>
-
-              <Field name="personWhoHandleCalls" type="string">
-                {(field, fProps) => (
-                  <div class="group flex items-center justify-between gap-2 rounded-2xl border border-transparent bg-secondary-50 px-4 py-3 hover:border-secondary-100">
-                    <RadioGroupForm
-                      label="Qui gère les appels aujourd'hui ?"
+              <div class="space-y-4">
+                <Field name="isInGroup" type="boolean">
+                  {(field, fProps) => (
+                    <InputLineSwitchForm
+                      text="Exercez-vous en groupe ?"
                       name={fProps.name}
-                      options={[
-                        { value: PERSON_WHO_HANDLE_CALLS.DOCTOR, label: 'Vous' },
-                        { value: PERSON_WHO_HANDLE_CALLS.SECRETARY, label: 'Secrétaire' },
-                        {
-                          value: PERSON_WHO_HANDLE_CALLS['REMOTE-SECRETARY'],
-                          label: 'Télé-secrétariat',
-                        },
-                      ]}
                       value={field.value}
                       error={field.touched ? field.error : undefined}
                       form={form}
-                      variant="default"
+                      trueText={yes}
+                      falseText={no}
+                      variant="secondary"
                     />
-                  </div>
-                )}
-              </Field>
+                  )}
+                </Field>
+
+                <Field name="acceptNewPatient" type="boolean">
+                  {(field, fProps) => (
+                    <InputLineSwitchForm
+                      text="Acceptez-vous les nouveaux patients ?"
+                      name={fProps.name}
+                      value={field.value}
+                      error={field.touched ? field.error : undefined}
+                      form={form}
+                      trueText={yes}
+                      falseText={no}
+                      variant="secondary"
+                    />
+                  )}
+                </Field>
+
+                <Field name="isDoingVAD" type="boolean">
+                  {(field, fProps) => (
+                    <InputLineSwitchForm
+                      text="Effectuez-vous des visites à domicile ?"
+                      name={fProps.name}
+                      value={field.value}
+                      error={field.touched ? field.error : undefined}
+                      form={form}
+                      trueText={yes}
+                      falseText={no}
+                      variant="secondary"
+                    />
+                  )}
+                </Field>
+
+                <Field name="personWhoHandleCalls" type="string">
+                  {(field, fProps) => (
+                    <div class="group flex items-center justify-between gap-2 rounded-2xl border border-transparent bg-secondary-50 px-4 py-3 hover:border-secondary-100">
+                      <RadioGroupForm
+                        label="Qui gère les appels aujourd'hui ?"
+                        name={fProps.name}
+                        options={[
+                          { value: PERSON_WHO_HANDLE_CALLS.DOCTOR, label: 'Vous' },
+                          { value: PERSON_WHO_HANDLE_CALLS.SECRETARY, label: 'Secrétaire' },
+                          {
+                            value: PERSON_WHO_HANDLE_CALLS['REMOTE-SECRETARY'],
+                            label: 'Télé-secrétariat',
+                          },
+                        ]}
+                        value={field.value}
+                        error={field.touched ? field.error : undefined}
+                        form={form}
+                        variant="default"
+                      />
+                    </div>
+                  )}
+                </Field>
+              </div>
+            </div>
+          </Card>
+
+          <div class="flex justify-end pt-6">
+            <div>
+              <SectionNextButton
+                text={props.nextButtonText ?? 'Suivant'}
+                onClick={() => {
+                  setData(data());
+                  props.setCurrentStep(props.nextStep ?? HOME_STEPS.STEP_OBSERVATION);
+                }}
+                disabled={form.invalid}
+              />
             </div>
           </div>
-        </Card>
-
-        <div class="flex justify-end pt-6">
-          <div>
-            <SectionNextButton
-              text={props.nextButtonText ?? 'Suivant'}
-              onClick={() => {
-                setData(data());
-                props.setCurrentStep(props.nextStep ?? HOME_STEPS.STEP_OBSERVATION);
-              }}
-              disabled={form.invalid}
-            />
-          </div>
-        </div>
-      </Form>
-    </div>
+        </Form>
+      </div>
     </Show>
   );
 };

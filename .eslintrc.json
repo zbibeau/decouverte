@@ -8,9 +8,7 @@
       "jsx": true
     }
   },
-  "plugins": [
-    "simple-import-sort"
-  ],
+  "plugins": ["simple-import-sort"],
   "env": {
     "browser": true,
     "amd": true,
@@ -43,17 +41,9 @@
     "jsx-a11y/anchor-is-valid": [
       "error",
       {
-        "components": [
-          "Link"
-        ],
-        "specialLink": [
-          "hrefLeft",
-          "hrefRight"
-        ],
-        "aspects": [
-          "invalidHref",
-          "preferButton"
-        ]
+        "components": ["Link"],
+        "specialLink": ["hrefLeft", "hrefRight"],
+        "aspects": ["invalidHref", "preferButton"]
       }
     ],
     "jsx-a11y/accessible-emoji": "off",
@@ -63,9 +53,24 @@
     "jsx-a11y/label-has-associated-control": "off",
     "jsx-a11y/no-static-element-interactions": "off",
     "jsx-a11y/click-events-have-key-events": "off",
-    "tailwindcss/migration-from-tailwind-2":"off",
-    "tailwindcss/no-custom-classname": ["error", {
-      "whitelist": ["icon(.*)", "brand", "bg(.*)", "meetings-iframe-container"]
-    }]
-  }
+    "tailwindcss/migration-from-tailwind-2": "off",
+    "tailwindcss/no-custom-classname": [
+      "error",
+      {
+        "whitelist": ["icon(.*)", "brand", "bg(.*)", "meetings-iframe-container"]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["manager/**/*.{ts,tsx}"],
+      "rules": {
+        "solid/no-react-specific-props": "off",
+        "solid/no-destructure": "off",
+        "solid/reactivity": "off",
+        "import/no-unresolved": "off",
+        "tailwindcss/no-custom-classname": "off"
+      }
+    }
+  ]
 }

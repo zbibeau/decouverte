@@ -3,6 +3,7 @@
 import { Check, Pencil, X } from 'lucide-react';
 import { useState, useTransition } from 'react';
 
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -14,11 +15,7 @@ interface Props {
   type: string;
   enumPreview: string;
   /** Server action — rename the variable's technical key + label. */
-  renameAction: (
-    variableId: string,
-    nextKey: string,
-    nextLabel: string,
-  ) => Promise<void>;
+  renameAction: (variableId: string, nextKey: string, nextLabel: string) => Promise<void>;
 }
 
 /**
@@ -28,15 +25,9 @@ interface Props {
  * the key may break references in block payloads (the manager doesn't
  * auto-migrate them).
  */
-export function VariableHeader({
-  variableId,
-  initialKey,
-  initialLabel,
-  type,
-  enumPreview,
-  renameAction,
-}: Props) {
+export function VariableHeader({ variableId, initialKey, initialLabel, type, enumPreview, renameAction }: Props) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [keyInput, setKeyInput] = useState(initialKey);
   const [labelInput, setLabelInput] = useState(initialLabel);
@@ -50,7 +41,7 @@ export function VariableHeader({
   function cancel() {
     setEditing(false);
   }
-  function commit() {
+  async function commit() {
     const nextKey = keyInput.trim();
     const nextLabel = labelInput.trim();
     if (!nextKey || !nextLabel) {
@@ -58,17 +49,15 @@ export function VariableHeader({
       return;
     }
     const keyChanged = nextKey !== initialKey;
-    if (
-      keyChanged &&
-      !window.confirm(
-        `Renommer la clé « ${initialKey} » → « ${nextKey} » ?\n\n` +
-          `⚠ Les blocs qui référencent l'ancienne clé (conditions, formulaires, ` +
-          `key points conditionnels, mapping Hubspot…) NE seront PAS mis à jour ` +
-          `automatiquement. Tu devras corriger ces références manuellement après ` +
-          `le renommage.`,
-      )
-    ) {
-      return;
+    if (keyChanged) {
+      const ok = await confirm({
+        title: `Renommer « ${initialKey} » → « ${nextKey} » ?`,
+        message:
+          "Les blocs qui référencent l'ancienne clé (conditions, formulaires, key points conditionnels, mapping Hubspot…) NE seront PAS mis à jour automatiquement. Tu devras corriger ces références manuellement après le renommage.",
+        confirmLabel: 'Renommer',
+        destructive: true,
+      });
+      if (!ok) return;
     }
     startTransition(async () => {
       try {
@@ -80,9 +69,7 @@ export function VariableHeader({
         );
         setEditing(false);
       } catch (err) {
-        toast.error(
-          `Renommage échoué : ${err instanceof Error ? err.message : String(err)}`,
-        );
+        toast.error(`Renommage échoué : ${err instanceof Error ? err.message : String(err)}`);
       }
     });
   }
@@ -91,21 +78,12 @@ export function VariableHeader({
     return (
       <>
         <code className="text-sm font-medium">{initialKey}</code>
-        <span className="text-sm text-muted-foreground">— {initialLabel}</span>
-        <span className="inline-flex h-5 items-center rounded bg-muted px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-muted-foreground text-sm">— {initialLabel}</span>
+        <span className="bg-muted text-muted-foreground inline-flex h-5 items-center rounded px-2 text-[10px] font-medium uppercase tracking-wide">
           {type}
         </span>
-        {type === 'enum' && enumPreview && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {enumPreview}
-          </span>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={startEdit}
-          title="Renommer (clé + label)"
-        >
+        {type === 'enum' && enumPreview && <span className="text-muted-foreground ml-2 text-xs">{enumPreview}</span>}
+        <Button variant="ghost" size="sm" onClick={startEdit} title="Renommer (clé + label)">
           <Pencil className="h-3.5 w-3.5" />
         </Button>
       </>
@@ -126,25 +104,13 @@ export function VariableHeader({
         placeholder="Label visible"
         className="h-8 flex-1 text-xs"
       />
-      <span className="inline-flex h-5 items-center rounded bg-muted px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="bg-muted text-muted-foreground inline-flex h-5 items-center rounded px-2 text-[10px] font-medium uppercase tracking-wide">
         {type}
       </span>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={commit}
-        disabled={isPending}
-        title="Enregistrer"
-      >
+      <Button variant="ghost" size="sm" onClick={commit} disabled={isPending} title="Enregistrer">
         <Check className="h-3.5 w-3.5 text-emerald-600" />
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={cancel}
-        disabled={isPending}
-        title="Annuler"
-      >
+      <Button variant="ghost" size="sm" onClick={cancel} disabled={isPending} title="Annuler">
         <X className="h-3.5 w-3.5" />
       </Button>
     </>

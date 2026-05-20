@@ -9,6 +9,7 @@ import type { ContentBlock } from '@shared/content-schema';
 import { extractUsedVariableKeys } from '@/lib/usedVariables';
 
 import { AddBlockForm } from '@/components/AddBlockForm';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { SortableList } from '@/components/SortableList';
@@ -85,17 +86,15 @@ function BlockDiffBadge({ diff }: { diff?: BlockRow['diff'] }) {
 export function ChapterEditor(props: Props) {
   const router = useRouter();
   const toast = useToast();
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(
-    props.blocks[0]?.id ?? null,
-  );
+  const confirm = useConfirm();
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(props.blocks[0]?.id ?? null);
   const [isPending, startTransition] = useTransition();
 
   // Keyboard nav over the block list:
   //   ↑↓ to highlight a block, Enter to open its editor, Esc → chapter list.
   const { selectedIdx: kbdIdx, isClient: kbdActive } = useListKeyboardNav(
     props.blocks,
-    (b) =>
-      `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`,
+    (b) => `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`,
     `/parcours/${props.parcoursSlug}`,
   );
 
@@ -150,9 +149,7 @@ export function ChapterEditor(props: Props) {
       // Navigate to the block edit page so the editor opens on the clicked
       // block. The chapter list page is a navigator — clicking in the
       // preview is the fastest path to the per-block editor.
-      router.push(
-        `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${id}`,
-      );
+      router.push(`/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${id}`);
     },
     [router, props.parcoursSlug, props.chapter.slug],
   );
@@ -162,9 +159,7 @@ export function ChapterEditor(props: Props) {
   useEffect(() => {
     if (!selectedBlockId || !listRef.current) return;
     if (lastSourceRef.current === 'preview') return;
-    const row = listRef.current.querySelector<HTMLElement>(
-      `[data-row-id="${selectedBlockId}"]`,
-    );
+    const row = listRef.current.querySelector<HTMLElement>(`[data-row-id="${selectedBlockId}"]`);
     row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selectedBlockId]);
 
@@ -177,16 +172,17 @@ export function ChapterEditor(props: Props) {
   }
 
   const deleteWithRefresh = withRefresh(props.deleteBlockAction);
-  function handleDelete(blockId: string) {
+  async function handleDelete(blockId: string) {
     const block = props.blocks.find((b) => b.id === blockId);
     const summary = block ? summarizeBlock(block.type, block.payload) : '';
-    if (
-      !window.confirm(
-        `Supprimer ce bloc${summary ? ` (${summary})` : ''} ?\n\nLe brouillon sera créé si nécessaire ; la version publiée reste intacte tant que tu ne cliques pas « Publier ».`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Supprimer ce bloc${summary ? ` (${summary})` : ''} ?`,
+      message:
+        'Le brouillon sera créé si nécessaire ; la version publiée reste intacte tant que tu ne cliques pas « Publier ».',
+      confirmLabel: 'Supprimer',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteWithRefresh(blockId);
   }
   function handleDuplicate(blockId: string) {
@@ -205,8 +201,7 @@ export function ChapterEditor(props: Props) {
     startTransition(async () => {
       try {
         const result = await props.copyBlockToChapterAction(blockId, targetChapterId);
-        const targetTitle =
-          props.chapters?.find((c) => c.id === targetChapterId)?.title ?? result.chapterSlug;
+        const targetTitle = props.chapters?.find((c) => c.id === targetChapterId)?.title ?? result.chapterSlug;
         toast.success(`Bloc copié vers « ${targetTitle} »`);
         router.refresh();
       } catch (e) {
@@ -228,9 +223,7 @@ export function ChapterEditor(props: Props) {
   // toast handler.
   const handleInsertSample = async (type: string) => {
     const newBlockId = await props.insertSampleBlockAction(type);
-    router.push(
-      `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${newBlockId}`,
-    );
+    router.push(`/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${newBlockId}`);
   };
 
   return (
@@ -244,7 +237,7 @@ export function ChapterEditor(props: Props) {
             </Button>
           </Link>
           <h2 className="mt-3 text-lg font-semibold">{props.chapter.title}</h2>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             <code>{props.chapter.slug}</code>
           </p>
         </div>
@@ -252,9 +245,9 @@ export function ChapterEditor(props: Props) {
         <Card>
           <CardHeader>
             <CardTitle>Blocs</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {props.blocks.length} bloc(s). Clique sur un bloc pour le centrer dans la preview, sur
-              le crayon pour l&apos;éditer.
+            <p className="text-muted-foreground text-xs">
+              {props.blocks.length} bloc(s). Clique sur un bloc pour le centrer dans la preview, sur le crayon pour
+              l&apos;éditer.
             </p>
           </CardHeader>
           <CardContent ref={listRef} className="max-h-[calc(100vh-280px)] overflow-y-auto">
@@ -271,17 +264,18 @@ export function ChapterEditor(props: Props) {
                     data-row-id={b.id}
                     className={cn(
                       'relative flex items-center gap-2 py-3 transition-colors',
-                      isSelected && '-mx-5 bg-primary/5 px-5',
+                      isSelected && 'bg-primary/5 -mx-5 px-5',
                       isInspected && '!bg-amber-100 ring-2 ring-amber-300',
-                      isKbd && !isInspected && 'ring-1 ring-brand-primary-300/60',
+                      isKbd && !isInspected && 'ring-brand-primary-300/60 ring-1',
                     )}
                   >
                     {isInspected && (
                       <div className="absolute -top-7 left-0 z-20 rounded-md bg-amber-900 px-2 py-1 text-[10px] font-medium text-white shadow">
-                        Bloc {(BLOCK_TYPE_LABELS as Record<string, string>)[inspectedBlockType ?? ''] ??
+                        Bloc{' '}
+                        {(BLOCK_TYPE_LABELS as Record<string, string>)[inspectedBlockType ?? ''] ??
                           inspectedBlockType ??
-                          b.type}
-                        {' '} — clique ✏️ pour éditer
+                          b.type}{' '}
+                        — clique ✏️ pour éditer
                       </div>
                     )}
                     {dragHandle}
@@ -291,26 +285,20 @@ export function ChapterEditor(props: Props) {
                       className="flex flex-1 items-center gap-3 text-left"
                       title="Centrer dans la preview"
                     >
-                      <span className="w-6 font-mono text-xs text-muted-foreground">{b.order}</span>
-                      <span className="inline-flex h-6 items-center rounded bg-muted px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <span className="text-muted-foreground w-6 font-mono text-xs">{b.order}</span>
+                      <span className="bg-muted text-muted-foreground inline-flex h-6 items-center rounded px-2 text-[11px] font-medium uppercase tracking-wide">
                         {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
                       </span>
-                      <span className="flex-1 truncate text-sm">
-                        {summarizeBlock(b.type, b.payload)}
-                      </span>
+                      <span className="flex-1 truncate text-sm">{summarizeBlock(b.type, b.payload)}</span>
                       {/* Navbar variant indicator — surfaces the "Tool 1
                           navbar" used by this block at a glance. */}
                       {(() => {
-                        const variantKey = (
-                          b.payload as { navbar?: { variant?: string } } | null
-                        )?.navbar?.variant;
+                        const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
                         if (!variantKey) return null;
-                        const v = (props.navbarVariants ?? []).find(
-                          (x) => x.key === variantKey,
-                        );
+                        const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
                         return (
                           <span
-                            className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-[10px]"
+                            className="border-border inline-flex items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-[10px]"
                             title={`Navbar « ${variantKey} »`}
                           >
                             <span
@@ -323,9 +311,7 @@ export function ChapterEditor(props: Props) {
                       })()}
                       <BlockDiffBadge diff={b.diff} />
                     </button>
-                    <Link
-                      href={`/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`}
-                    >
+                    <Link href={`/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`}>
                       <Button variant="ghost" size="sm" title="Éditer">
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -344,14 +330,27 @@ export function ChapterEditor(props: Props) {
                       disabled={isPending}
                       onClick={() => handleDelete(b.id)}
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
+                      <Trash2 className="text-destructive h-4 w-4" />
                     </Button>
                   </div>
                 );
               }}
             />
             {props.blocks.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">Aucun bloc.</p>
+              // Empty state with an explicit nudge towards the
+              // "Ajouter un bloc" card below — turn the dead-end "Aucun
+              // bloc." line into the first step of a guided flow.
+              <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
+                <div className="text-3xl" aria-hidden="true">
+                  🧱
+                </div>
+                <p className="text-sm font-medium">Aucun bloc dans ce chapitre</p>
+                <p className="text-muted-foreground max-w-md text-xs">
+                  Choisis un type de bloc ci-dessous (texte, vidéo, formulaire, condition…) — un aperçu live
+                  s&apos;ouvre, puis « Insérer cet exemple » t&apos;envoie directement dans l&apos;éditeur du nouveau
+                  bloc.
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>

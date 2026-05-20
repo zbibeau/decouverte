@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { AddActionsProvider } from '@/components/blocks/AddActionsContext';
 import { CommandPalette } from '@/components/CommandPalette';
+import { ConfirmDialogProvider } from '@/components/ConfirmDialog';
 import { Sidebar } from '@/components/Sidebar';
 import { createClient } from '@/lib/supabase/server';
 
@@ -19,9 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // select if the column doesn't exist yet on this DB (migration 0035
   // not applied). Same defensive pattern as `createParcours` so the
   // sidebar keeps loading even on schema-drifted environments.
-  let parcoursRows:
-    | Array<{ id: string; slug: string; name: string; theme_color?: string | null }>
-    | null = null;
+  let parcoursRows: Array<{ id: string; slug: string; name: string; theme_color?: string | null }> | null = null;
   {
     const { data, error } = await supabase
       .from('parcours')
@@ -37,20 +36,35 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       parcoursRows = data ?? null;
     }
   }
+  // Which parcours have an active draft (= a parcours_version row with
+  // status='draft') ? We surface this in the Sidebar as a small orange
+  // pulse next to the name so the author sees at a glance — without
+  // navigating in — which projects have uncommitted changes. The query
+  // is a single round-trip ; we just project ids and dedupe client-side.
+  const draftIds = new Set<string>();
+  {
+    const { data: draftRows } = await supabase.from('parcours_version').select('parcours_id').eq('status', 'draft');
+    for (const row of draftRows ?? []) {
+      if (row.parcours_id) draftIds.add(row.parcours_id as string);
+    }
+  }
   const parcoursItems = (parcoursRows ?? []).map((p) => ({
     id: p.id,
     slug: p.slug,
     name: p.name,
     themeColor: p.theme_color ?? null,
+    hasDraft: draftIds.has(p.id),
   }));
 
   return (
-    <AddActionsProvider>
-      <div className="flex min-h-screen">
-        <Sidebar email={user.email ?? ''} parcours={parcoursItems} />
-        <main className="flex-1 overflow-y-auto">{children}</main>
-        <CommandPalette />
-      </div>
-    </AddActionsProvider>
+    <ConfirmDialogProvider>
+      <AddActionsProvider>
+        <div className="flex min-h-screen">
+          <Sidebar email={user.email ?? ''} parcours={parcoursItems} />
+          <main className="flex-1 overflow-y-auto">{children}</main>
+          <CommandPalette />
+        </div>
+      </AddActionsProvider>
+    </ConfirmDialogProvider>
   );
 }
