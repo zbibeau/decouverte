@@ -4,7 +4,13 @@ import { boolean, object, string } from 'zod';
 import * as z from 'zod';
 
 import client from '../../../../services/api/RESTClient';
-import { type ChapterStub, loadChapterSequence, loadNavbarVariants, type NavbarVariant } from '../renderer/loadChapter';
+import {
+  type ChapterStub,
+  loadChapterSequence,
+  loadNavbarVariants,
+  loadParcoursThemeColor,
+  type NavbarVariant,
+} from '../renderer/loadChapter';
 import { loadDynamicHubspotMappings } from '../utils/dynamicHubspotMapping';
 import {
   HubspotCookieName,
@@ -43,6 +49,7 @@ export const HomeContext = createContext({
   chapters: () => [],
   chaptersLoaded: () => false,
   navbarVariants: () => [],
+  themeColor: () => null,
 } as HomeContextReturn);
 
 export enum PERSON_WHO_HANDLE_CALLS {
@@ -91,6 +98,12 @@ type HomeContextReturn = {
    *  Used by `renderNavbar` to resolve `payload.navbar.variant` keys to
    *  display data (title, icon, color, percent). */
   navbarVariants: Accessor<NavbarVariant[]>;
+  /** Optional pastel accent stored on the parcours row (migration 0035).
+   *  Also injected as `--mfm-theme` CSS custom property on `<html>` by
+   *  HomeProvider's effect — components can pick it up via
+   *  `style={{ color: 'var(--mfm-theme, currentColor)' }}` or similar
+   *  without depending on this accessor directly. */
+  themeColor: Accessor<string | null>;
 };
 
 export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: string }) => {
@@ -108,6 +121,12 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
   const [chapters, setChapters] = createSignal<ChapterStub[]>([]);
   const [chaptersLoaded, setChaptersLoaded] = createSignal(false);
   const [navbarVariants, setNavbarVariants] = createSignal<NavbarVariant[]>([]);
+  // Optional pastel accent stored per-parcours (migration 0035). When set,
+  // a createEffect below injects it as `--mfm-theme-color` on the
+  // document root so any component can reference it (CSS custom prop)
+  // without prop-drilling. Falls back to `null` (= use default theme)
+  // when the column is missing on the DB or NULL on the row.
+  const [themeColor, setThemeColor] = createSignal<string | null>(null);
   // Stable per-mount slug : whichever slug the route declared at mount
   // time. Wrapped in an accessor for context API consistency.
   const parcoursSlug = () => props.parcoursSlug ?? DEFAULT_PARCOURS_SLUG;
@@ -148,6 +167,12 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
       .then(setNavbarVariants)
       .catch((e) => console.warn('[HomeContext] navbar variants load failed', e));
 
+    // Hydrate the parcours' pastel theme color (migration 0035). Applied
+    // as a CSS custom property via the effect below.
+    loadParcoursThemeColor(parcoursSlug())
+      .then(setThemeColor)
+      .catch((e) => console.warn('[HomeContext] theme color load failed', e));
+
     // Load the chapter sequence from DB. The dynamic stepper uses this
     // to know what chapters exist and how to navigate; the default
     // parcours falls back to its hardcoded HOME_STEPS order when the DB
@@ -174,9 +199,22 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
         // updated first chapter instead of getting stuck on the old
         // slug.
         const validSlugs = new Set(seq.map((c) => c.slug));
+        // Deep-link via URL hash : `#chapter-slug` jumps directly to
+        // that chapter on first load (powering shared links like
+        // `/parcours/X#step-tool-2`). Wins over localStorage AND the
+        // first-chapter fallback. We don't clear the hash so refreshes
+        // still land on the same chapter.
+        const hashSlug =
+          typeof window !== 'undefined' && window.location.hash.startsWith('#')
+            ? decodeURIComponent(window.location.hash.slice(1))
+            : null;
         const stored = typeof window !== 'undefined' ? localStorage?.getItem(stepKey()) : null;
+        const hashIsValid = !!hashSlug && validSlugs.has(hashSlug);
         const storedIsValid = !!stored && validSlugs.has(stored);
-        if (storedIsValid) {
+        if (hashIsValid) {
+          setCurrentStep(hashSlug as HOME_STEPS_KEYS);
+          setMostAdvancedStep(hashSlug as HOME_STEPS_KEYS);
+        } else if (storedIsValid) {
           setCurrentStep(stored as HOME_STEPS_KEYS);
         } else {
           setCurrentStep(seq[0].slug as HOME_STEPS_KEYS);
@@ -337,9 +375,20 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
         const [currentStepGroup, currentStepKey] = nextStepValue.split('.').map((v) => parseInt(v));
 
         if (mostAdvancedStep() !== 'undefined' && mostAdvancedStep() !== undefined) {
-          const [mostAdvancedGroup, mostAdvancedGroupStep] = HOME_STEPS_LAYOUT_VALUE[mostAdvancedStep()]
-            .split('.')
-            .map((v) => parseInt(v));
+          // Defensive : `HOME_STEPS_LAYOUT_VALUE` only contains the legacy
+          // demo-ventes mappings. When `mostAdvancedStep()` is a custom
+          // chapter slug (restored from localStorage / set via deep-link
+          // hash) the lookup returns `undefined` and the `.split` below
+          // throws — flooding the dev overlay with "Cannot read 'split'".
+          // Bail gracefully : the visitor's progression is tracked
+          // elsewhere via DB chapter sequence ; the legacy "most advanced"
+          // computation is purely a back-compat for demo-ventes presets.
+          const mostAdvancedLayout = HOME_STEPS_LAYOUT_VALUE[mostAdvancedStep()];
+          if (!mostAdvancedLayout) {
+            setMostAdvancedStep(nextStepKey as HOME_STEPS_KEYS);
+            return;
+          }
+          const [mostAdvancedGroup, mostAdvancedGroupStep] = mostAdvancedLayout.split('.').map((v) => parseInt(v));
           if (currentStepGroup >= mostAdvancedGroup) {
             if (currentStepGroup > mostAdvancedGroup ? true : currentStepKey >= mostAdvancedGroupStep) {
               setMostAdvancedStep(nextStepKey as HOME_STEPS_KEYS);
@@ -351,6 +400,41 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
       }
     }),
   );
+
+  // Inject the parcours' pastel theme color as a CSS custom property
+  // on <html>, so any component can pick it up via `var(--mfm-theme)`
+  // without prop-drilling. `null` clears the variable so the default
+  // Tailwind theme kicks in (no flash on switch).
+  createEffect(() => {
+    if (typeof document === 'undefined') return;
+    const color = themeColor();
+    const root = document.documentElement;
+    if (color) {
+      root.style.setProperty('--mfm-theme', color);
+    } else {
+      root.style.removeProperty('--mfm-theme');
+    }
+  });
+
+  // Keep the URL hash in sync with the active chapter, so :
+  //   - Copying the URL produces a deep link other people can paste back
+  //     and land on the SAME chapter (read on mount above).
+  //   - The browser back/forward history reflects chapter navigation.
+  // `history.replaceState` (not pushState) — chapter switches feel
+  // intra-page, the back button should still escape the parcours.
+  createEffect(() => {
+    if (typeof window === 'undefined') return;
+    const step = currentStep();
+    if (!step) return;
+    // Skip in preview mode (manager iframe drives the URL).
+    if (new URLSearchParams(window.location.search).get('preview') === '1') {
+      return;
+    }
+    const desired = `#${step}`;
+    if (window.location.hash !== desired) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${desired}`);
+    }
+  });
 
   return (
     <HomeContext.Provider
@@ -368,6 +452,7 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
         chapters,
         chaptersLoaded,
         navbarVariants,
+        themeColor,
         //@ts-ignore
         setCurrentStep: (step: HOME_STEPS_KEYS) => {
           // eslint-disable-next-line solid/reactivity

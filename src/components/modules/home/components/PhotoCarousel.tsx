@@ -112,6 +112,10 @@ export const PhotoCarousel: Component<{ payload: Payload }> = (props) => {
                   class="absolute inset-0 size-full object-contain transition-opacity duration-500"
                   style={{ opacity: i() === index() ? 1 : 0 }}
                   loading={i() === 0 ? 'eager' : 'lazy'}
+                  // The first photo is typically the LCP candidate when
+                  // the carousel is above the fold. Hint the browser so
+                  // it competes with the document for bandwidth.
+                  fetchpriority={i() === 0 ? 'high' : 'low'}
                   aria-hidden={i() !== index() ? 'true' : undefined}
                   onLoad={() =>
                     setLoaded((prev) => {

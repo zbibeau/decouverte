@@ -166,9 +166,25 @@ export const StepperLayout: Component<{
     >
       {!isMobileDisplay() ? (
         <div class="flex h-full max-w-[17.5rem] flex-col justify-between space-y-5 p-6 shadow-sidebar shadow-shadow-sidebar">
-          <div class="mx-auto">
+          {/* Easter egg : double-clicking the brand logo plays a 700ms
+              spring wiggle. Pure delight. Won't fire if a screen reader
+              user is just navigating (single click does nothing), and
+              the global prefers-reduced-motion rule shortens the
+              animation to 0.01ms for vestibular-sensitive visitors. */}
+          <button
+            type="button"
+            class="mx-auto cursor-default border-0 bg-transparent p-0 [&.mfm-easter-egg]:animate-[mfm-logo-wiggle_700ms_cubic-bezier(0.34,1.56,0.64,1)]"
+            onDblClick={(e) => {
+              const el = e.currentTarget;
+              el.classList.remove('mfm-easter-egg');
+              // Force reflow so the class re-add restarts the animation.
+              void el.offsetWidth;
+              el.classList.add('mfm-easter-egg');
+            }}
+            aria-label="Logo"
+          >
             <BrandLogo variant="secondary900" size="1.5x" />
-          </div>
+          </button>
 
           <div class="h-full space-y-5 overflow-auto">
             <NavItem
@@ -212,36 +228,43 @@ export const StepperLayout: Component<{
             </div>
           </div>
 
-          {isMobileMenuDisplay() && (
-            <Portal>
-              <div class="absolute left-0 top-[56px] z-[999] flex h-[calc(100dvh-56px)] w-dvw flex-col justify-between space-y-5 overflow-auto bg-white p-6">
-                <div class="h-full space-y-5 overflow-auto">
-                  <NavItem
-                    text={i18n().t('layout.stepper.back')!}
-                    status={NavItemStatus.back}
-                    onClick={() => props.setCurrentStep(HOME_STEPS.INTRO)}
-                  />
+          {/* `mobile-menu-*` keyframes (see scss/index.scss) deliver a soft
+              spring slide-down + fade-in on open, mirroring iOS-style
+              sheet animations. Without this the menu used to pop in
+              abruptly — jarring on a tactile surface. The transition is
+              automatically neutered under prefers-reduced-motion. */}
+          <Transition name="mobile-menu">
+            {isMobileMenuDisplay() && (
+              <Portal>
+                <div class="absolute left-0 top-[56px] z-[999] flex h-[calc(100dvh-56px)] w-dvw flex-col justify-between space-y-5 overflow-auto bg-white p-6">
+                  <div class="h-full space-y-5 overflow-auto">
+                    <NavItem
+                      text={i18n().t('layout.stepper.back')!}
+                      status={NavItemStatus.back}
+                      onClick={() => props.setCurrentStep(HOME_STEPS.INTRO)}
+                    />
 
-                  <NavGroup
-                    data={useDynamic() ? dynamic().data : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)}
-                    actualStep={useDynamic() ? dynamic().actualStep : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]}
-                    disableFromStep={
-                      useDynamic()
-                        ? undefined
-                        : props.mostAdvancedStep()
-                          ? HOME_STEPS_LAYOUT_VALUE[props.mostAdvancedStep()]
-                          : undefined
-                    }
-                  />
-                </div>
+                    <NavGroup
+                      data={useDynamic() ? dynamic().data : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep)}
+                      actualStep={useDynamic() ? dynamic().actualStep : HOME_STEPS_LAYOUT_VALUE[props.currentStep()]}
+                      disableFromStep={
+                        useDynamic()
+                          ? undefined
+                          : props.mostAdvancedStep()
+                            ? HOME_STEPS_LAYOUT_VALUE[props.mostAdvancedStep()]
+                            : undefined
+                      }
+                    />
+                  </div>
 
-                <div class="space-y-1">
-                  <TakeAppointmentButton />
-                  <ShareButton />
+                  <div class="space-y-1">
+                    <TakeAppointmentButton />
+                    <ShareButton />
+                  </div>
                 </div>
-              </div>
-            </Portal>
-          )}
+              </Portal>
+            )}
+          </Transition>
         </div>
       )}
 
@@ -256,9 +279,19 @@ export const StepperLayout: Component<{
         id={stepperContentId}
         ref={(e) => (ref = e)}
       >
+        {/* Reading progress bar. When the parcours has a `theme_color`
+            set (migration 0035, injected as `--mfm-theme` by HomeProvider),
+            we tint the bar with that pastel so each parcours has its
+            own visual identity end-to-end. Falls back to the legacy
+            radial-gradient purple when no theme color is set. */}
         <div
           class="fixed top-0 z-[999] h-[8px] rounded-r-md bg-radial-gradient"
-          style={{ width: `${percentageContent()}%`, left: isMobileDisplay() ? '0px' : '280px' }}
+          style={{
+            width: `${percentageContent()}%`,
+            left: isMobileDisplay() ? '0px' : '280px',
+            background:
+              'linear-gradient(90deg, var(--mfm-theme, transparent) 0%, transparent 200%), radial-gradient(100% 100% at 50% 0%, rgba(181, 128, 255, 0.33) 0%, #B580FF 100%)',
+          }}
         />
         <Transition
           name="slide-fade"

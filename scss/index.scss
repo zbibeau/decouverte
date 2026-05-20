@@ -54,6 +54,27 @@
   opacity: 0;
 }
 
+/* Mobile menu sheet — slide-down + fade-in spring on open, gentler
+ * fade-out on close. The spring on enter uses an overshoot easing
+ * (cubic-bezier(0.34, 1.56, 0.64, 1)) for a subtle iOS-sheet-like
+ * settle. Disabled under prefers-reduced-motion via the global rule
+ * at the top of the file. */
+.mobile-menu-enter-active {
+  transition:
+    transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 200ms ease-out;
+}
+.mobile-menu-exit-active {
+  transition:
+    transform 200ms ease-in,
+    opacity 180ms ease-in;
+}
+.mobile-menu-enter,
+.mobile-menu-exit-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
 @keyframes slideaway {
   from {
     max-width: 25%;
@@ -76,6 +97,47 @@
   }
   to {
     transform: translateX(100%);
+  }
+}
+
+/* Completion celebration confetti — particles fall from the top of the
+ * viewport (negative Y) past the bottom (110vh) with an ease-out curve
+ * + rotation transition. The custom-prop `--mfm-rot-start` /
+ * `--mfm-rot-end` are set per-particle from inline style so each
+ * fragment spins differently. Disabled by the global reduced-motion
+ * rule above. */
+@keyframes mfm-confetti-fall {
+  from {
+    transform: translateY(0) rotate(var(--mfm-rot-start, 0deg));
+    opacity: 1;
+  }
+  to {
+    transform: translateY(110vh) rotate(var(--mfm-rot-end, 360deg));
+    opacity: 0;
+  }
+}
+
+/* Easter egg : 700ms wiggle on the brand logo when double-clicked.
+ * Mimics a small character peeking out — drops, rotates slightly, then
+ * springs back. Disabled under prefers-reduced-motion. */
+@keyframes mfm-logo-wiggle {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  20% {
+    transform: scale(1.12) rotate(-8deg);
+  }
+  40% {
+    transform: scale(0.95) rotate(6deg);
+  }
+  60% {
+    transform: scale(1.06) rotate(-3deg);
+  }
+  80% {
+    transform: scale(0.98) rotate(2deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
   }
 }
 

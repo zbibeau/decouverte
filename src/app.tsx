@@ -50,6 +50,14 @@ const EmbeddedApp = () => {
       <MetaTagsTitle value={i18n().t('global.seo.title')!} />
       <MetaTagsDescription value={i18n().t('global.seo.description')!} />
       <Link rel="icon" href="favicon.ico" />
+      {/* LCP : the cream watercolour background applied on every chapter
+          via `StepperLayout`'s inline style is one of the largest and
+          earliest-painted images. Preloading it tells the browser to
+          fetch it in parallel with the HTML / JS, which usually shaves
+          ~200ms off Largest Contentful Paint on 4G connections.
+          `fetchpriority="high"` further hints the browser this is a
+          first-paint critical asset. */}
+      <Link rel="preload" as="image" href="/background/bg-hero-content.webp" fetchpriority="high" />
       {/*
         HomeProvider is now mounted INSIDE the Router so it can read the
         active URL via `useLocation()` and derive the parcours slug from

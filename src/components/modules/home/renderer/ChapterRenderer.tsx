@@ -10,6 +10,8 @@ import type {
 import { assertNever, evaluateCondition } from '@shared/content-schema';
 import { Component, createMemo, createSignal, For, JSX, onCleanup, onMount, Show } from 'solid-js';
 
+import { MetaTagsDescription, MetaTagsImage, MetaTagsTitle } from '../../../../services/seo';
+
 import { Card } from '../../../atoms/Card';
 import { Icon } from '../../../atoms/Icon';
 import { CheckListItem } from '../../../molecules/CheckListItem';
@@ -19,6 +21,7 @@ import { Text } from '../../../primitives/Text';
 import { Title } from '../../../primitives/Title';
 import { AfterHeroContainer, AfterHeroContainerFullVideoSection } from '../components/AfterHeroContainer';
 import { ChapterTransitionGrid } from '../components/ChapterTransitionGrid';
+import { CompletionCelebration } from '../components/CompletionCelebration';
 import { ExceptionBlock } from '../components/ExceptionBlock';
 import { FAQCard } from '../components/FAQCard';
 import { HeroTitle } from '../components/Hero';
@@ -85,6 +88,30 @@ const renderNavbar = (navbar?: { variant: string }): JSX.Element | undefined =>
  * already-structured HTML.
  */
 const nl2br = (html: string | undefined): string => (html ?? '').replace(/(?<!>)\n/g, '<br>');
+
+/**
+ * Variable interpolation : replaces `{{ varName }}` patterns in
+ * text/HTML content with the matching value collected in HomeContext.
+ *
+ * Example payload `html` : `"Bienvenue {{ firstName }} ✨"`
+ * + collected variable `firstName = 'Vivien'`
+ * → `"Bienvenue Vivien ✨"` at render time.
+ *
+ * Unknown variables (typo, not yet collected) silently drop to empty
+ * string — never leak "undefined" into the rendered text. The pattern
+ * tolerates inner whitespace ({{firstName}}, {{ firstName }}, etc.)
+ * and is anchored to alphanumeric + underscore so it can't be
+ * exploited to inject HTML.
+ */
+const interpolate = (html: string | undefined, vars: Record<string, unknown> | undefined | null): string => {
+  if (!html) return '';
+  if (!vars) return html;
+  return html.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (_, key) => {
+    const v = vars[key];
+    if (v === undefined || v === null) return '';
+    return String(v);
+  });
+};
 
 // ============================================================
 // Block dispatcher
@@ -155,7 +182,12 @@ const RenderBlock: Component<BlockProps> = (props) => {
             // content at natural height.
             const textInner = (
               <Text variant={blk.payload.variant}>
-                <span innerHTML={nl2br(blk.payload.html)} />
+                {/* Variable interpolation : `{{ firstName }}` in the
+                     authored HTML gets replaced with the matching value
+                     collected via the `form` block. Lets authors say
+                     "Bienvenue {{ firstName }} ✨" once and have it
+                     personalise downstream. */}
+                <span innerHTML={nl2br(interpolate(blk.payload.html, data() ?? {}))} />
               </Text>
             );
             if (props.nested) {
@@ -351,13 +383,13 @@ const RenderKeyPoints: Component<{ block: KeyPointsCardBlock; nested?: boolean }
       </Show>
       <Show when={props.block.payload.main.description}>
         <Text>
-          <span innerHTML={nl2br(props.block.payload.main.description)} />
+          <span innerHTML={nl2br(interpolate(props.block.payload.main.description, data() ?? {}))} />
         </Text>
       </Show>
       <For each={props.block.payload.main.extraDescriptions ?? []}>
         {(d) => (
           <Text fontWeight="medium" class="leading-tight" variant="sm">
-            <span innerHTML={nl2br(d)} />
+            <span innerHTML={nl2br(interpolate(d, data() ?? {}))} />
           </Text>
         )}
       </For>
@@ -481,7 +513,7 @@ const RenderFaqContent: Component<{ blocks: FAQQuestionContent[] }> = (props) =>
             case 'text':
               return (
                 <Text class="text-dark-950 opacity-[66%]">
-                  <span innerHTML={nl2br(b.html)} />
+                  <span innerHTML={nl2br(interpolate(b.html, data() ?? {}))} />
                 </Text>
               );
             case 'list':
@@ -500,7 +532,7 @@ const RenderFaqContent: Component<{ blocks: FAQQuestionContent[] }> = (props) =>
                   </div>
                   <div>
                     <Text class="text-primary-400">
-                      <span innerHTML={nl2br(b.html)} />
+                      <span innerHTML={nl2br(interpolate(b.html, data() ?? {}))} />
                     </Text>
                   </div>
                 </div>
@@ -544,7 +576,39 @@ export const ChapterRenderer: Component<{
 
   // Snapshot of the user's filled-in form data — drives conditional
   // gating of any block placed AFTER a `form` block in this chapter.
-  const { data: homeData } = useHome();
+  // `chapters` + `currentStep` feed the "is this the last chapter ?"
+  // detection that triggers the completion confetti.
+  const { data: homeData, chapters: homeChapters, currentStep: homeCurrentStep } = useHome();
+
+  /** True when the visitor is currently on the LAST chapter of the
+   *  parcours (logical reading order). Drives the completion confetti
+   *  burst once the form (if any) is also filled. */
+  const isLastChapter = createMemo(() => {
+    const all = homeChapters();
+    if (!all || all.length === 0) return false;
+    const current = homeCurrentStep();
+    if (!current) return false;
+    // Mirror the section-aware ordering used by ChapterTransitionGrid
+    // so "last" matches what the visitor would see in the panorama.
+    const sectionMinOrder = new Map<string, number>();
+    for (const c of all) {
+      const key = c.sectionLabel?.trim() || '__none__';
+      const prev = sectionMinOrder.get(key);
+      if (prev === undefined || c.order < prev) sectionMinOrder.set(key, c.order);
+    }
+    const ordered = [...all].sort((a, b) => {
+      const ak = a.sectionLabel?.trim() || '__none__';
+      const bk = b.sectionLabel?.trim() || '__none__';
+      if (ak !== bk) {
+        return (sectionMinOrder.get(ak) ?? 0) - (sectionMinOrder.get(bk) ?? 0);
+      }
+      const ao = a.sectionOrder ?? Number.POSITIVE_INFINITY;
+      const bo = b.sectionOrder ?? Number.POSITIVE_INFINITY;
+      if (ao !== bo) return ao - bo;
+      return a.order - b.order;
+    });
+    return ordered[ordered.length - 1]?.slug === current;
+  });
 
   // Index of the first `form` block in the chapter (or -1 if none). Blocks
   // at index ≤ formIndex are always rendered ; blocks AFTER the form (and
@@ -986,6 +1050,16 @@ export const ChapterRenderer: Component<{
 
   return (
     <div class={props.chapter.wrapperClass ?? undefined}>
+      {/* Per-chapter SEO + social-share meta. Title falls through to the
+          parcours/global title set in `app.tsx` ; description uses the
+          chapter's `cardShortTitle` when set (= curated short blurb)
+          and the OG image points to `cardImage` so a link share renders
+          a chapter-specific preview card. The `<Meta>` tags rendered
+          here override the globals while this chapter is mounted —
+          @solidjs/meta handles the swap on chapter change. */}
+      <MetaTagsTitle value={props.chapter.title} />
+      <Show when={props.chapter.cardShortTitle}>{(blurb) => <MetaTagsDescription value={blurb()} />}</Show>
+      <Show when={props.chapter.cardImage}>{(img) => <MetaTagsImage url={img()} />}</Show>
       {/* The chapter-level "Retour au formulaire" button + cardImage at
            the top were removed in a previous pass — see the git history.
            Below : a section panorama (ChapterTransitionGrid mode="current")
@@ -1071,6 +1145,11 @@ export const ChapterRenderer: Component<{
       <Show when={formCompleted()}>
         <ChapterTransitionGrid activeChapter="next" />
       </Show>
+      {/* End-of-parcours celebration : when the visitor reaches the LAST
+           chapter and has filled any required form, fire a one-shot
+           confetti burst. The component latches internally so it never
+           replays during the same session. Honors prefers-reduced-motion. */}
+      <CompletionCelebration active={isLastChapter() && formCompleted()} />
     </div>
   );
 };

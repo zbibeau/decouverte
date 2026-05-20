@@ -198,3 +198,31 @@ export async function loadNavbarVariants(parcoursSlug: string): Promise<NavbarVa
   const raw = (data as { navbar_variants?: unknown } | null)?.navbar_variants;
   return Array.isArray(raw) ? (raw as NavbarVariant[]) : [];
 }
+
+/**
+ * Load the pastel `theme_color` stored on the parcours row. Returns
+ * `null` when:
+ *   - The column doesn't exist yet on this DB (migration 0035 not yet
+ *     applied) — caught by the defensive try/catch.
+ *   - The parcours has never been assigned a color (NULL in DB).
+ *   - Supabase isn't configured (server / preview).
+ * The renderer's css-vars effect applies a parcours-tinted accent
+ * across the front when this value is set, falling back to the
+ * default Tailwind theme otherwise.
+ */
+export async function loadParcoursThemeColor(parcoursSlug: string): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('parcours')
+      .select('theme_color')
+      .eq('slug', parcoursSlug)
+      .maybeSingle();
+    if (error) return null;
+    const color = (data as { theme_color?: string | null } | null)?.theme_color;
+    return color && typeof color === 'string' && color.startsWith('#') ? color : null;
+  } catch {
+    return null;
+  }
+}
