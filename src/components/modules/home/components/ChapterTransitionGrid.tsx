@@ -226,21 +226,29 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                             // the chapter the visitor is already on —
                             // re-calling setCurrentStep would just re-mount
                             // the chapter and reset scroll back to this
-                            // panorama (= no visible change). We
-                            // smooth-scroll "into" the chapter past the top
-                            // panorama instead.
+                            // panorama (= no visible change). We scroll
+                            // "into" the chapter past the top panorama
+                            // instead.
                             //
-                            // Lookup strategy (handles the "first click does
-                            // nothing, second works" symptom — the first
-                            // click was firing before Solid had materialised
-                            // the block's wrapper into the DOM) :
-                            //   1. By id : `block-${currentChapterFirstBlockId}`
-                            //      if the host passed the id.
-                            //   2. By DOM order fallback : the first element
+                            // `behavior: 'instant'` (not 'smooth') — a
+                            // smooth scroll across the panorama height
+                            // (~1200px) takes ~2s, during which the user
+                            // gets zero feedback and clicks again, then
+                            // experiences the symptom "1er clic ne fait
+                            // rien, 2e fonctionne". "Découvrir" is a
+                            // navigation CTA, not a scroll-to-section
+                            // affordance — instant feels like landing on
+                            // a new view, snappy.
+                            //
+                            // Lookup strategy (defensive against Solid
+                            // not having materialised the block wrapper
+                            // yet) :
+                            //   1. By id (`block-${currentChapterFirstBlockId}`)
+                            //      if the host passed it.
+                            //   2. DOM order fallback : first element
                             //      carrying `data-block-id` — works even
-                            //      when the host hasn't wired the prop
-                            //      AND when the For loop has just rendered.
-                            //   3. If nothing yet, retry every 50ms (5x).
+                            //      when the prop isn't wired.
+                            //   3. Retry 5x at 50ms intervals if nothing.
                             if (mode() === 'current') {
                               let attempts = 0;
                               const tryScroll = () => {
@@ -250,7 +258,7 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
                                 const el = byId ?? (document.querySelector('[data-block-id]') as HTMLElement | null);
                                 if (el) {
                                   el.scrollIntoView({
-                                    behavior: 'smooth',
+                                    behavior: 'instant' as ScrollBehavior,
                                     block: 'start',
                                   });
                                   return;
