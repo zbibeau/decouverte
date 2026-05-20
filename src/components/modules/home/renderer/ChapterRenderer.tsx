@@ -8,7 +8,7 @@ import type {
   ToolContentSectionBlock,
 } from '@shared/content-schema';
 import { assertNever, evaluateCondition } from '@shared/content-schema';
-import { Component, createMemo, createSignal, For, JSX, onCleanup, onMount, Show } from 'solid-js';
+import { Component, createEffect, createMemo, createSignal, For, JSX, onCleanup, onMount, Show } from 'solid-js';
 
 import { MetaTagsDescription, MetaTagsImage, MetaTagsTitle } from '../../../../services/seo';
 
@@ -731,28 +731,40 @@ export const ChapterRenderer: Component<{
     });
   });
 
-  // --- Skip past the top section panorama on chapter mount ------------
+  // --- Skip past the top section panorama on chapter change ------------
   // The panorama (ChapterTransitionGrid activeChapter="current") sits at
   // the very top of every chapter so the visitor can scroll UP to revisit
   // it. We don't want them to LAND on it though — that would look like
-  // the chapter "starts" with a navigation grid. So immediately after the
-  // chapter mounts, scroll programmatically to the first block. This is
-  // an `instant` scroll (no easing) so the visitor never sees the panorama
-  // flash before the jump.
+  // the chapter "starts" with a navigation grid. So whenever the chapter
+  // changes, scroll programmatically to the first block. `instant` scroll
+  // so the visitor never sees the panorama flash before the jump.
+  //
+  // IMPORTANT : this is a `createEffect`, NOT an `onMount` — because
+  // `ChapterFromDB` mounts ChapterRenderer ONCE and then swaps the
+  // `props.chapter` reference on each navigation (the `<Show>` is not
+  // keyed, so the component instance is reused). `onMount` only fires
+  // for the very first chapter, leaving subsequent navigations stranded
+  // on the new chapter's top panorama — which looks like "nothing
+  // happened" because adjacent chapters often live in the SAME section
+  // and the panorama displays the SAME cards. The createEffect re-runs
+  // every time `props.chapter.blocks[0]?.id` changes (= new chapter
+  // mounted), executing the skip again.
   //
   // Skipped in the manager's preview iframe (`?preview=1`) : the editor
   // already controls scroll position via the `preview:scrollToBlock`
   // postMessage protocol, and the auto-skip would fight it.
-  onMount(() => {
+  createEffect(() => {
     if (typeof window === 'undefined') return;
     if (new URLSearchParams(window.location.search).get('preview') === '1') {
       return;
     }
-    const firstBlock = props.chapter.blocks[0];
-    if (!firstBlock) return;
+    // Subscribe to the first block's id — this is what changes on
+    // chapter switch, triggering the effect to re-run.
+    const firstBlockId = props.chapter.blocks[0]?.id;
+    if (!firstBlockId) return;
     let attempts = 0;
     const skip = () => {
-      const el = document.getElementById(`block-${firstBlock.id}`);
+      const el = document.getElementById(`block-${firstBlockId}`);
       if (!el) {
         // Solid reactivity hasn't mounted the block yet — retry briefly.
         // Bail after ~1s so we don't run forever in pathological cases.
