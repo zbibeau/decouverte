@@ -1,0 +1,31 @@
+-- =====================================================================
+-- Apply migration 0039 (chapter.hidden_from_nav) on CLOUD.
+-- =====================================================================
+-- Project ref : cixcaysppiwxkqjvlkrd (decouverte.madeformed.com)
+--
+-- Adds an opt-out flag on `chapter` so an author can mark a chapter
+-- as "hidden from navigation". When TRUE :
+--   - the Solid sidebar excludes the chapter from its list
+--   - the auto-injected ChapterTransitionGrid (top + bottom panorama)
+--     excludes the chapter from its section list and from the logical
+--     "next chapter" computation
+--
+-- The chapter remains fully functional otherwise — accessible by
+-- direct URL, by `branchingNext` from another chapter, by a
+-- programmatic `setCurrentStep(...)`, etc.
+--
+-- Use cases : "thank you" chapters reached after a form submit, 404
+-- fallback chapters, branching-only chapters that shouldn't pollute
+-- the visible navigation.
+--
+-- Idempotent.
+--
+-- How to apply :
+--   1. Open Supabase Studio of project cixcaysppiwxkqjvlkrd
+--   2. SQL Editor → New query
+--   3. Paste this file's contents
+--   4. Run
+-- =====================================================================
+
+alter table public.chapter
+  add column if not exists hidden_from_nav boolean not null default false;

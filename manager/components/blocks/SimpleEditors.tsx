@@ -134,9 +134,18 @@ type VideoPayload = {
   contentId?: string;
   contentClass?: string;
   navbar?: { variant: string };
+  /** Inline maintenance tag IDs, used when this VideoBlock appears
+   *  nested inside another block. Top-level instances ignore this. */
+  tagIds?: string[];
 };
 
-export function VideoEditor({ payload, onChange, navbarVariants }: PayloadEditorProps<VideoPayload>) {
+export function VideoEditor({ payload, onChange, navbarVariants, depth = 0 }: PayloadEditorProps<VideoPayload>) {
+  // Top-level blocks (depth 0) save tags via the `block_tag` join
+  // table — TagsField defaults to that mode via URL parsing. Nested
+  // blocks (depth ≥ 1) have no DB row of their own ; we stash tag
+  // IDs in the payload and let the parent's normal save flow
+  // propagate the change.
+  const isNested = depth > 0;
   return (
     <div className="space-y-3">
       <Field
@@ -175,7 +184,17 @@ export function VideoEditor({ payload, onChange, navbarVariants }: PayloadEditor
       {payload.vimeoSrc && <VimeoPreview src={payload.vimeoSrc} />}
       <TagsHelpBanner contextHint="Décris ici les interfaces / fonctionnalités produit que cette vidéo montre (ex. fiche patient, agenda, messagerie)." />
       <Field label="Tags de maintenance" path="tags">
-        <TagsField />
+        {isNested ? (
+          <TagsField
+            target={{
+              kind: 'controlled',
+              valueIds: payload.tagIds ?? [],
+              onChange: (ids) => onChange({ ...payload, tagIds: ids }),
+            }}
+          />
+        ) : (
+          <TagsField />
+        )}
       </Field>
     </div>
   );
@@ -402,9 +421,12 @@ type HeroPayload = {
   sectionTitle?: string;
   number?: number;
   illustration?: string;
+  /** Inline maintenance tag IDs used when this heroTitle is nested. */
+  tagIds?: string[];
 };
 
-export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPayload>) {
+export function HeroTitleEditor({ payload, onChange, depth = 0 }: PayloadEditorProps<HeroPayload>) {
+  const isNested = depth > 0;
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -498,7 +520,17 @@ export function HeroTitleEditor({ payload, onChange }: PayloadEditorProps<HeroPa
       </Field>
       <TagsHelpBanner contextHint="Décris ici ce que l'illustration représente (ex. fiche patient, agenda, page d'accueil)." />
       <Field label="Tags de maintenance" path="tags">
-        <TagsField />
+        {isNested ? (
+          <TagsField
+            target={{
+              kind: 'controlled',
+              valueIds: payload.tagIds ?? [],
+              onChange: (ids) => onChange({ ...payload, tagIds: ids }),
+            }}
+          />
+        ) : (
+          <TagsField />
+        )}
       </Field>
     </div>
   );

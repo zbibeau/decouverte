@@ -18,7 +18,11 @@ type Payload = PhotoCarouselBlock['payload'];
 
 const ASPECT_OPTIONS: Array<NonNullable<Payload['aspectRatio']>> = ['16/9', '4/3', '3/2', '1/1', '21/9'];
 
-export function PhotoCarouselEditor({ payload, onChange, navbarVariants }: PayloadEditorProps<Payload>) {
+export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth = 0 }: PayloadEditorProps<Payload>) {
+  // See `VideoEditor` comment about the depth-based switch : nested
+  // photoCarousels keep their tag IDs inline in their payload, top-
+  // level instances write to the `block_tag` join table via URL.
+  const isNested = depth > 0;
   const photos = payload.photos ?? [];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
@@ -402,7 +406,17 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants }: Paylo
       </Section>
       <TagsHelpBanner contextHint="Ces tags s'appliquent au carrousel entier (pas à chaque photo). Décris la fonctionnalité produit que les photos illustrent." />
       <Field label="Tags de maintenance" path="tags">
-        <TagsField />
+        {isNested ? (
+          <TagsField
+            target={{
+              kind: 'controlled',
+              valueIds: payload.tagIds ?? [],
+              onChange: (ids) => onChange({ ...payload, tagIds: ids }),
+            }}
+          />
+        ) : (
+          <TagsField />
+        )}
       </Field>
     </ScopeRoot>
   );

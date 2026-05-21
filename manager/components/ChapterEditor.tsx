@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
 import type { ContentBlock } from '@shared/content-schema';
@@ -11,13 +11,17 @@ import { extractUsedVariableKeys } from '@/lib/usedVariables';
 import { AddBlockForm } from '@/components/AddBlockForm';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
+import { InPageSearchInput } from '@/components/InPageSearchInput';
 import { PreviewPanel } from '@/components/PreviewPanel';
+import { SearchHighlightBanner } from '@/components/SearchHighlightBanner';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
 import type { VariableMeta } from '@/components/blocks/editor-types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
+import { extractBlockSearchTextWeighted, extractSnippet } from '@/lib/blockSearch';
+import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
 import { cn } from '@/lib/utils';
@@ -29,6 +33,10 @@ interface BlockRow {
   payload: Record<string, unknown>;
   /** Draft diff: 'new', 'modified', 'pristine', or undefined (no draft). */
   diff?: 'new' | 'modified' | 'pristine';
+  /** Maintenance tags attached to this block (via `block_tag`).
+   *  Surfaced as colored chips on the row so the editor sees at a
+   *  glance which interfaces each block depicts. */
+  tags?: Array<{ id: string; label: string; color: string }>;
 }
 
 interface Props {
@@ -65,6 +73,68 @@ interface Props {
   publishedVersionId?: string | null;
 }
 
+/**
+ * Renders a snippet with every occurrence of the matching substring
+ * wrapped in <mark>. Multiple hits in the same snippet all get the
+ * yellow highlight — picking just the first felt inconsistent when
+ * the query was short ("pa" appearing twice but only one mark).
+ *
+ * Local to this file ; the palette's PaletteItem has a similar
+ * helper but unexported.
+ */
+function HighlightedSnippet({ snippet, query }: { snippet: string; query: string }) {
+  const q = query.trim().toLowerCase();
+  if (!q) return <>{snippet}</>;
+  const lower = snippet.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  while (cursor < snippet.length) {
+    const idx = lower.indexOf(q, cursor);
+    if (idx === -1) {
+      parts.push(snippet.slice(cursor));
+      break;
+    }
+    if (idx > cursor) parts.push(snippet.slice(cursor, idx));
+    parts.push(
+      <mark key={`m-${idx}`} className="rounded-sm bg-amber-200 px-0.5 not-italic text-amber-950">
+        {snippet.slice(idx, idx + q.length)}
+      </mark>,
+    );
+    cursor = idx + q.length;
+  }
+  return <>{parts}</>;
+}
+
+/**
+ * Renders the maintenance tags attached to a block as colored pills,
+ * inline on its row. Same visual contract as the ⌘K palette chips
+ * (uses `TAG_COLOR_HEX` so colors render reliably regardless of how
+ * Tailwind's JIT scans dynamic classNames). Returns null when there
+ * are no tags so the row keeps its layout untouched.
+ */
+function BlockTagsChips({ tags }: { tags?: BlockRow['tags'] }) {
+  if (!tags || tags.length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {tags.map((t) => {
+        const safe = isTagColor(t.color) ? t.color : 'amber';
+        const hex = TAG_COLOR_HEX[safe];
+        return (
+          <span
+            key={t.id}
+            className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+            style={{ backgroundColor: hex.chip, color: hex.text }}
+            title={`Tag de maintenance : ${t.label}`}
+          >
+            <span aria-hidden="true">🏷</span>
+            <span>{t.label}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function BlockDiffBadge({ diff }: { diff?: BlockRow['diff'] }) {
   if (diff === 'new') {
     return (
@@ -87,8 +157,48 @@ export function ChapterEditor(props: Props) {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
+  const searchParams = useSearchParams();
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(props.blocks[0]?.id ?? null);
   const [isPending, startTransition] = useTransition();
+
+  // ⌘K search context : when the user lands here from the palette,
+  // its query is in `?q=`. We use it to (a) show a banner, (b) mark
+  // matching blocks with a yellow ring + snippet under their summary,
+  // (c) auto-scroll the first match into view.
+  //
+  // `localSearch` is the in-page filter input — a second source of
+  // truth so the user can keep filtering blocks after dismissing the
+  // banner. It is seeded from `?q=` on mount + on URL changes (so
+  // clearing the banner clears the input too).
+  const urlQuery = searchParams.get('q')?.trim() ?? '';
+  const [localSearch, setLocalSearch] = useState(urlQuery);
+  useEffect(() => {
+    setLocalSearch(urlQuery);
+  }, [urlQuery]);
+  const searchQuery = localSearch.trim();
+  const matchedBlockIds = useMemo(() => {
+    if (!searchQuery) return new Set<string>();
+    const q = searchQuery.toLowerCase();
+    const ids = new Set<string>();
+    for (const b of props.blocks) {
+      const text = extractBlockSearchTextWeighted(b.payload).full;
+      if (text.includes(q)) ids.add(b.id);
+    }
+    return ids;
+  }, [searchQuery, props.blocks]);
+  // Snippet ±32 chars around the match per block. Pre-computed once
+  // per render rather than inside the For loop so re-renders don't
+  // re-walk the payload of unaffected rows.
+  const snippetByBlockId = useMemo(() => {
+    if (!searchQuery) return new Map<string, string>();
+    const map = new Map<string, string>();
+    for (const b of props.blocks) {
+      const text = extractBlockSearchTextWeighted(b.payload).full;
+      const snippet = extractSnippet(text, searchQuery, 32);
+      if (snippet) map.set(b.id, snippet);
+    }
+    return map;
+  }, [searchQuery, props.blocks]);
 
   // Keyboard nav over the block list:
   //   ↑↓ to highlight a block, Enter to open its editor, Esc → chapter list.
@@ -162,6 +272,27 @@ export function ChapterEditor(props: Props) {
     const row = listRef.current.querySelector<HTMLElement>(`[data-row-id="${selectedBlockId}"]`);
     row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selectedBlockId]);
+
+  // When the user lands here from a ⌘K search, scroll the first
+  // matching block into view + select it in the preview. Runs once
+  // per `searchQuery` change so re-opening the same query doesn't
+  // re-trigger on every render.
+  useEffect(() => {
+    if (!searchQuery || matchedBlockIds.size === 0) return;
+    const firstMatch = props.blocks.find((b) => matchedBlockIds.has(b.id));
+    if (!firstMatch) return;
+    lastSourceRef.current = 'click';
+    manualScrollAtRef.current = Date.now();
+    setSelectedBlockId(firstMatch.id);
+    // requestAnimationFrame so the row exists in the DOM before we
+    // try to scroll to it (the matchedBlockIds set is built from
+    // props.blocks, the DOM mirrors props.blocks → safe).
+    requestAnimationFrame(() => {
+      const row = listRef.current?.querySelector<HTMLElement>(`[data-row-id="${firstMatch.id}"]`);
+      row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   function withRefresh<T extends unknown[]>(fn: (...args: T) => Promise<void>) {
     return (...args: T) =>
@@ -242,6 +373,19 @@ export function ChapterEditor(props: Props) {
           </p>
         </div>
 
+        {/* Banner shown only when ?q=<query> is in the URL (i.e. the
+            user landed here from a ⌘K search). Surfaces the original
+            query + match count + a clear button. */}
+        <SearchHighlightBanner matchCount={matchedBlockIds.size} />
+        {/* In-page filter — persists across banner dismissal so the
+            user can keep filtering blocks without re-opening ⌘K.
+            Seeded from `?q=` on mount, independent afterwards. */}
+        <InPageSearchInput
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="🔍 Filtrer les blocs de ce chapitre…"
+        />
+
         <Card>
           <CardHeader>
             <CardTitle>Blocs</CardTitle>
@@ -259,13 +403,25 @@ export function ChapterEditor(props: Props) {
                 const isSelected = selectedBlockId === b.id;
                 const isInspected = inspectedBlockId === b.id;
                 const isKbd = kbdActive && kbdIdx === idx;
+                const isMatch = matchedBlockIds.has(b.id);
+                const snippet = snippetByBlockId.get(b.id);
                 return (
                   <div
                     data-row-id={b.id}
                     className={cn(
-                      'relative flex items-center gap-2 py-3 transition-colors',
+                      // Single-line layout for the row itself — no
+                      // flex-wrap, otherwise long block summaries push
+                      // the action buttons (pencil/copy/trash) onto a
+                      // second line, creating the visual inconsistency
+                      // the user reported. The optional snippet sits
+                      // OUTSIDE the flex row, below it.
+                      'relative py-3 transition-colors',
                       isSelected && 'bg-primary/5 -mx-5 px-5',
                       isInspected && '!bg-amber-100 ring-2 ring-amber-300',
+                      // Match from ⌘K search : yellow ring + tint. Stays
+                      // on top of selected styling, gives way to inspected
+                      // (which is even stronger).
+                      isMatch && !isInspected && 'rounded-md bg-amber-50/70 ring-2 ring-amber-300',
                       isKbd && !isInspected && 'ring-brand-primary-300/60 ring-1',
                     )}
                   >
@@ -278,60 +434,85 @@ export function ChapterEditor(props: Props) {
                         — clique ✏️ pour éditer
                       </div>
                     )}
-                    {dragHandle}
-                    <button
-                      type="button"
-                      onClick={() => selectBlock(b.id)}
-                      className="flex flex-1 items-center gap-3 text-left"
-                      title="Centrer dans la preview"
-                    >
-                      <span className="text-muted-foreground w-6 font-mono text-xs">{b.order}</span>
-                      <span className="bg-muted text-muted-foreground inline-flex h-6 items-center rounded px-2 text-[11px] font-medium uppercase tracking-wide">
-                        {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
-                      </span>
-                      <span className="flex-1 truncate text-sm">{summarizeBlock(b.type, b.payload)}</span>
-                      {/* Navbar variant indicator — surfaces the "Tool 1
-                          navbar" used by this block at a glance. */}
-                      {(() => {
-                        const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
-                        if (!variantKey) return null;
-                        const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
-                        return (
-                          <span
-                            className="border-border inline-flex items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-[10px]"
-                            title={`Navbar « ${variantKey} »`}
-                          >
+                    <div className="flex items-center gap-2">
+                      {dragHandle}
+                      <button
+                        type="button"
+                        onClick={() => selectBlock(b.id)}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        title="Centrer dans la preview"
+                      >
+                        <span className="text-muted-foreground w-6 shrink-0 font-mono text-xs">{b.order}</span>
+                        <span className="bg-muted text-muted-foreground inline-flex h-6 shrink-0 items-center rounded px-2 text-[11px] font-medium uppercase tracking-wide">
+                          {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm">{summarizeBlock(b.type, b.payload)}</span>
+                        {/* Navbar variant indicator — surfaces the "Tool 1
+                            navbar" used by this block at a glance. */}
+                        {(() => {
+                          const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
+                          if (!variantKey) return null;
+                          const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
+                          return (
                             <span
-                              className="inline-block h-2 w-2 rounded-full"
-                              style={{ background: v?.color || '#94a3b8' }}
-                            />
-                            {v?.title ?? variantKey}
-                          </span>
-                        );
-                      })()}
-                      <BlockDiffBadge diff={b.diff} />
-                    </button>
-                    <Link href={`/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`}>
-                      <Button variant="ghost" size="sm" title="Éditer">
-                        <Pencil className="h-4 w-4" />
+                              className="border-border inline-flex shrink-0 items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-[10px]"
+                              title={`Navbar « ${variantKey} »`}
+                            >
+                              <span
+                                className="inline-block h-2 w-2 rounded-full"
+                                style={{ background: v?.color || '#94a3b8' }}
+                              />
+                              {v?.title ?? variantKey}
+                            </span>
+                          );
+                        })()}
+                        <BlockTagsChips tags={b.tags} />
+                        <BlockDiffBadge diff={b.diff} />
+                      </button>
+                      {/* Snippet, action buttons (pencil/duplicate/delete)
+                          continue on the SAME flex row so they sit at
+                          the end of the line, never wrap. */}
+                      <Link
+                        href={
+                          // Propagate the search context to the block
+                          // editor when the user clicks the pencil on a
+                          // matched block — they keep their bearings.
+                          searchQuery
+                            ? `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}?q=${encodeURIComponent(searchQuery)}`
+                            : `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`
+                        }
+                      >
+                        <Button variant="ghost" size="sm" title="Éditer">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <DuplicateBlockMenu
+                        chapters={props.chapters ?? []}
+                        currentChapterSlug={props.chapter.slug}
+                        disabled={isPending}
+                        onDuplicateHere={() => handleDuplicate(b.id)}
+                        onCopyTo={(targetChapterId) => handleCopyTo(b.id, targetChapterId)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="Supprimer"
+                        disabled={isPending}
+                        onClick={() => handleDelete(b.id)}
+                      >
+                        <Trash2 className="text-destructive h-4 w-4" />
                       </Button>
-                    </Link>
-                    <DuplicateBlockMenu
-                      chapters={props.chapters ?? []}
-                      currentChapterSlug={props.chapter.slug}
-                      disabled={isPending}
-                      onDuplicateHere={() => handleDuplicate(b.id)}
-                      onCopyTo={(targetChapterId) => handleCopyTo(b.id, targetChapterId)}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="Supprimer"
-                      disabled={isPending}
-                      onClick={() => handleDelete(b.id)}
-                    >
-                      <Trash2 className="text-destructive h-4 w-4" />
-                    </Button>
+                    </div>
+                    {/* Snippet rendered BELOW the row (outside the
+                        flex container) so it has full width and
+                        doesn't push the action buttons to a new line
+                        when the title is long. Only shown when the
+                        ⌘K search has a match in the block body. */}
+                    {snippet && (
+                      <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
+                        <HighlightedSnippet snippet={snippet} query={searchQuery} />
+                      </p>
+                    )}
                   </div>
                 );
               }}

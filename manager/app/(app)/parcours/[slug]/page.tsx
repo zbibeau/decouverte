@@ -9,7 +9,7 @@ import {
   getEditingVersionId,
   getNavbarVariants,
   moveSectionRelative,
-  reorderChapters,
+  reorderAndReassignChapters,
   updateChapterMeta,
 } from '@/lib/actions';
 import { createClient } from '@/lib/supabase/server';
@@ -24,15 +24,19 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
 
   const { data: chapters } = await supabase
     .from('chapter')
-    .select('id, slug, title, "order", section_label, section_order, card_image, card_short_title')
+    .select('id, slug, title, "order", section_label, section_order, card_image, card_short_title, hidden_from_nav')
     .eq('version_id', versionId ?? '')
     .order('order', { ascending: true });
 
   const createChapterAction = createChapter.bind(null, slug);
 
-  async function reorderChaptersAction(orderedIds: string[]) {
+  async function reorderChaptersAction(orderedItems: Array<{ id: string; sectionLabel: string | null }>) {
     'use server';
-    await reorderChapters(slug, orderedIds);
+    // Rich payload : each chapter carries its (potentially new) section
+    // assignment. The server updates `order` AND `section_label` in one
+    // atomic-ish pass, so cross-section drag-and-drop in the
+    // ChapterList just needs a single roundtrip.
+    await reorderAndReassignChapters(slug, orderedItems);
   }
   async function deleteChapterAction(chapterId: string) {
     'use server';
@@ -50,6 +54,7 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
     sectionOrder: number | null,
     cardImage: string | null,
     cardShortTitle: string | null,
+    hiddenFromNav: boolean,
   ) {
     'use server';
     const fd = new FormData();
@@ -59,6 +64,9 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
     fd.set('sectionOrder', sectionOrder == null ? '' : String(sectionOrder));
     fd.set('cardImage', cardImage ?? '');
     fd.set('cardShortTitle', cardShortTitle ?? '');
+    // Boolean flatpacked as "1"/"" so FormData round-tripping stays
+    // consistent with the other optional fields above.
+    fd.set('hiddenFromNav', hiddenFromNav ? '1' : '');
     await updateChapterMeta(slug, chapterId, fd);
   }
   async function moveSectionAction(sectionLabel: string | null, direction: -1 | 1) {
@@ -108,6 +116,7 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
               sectionOrder: c.section_order,
               cardImage: (c as { card_image?: string | null }).card_image,
               cardShortTitle: (c as { card_short_title?: string | null }).card_short_title,
+              hiddenFromNav: (c as { hidden_from_nav?: boolean | null }).hidden_from_nav ?? false,
               diff: diffs.get(c.id),
               navbars: (navbarUsageByChapter.get(c.id) ?? []).map((key) => {
                 const v = navbarVariantByKey.get(key);

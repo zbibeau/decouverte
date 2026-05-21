@@ -12,6 +12,13 @@ import type { PayloadEditorProps } from './editor-types';
 
 type Payload = ToolContentSectionBlock['payload'];
 
+// NB : pas de TagsField sur le toolContentSection lui-même —
+// volontaire. Les tags appartiennent aux sous-blocs (vidéo / photo
+// dans `children[]`) qui les portent visuellement, pour que
+// l'éditeur sache toujours À QUOI un tag est rattaché. Tagger le
+// conteneur produisait un champ flottant en bas du bloc dont le
+// scope n'était pas évident.
+
 export function ToolContentSectionEditor({
   payload,
   onChange,
@@ -79,16 +86,10 @@ export function ToolContentSectionEditor({
       {/* --- Titre et sous-titre (rose) --- */}
       <Section title="Titre & sous-titre" accentColor="rose">
         <Field label="Titre" path="title">
-          <Input
-            value={payload.title ?? ''}
-            onChange={(e) => onChange({ ...payload, title: e.target.value })}
-          />
+          <Input value={payload.title ?? ''} onChange={(e) => onChange({ ...payload, title: e.target.value })} />
         </Field>
         <Field label="Sous-titre" path="subtitle">
-          <Input
-            value={payload.subtitle ?? ''}
-            onChange={(e) => onChange({ ...payload, subtitle: e.target.value })}
-          />
+          <Input value={payload.subtitle ?? ''} onChange={(e) => onChange({ ...payload, subtitle: e.target.value })} />
         </Field>
       </Section>
 
@@ -96,7 +97,7 @@ export function ToolContentSectionEditor({
       <Section title="Vidéo" accentColor="green">
         <Field label="Mode" path="video">
           <select
-            className="flex h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+            className="border-border flex h-9 w-full rounded-md border bg-white px-3 text-sm"
             value={videoKind}
             onChange={(e) => setVideoKind(e.target.value as 'none' | 'fixed' | 'branchOnPersonWhoHandleCalls')}
           >
@@ -110,15 +111,13 @@ export function ToolContentSectionEditor({
           <Field label="Source Vimeo" path="video.src" hint='Format : "vimeo/123456789?hash=abcdef"'>
             <Input
               value={video.src}
-              onChange={(e) =>
-                onChange({ ...payload, video: { kind: 'fixed', src: e.target.value } })
-              }
+              onChange={(e) => onChange({ ...payload, video: { kind: 'fixed', src: e.target.value } })}
             />
           </Field>
         )}
 
         {video?.kind === 'branchOnPersonWhoHandleCalls' && (
-          <div className="space-y-2 rounded-md border border-border/60 bg-muted/30 p-3">
+          <div className="border-border/60 bg-muted/30 space-y-2 rounded-md border p-3">
             {(['doctor', 'secretary', 'remote-secretary'] as const).map((k) => (
               <Field key={k} label={`Vidéo pour ${k}`} path={`video.${k}`}>
                 <Input

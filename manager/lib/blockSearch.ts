@@ -124,6 +124,157 @@ export function extractBlockSearchText(payload: unknown): string {
 }
 
 /**
+ * Walk a payload and return the JSON paths of every string field
+ * whose value contains `query` (case-insensitive). HTML tags are
+ * stripped before matching so a match found in raw HTML doesn't
+ * surface the wrong field.
+ *
+ * Path format mirrors the convention used by `<Field path="…">`
+ * across the block editors (e.g. `main.title`, `photos[1].description`,
+ * `fields[2].label`). Container paths are NOT emitted — only the
+ * exact leaf where the string lives — so the BlockEditor can
+ * highlight ONLY the specific input the user is looking for.
+ *
+ * Used by the block editor to highlight every field that matched the
+ * ⌘K search query carried via `?q=`.
+ */
+/**
+ * Recursively walks a payload and collects every `tagIds: string[]`
+ * array found inside it. Used to surface maintenance tags attached
+ * to NESTED blocks (children of card / toolContentSection /
+ * conditional / faq questions etc.) — top-level blocks store their
+ * tags in the `block_tag` join table, but nested children have no
+ * DB row of their own and keep their tag IDs inline in the parent's
+ * payload via `payload.tagIds`.
+ *
+ * Returns the deduplicated set of tag IDs. The caller resolves
+ * those IDs against the `tag` table to get labels + colors.
+ */
+export function harvestNestedTagIds(payload: unknown): Set<string> {
+  const out = new Set<string>();
+  walkTagIds(payload, out);
+  return out;
+}
+
+function walkTagIds(value: unknown, out: Set<string>): void {
+  if (value == null) return;
+  if (typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const item of value) walkTagIds(item, out);
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  if (Array.isArray(obj.tagIds)) {
+    for (const id of obj.tagIds) {
+      if (typeof id === 'string') out.add(id);
+    }
+  }
+  for (const v of Object.values(obj)) walkTagIds(v, out);
+}
+
+/**
+ * Returns a new payload with every occurrence of `tagId` removed
+ * from any `tagIds: string[]` array found at any depth. The original
+ * payload is returned unchanged (referentially) when no tagId
+ * occurrence was found, so the caller can cheaply detect "did
+ * anything change ?" by reference equality.
+ *
+ * Used by `deleteTag` to scrub dangling references when a tag is
+ * removed from the library admin.
+ */
+export function removeTagIdFromPayload(payload: unknown, tagId: string): unknown {
+  if (payload == null || typeof payload !== 'object') return payload;
+  if (Array.isArray(payload)) {
+    let changed = false;
+    const next = payload.map((item) => {
+      const nextItem = removeTagIdFromPayload(item, tagId);
+      if (nextItem !== item) changed = true;
+      return nextItem;
+    });
+    return changed ? next : payload;
+  }
+  const obj = payload as Record<string, unknown>;
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'tagIds' && Array.isArray(v)) {
+      const filtered = v.filter((id) => id !== tagId);
+      if (filtered.length !== v.length) {
+        changed = true;
+        next[k] = filtered;
+        continue;
+      }
+    }
+    const nextV = removeTagIdFromPayload(v, tagId);
+    if (nextV !== v) changed = true;
+    next[k] = nextV;
+  }
+  return changed ? next : payload;
+}
+
+export function findMatchingFieldPaths(payload: unknown, query: string): string[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const out: string[] = [];
+  walkPaths(payload, '', q, out, null);
+  return out;
+}
+
+/**
+ * Like `findMatchingFieldPaths` but also harvests a context snippet
+ * around each match (±`radius` chars), keyed by the same JSON path.
+ * Used by the block editor to render a "matched text" preview line
+ * under each highlighted input (since `<input>` and `<textarea>`
+ * can't host inline `<mark>` HTML).
+ */
+export function findMatchingFieldSnippets(payload: unknown, query: string, radius = 32): Map<string, string> {
+  const q = query.trim().toLowerCase();
+  const map = new Map<string, string>();
+  if (!q) return map;
+  walkPaths(payload, '', q, [], { map, radius });
+  return map;
+}
+
+interface SnippetCollector {
+  map: Map<string, string>;
+  radius: number;
+}
+
+function walkPaths(
+  value: unknown,
+  currentPath: string,
+  q: string,
+  out: string[],
+  snippets: SnippetCollector | null,
+): void {
+  if (value == null) return;
+  if (typeof value === 'string') {
+    if (!currentPath) return; // root scalar shouldn't normally happen on a payload
+    const cleaned = stripHtml(value);
+    const lower = cleaned.toLowerCase();
+    const idx = lower.indexOf(q);
+    if (idx === -1) return;
+    out.push(currentPath);
+    if (snippets) {
+      const snippet = extractSnippet(cleaned, q, snippets.radius);
+      if (snippet) snippets.map.set(currentPath, snippet);
+    }
+    return;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return;
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => walkPaths(v, `${currentPath}[${i}]`, q, out, snippets));
+    return;
+  }
+  if (typeof value === 'object') {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const next = currentPath ? `${currentPath}.${k}` : k;
+      walkPaths(v, next, q, out, snippets);
+    }
+  }
+}
+
+/**
  * Extract a short context snippet around the first occurrence of `query`
  * inside `haystack`. Returns `null` if no match.
  *

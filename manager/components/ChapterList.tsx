@@ -1,18 +1,48 @@
 'use client';
 
-import { ArrowDown, ArrowUp, Check, ChevronRight, Copy, Pencil, Trash2, Upload, X } from 'lucide-react';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  GripVertical,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, useTransition } from 'react';
+import { ReactNode, useEffect, useId, useRef, useState, useTransition } from 'react';
 
 import { TagsField, TagsHelpBanner } from '@/components/blocks/TagsField';
 import { useConfirm } from '@/components/ConfirmDialog';
-import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
 import { uploadImageDirect } from '@/lib/uploadImageClient';
+import { cn } from '@/lib/utils';
 
 interface ChapterRow {
   id: string;
@@ -28,6 +58,10 @@ interface ChapterRow {
   cardImage?: string | null;
   /** Short title displayed on the chapter card. Falls back to `title`. */
   cardShortTitle?: string | null;
+  /** Opt-out flag : when TRUE the chapter is hidden from BOTH the
+   *  sidebar AND the ChapterTransitionGrid section panorama. Still
+   *  reachable via direct URL / programmatic navigation. */
+  hiddenFromNav?: boolean;
   /** Draft diff state: 'new' (created in draft), 'modified' (diff vs published), or undefined (pristine / no draft). */
   diff?: 'new' | 'modified' | 'pristine';
   /** Navbar variants used by top-level blocks of this chapter. Renders as
@@ -39,7 +73,11 @@ interface ChapterRow {
 interface Props {
   parcoursSlug: string;
   chapters: ChapterRow[];
-  reorderAction: (orderedIds: string[]) => Promise<void>;
+  /** Cross-section drag-and-drop : the payload carries the new
+   *  global order PLUS each chapter's (potentially updated) section
+   *  assignment. The server then writes both `order` and
+   *  `section_label` in one pass. */
+  reorderAction: (orderedItems: Array<{ id: string; sectionLabel: string | null }>) => Promise<void>;
   deleteAction: (chapterId: string) => Promise<void>;
   duplicateAction: (chapterId: string) => Promise<{ id: string; slug: string }>;
   /** Server action persisting a chapter title/slug/section/card update.
@@ -52,6 +90,7 @@ interface Props {
     sectionOrder: number | null,
     cardImage: string | null,
     cardShortTitle: string | null,
+    hiddenFromNav: boolean,
   ) => Promise<void>;
   /** Server action swapping a section with its neighbour in the global
    *  chapter order. Powers the ↑ / ↓ buttons in each section header. */
@@ -98,6 +137,7 @@ export function ChapterList({
   const [editSectionOrder, setEditSectionOrder] = useState('');
   const [editCardImage, setEditCardImage] = useState('');
   const [editCardShortTitle, setEditCardShortTitle] = useState('');
+  const [editHiddenFromNav, setEditHiddenFromNav] = useState(false);
   const [cardImageUploading, setCardImageUploading] = useState(false);
   const cardImageInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -109,6 +149,7 @@ export function ChapterList({
     setEditSectionOrder(c.sectionOrder == null ? '' : String(c.sectionOrder));
     setEditCardImage(c.cardImage ?? '');
     setEditCardShortTitle(c.cardShortTitle ?? '');
+    setEditHiddenFromNav(c.hiddenFromNav ?? false);
   }
   function cancelEdit() {
     setEditingId(null);
@@ -118,6 +159,7 @@ export function ChapterList({
     setEditSectionOrder('');
     setEditCardImage('');
     setEditCardShortTitle('');
+    setEditHiddenFromNav(false);
   }
   async function handleCardImageUpload(file: File) {
     // Direct browser → Supabase upload : bypasses the Next.js server action
@@ -153,7 +195,33 @@ export function ChapterList({
     const cardShortTitle = editCardShortTitle.trim() === '' ? null : editCardShortTitle.trim();
     startTransition(async () => {
       try {
-        await updateAction(id, title, slug, sectionLabel, sectionOrder, cardImage, cardShortTitle);
+        await updateAction(id, title, slug, sectionLabel, sectionOrder, cardImage, cardShortTitle, editHiddenFromNav);
+        // Optimistic local update : merge the new values into the
+        // displayed chapter immediately. Without this, the UI relied
+        // solely on `router.refresh()` to bring back the new title,
+        // but the RSC fetch sometimes hits a cache and the user sees
+        // the OLD name until they force-reload. By overlaying the
+        // fresh values on `optimisticChapters`, the row shows the
+        // new title instantly ; once the refresh lands the useEffect
+        // below clears the optimistic override and we fall back to
+        // the (now-equal) props.
+        const base = optimisticChapters ?? chapters;
+        setOptimisticChapters(
+          base.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  title,
+                  slug,
+                  sectionLabel,
+                  sectionOrder,
+                  cardImage,
+                  cardShortTitle,
+                  hiddenFromNav: editHiddenFromNav,
+                }
+              : c,
+          ),
+        );
         toast.success(`Chapitre « ${originalTitle} » mis à jour`);
         setEditingId(null);
         router.refresh();
@@ -171,10 +239,154 @@ export function ChapterList({
     '/',
   );
 
-  function handleReorder(orderedIds: string[]) {
+  // dnd-kit sensors — same defaults as the old SortableList (5 px
+  // activation distance so a click on a button inside the row doesn't
+  // accidentally start a drag).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // Optimistic state for drag-and-drop. When the user drops a chapter
+  // we mutate this immediately so the UI reflects the new order +
+  // section assignment without waiting for the server roundtrip. The
+  // expected order is tracked via `expectedOrderRef` so a stale
+  // re-render with the pre-drop props doesn't snap the row back
+  // (same trick the legacy SortableList used internally).
+  const [optimisticChapters, setOptimisticChapters] = useState<ChapterRow[] | null>(null);
+  const expectedOrderRef = useRef<string[] | null>(null);
+  const effectiveChapters = optimisticChapters ?? chapters;
+
+  // Currently-dragging chapter id — drives the DragOverlay below so a
+  // ghost of the row follows the cursor even when crossing section
+  // boundaries (without this, the original row's transform alone made
+  // the visual disappear the moment the cursor left the source
+  // SortableContext).
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const draggingChapter = draggingId ? (effectiveChapters.find((c) => c.id === draggingId) ?? null) : null;
+
+  // Stable id passed to DndContext. Without this, @dnd-kit assigns an
+  // auto-incrementing `aria-describedby="DndDescribedBy-N"` to every
+  // draggable for its screen-reader announcements — the counter
+  // starts fresh per render pass and easily desynchronises between
+  // server (SSR) and client (hydration), producing a hydration
+  // mismatch error in the console. `useId()` is SSR-stable so the
+  // resulting describedBy ids align on both sides.
+  const dndId = useId();
+
+  // Sync optimistic state with the latest props. Two cases :
+  //   - drag in flight (`expectedOrderRef` set) : only clear once the
+  //     server has reached the expected order, otherwise a stale
+  //     props update mid-drag would snap the row back to its old slot.
+  //   - no drag (e.g. after a rename or any other refresh) : clear
+  //     immediately so the UI follows the fresh props. Without this
+  //     branch, a rename's optimistic title override would never be
+  //     released and the OLD title could re-appear if props changed
+  //     for another reason.
+  useEffect(() => {
+    if (expectedOrderRef.current) {
+      const propsIds = chapters.map((c) => c.id);
+      const expected = expectedOrderRef.current;
+      const propsMatch = propsIds.length === expected.length && propsIds.every((id, i) => id === expected[i]);
+      if (propsMatch) {
+        expectedOrderRef.current = null;
+        setOptimisticChapters(null);
+      }
+    } else {
+      setOptimisticChapters(null);
+    }
+  }, [chapters]);
+
+  /**
+   * Handles BOTH intra-section reorders and cross-section moves :
+   *   - drop on another chapter → adopt its section + slot in at that
+   *     position
+   *   - drop on a section's empty drop zone → join that section, at
+   *     the end
+   * The new global ordered list is sent to the server with each
+   * chapter's (potentially new) section assignment in one payload.
+   */
+  function handleDragStart(event: DragStartEvent) {
+    setDraggingId(String(event.active.id));
+  }
+
+  function handleDragCancel() {
+    setDraggingId(null);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setDraggingId(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
+
+    const list = effectiveChapters;
+    const activeChap = list.find((c) => c.id === activeId);
+    if (!activeChap) return;
+
+    // Compute target section + insertion index in the global order.
+    let targetSection: string | null;
+    let targetIndex: number;
+
+    const overChap = list.find((c) => c.id === overId);
+    if (overChap) {
+      // Dropped on another chapter row — adopt its section.
+      targetSection = overChap.sectionLabel ?? null;
+      targetIndex = list.findIndex((c) => c.id === overId);
+    } else if (overId.startsWith('section-drop-')) {
+      // Dropped on a section's empty area / footer drop zone — join
+      // that section at the END.
+      const key = overId.slice('section-drop-'.length);
+      targetSection = key === '__none__' ? null : key;
+      const sectionItems = list.filter((c) => (c.sectionLabel?.trim() || '__none__') === key);
+      if (sectionItems.length === 0) {
+        targetIndex = list.length; // empty section — push to end of global list
+      } else {
+        const last = sectionItems[sectionItems.length - 1];
+        targetIndex = list.findIndex((c) => c.id === last.id) + 1;
+      }
+    } else {
+      return;
+    }
+
+    // Splice the active chapter at the new position, with possibly
+    // updated section. We work on a copy so the original list is
+    // untouched until React updates.
+    const without = list.filter((c) => c.id !== activeId);
+    const activeOldIdx = list.findIndex((c) => c.id === activeId);
+    const adjustedIndex = activeOldIdx < targetIndex ? targetIndex - 1 : targetIndex;
+    const next: ChapterRow[] = [
+      ...without.slice(0, adjustedIndex),
+      { ...activeChap, sectionLabel: targetSection },
+      ...without.slice(adjustedIndex),
+    ];
+
+    // Skip the server roundtrip if nothing actually changed (defensive ;
+    // dnd-kit usually filters this out, but the section reassignment
+    // logic above might no-op).
+    const sameOrder = next.every((c, i) => c.id === list[i]?.id);
+    const sameSection = activeChap.sectionLabel === targetSection;
+    if (sameOrder && sameSection) return;
+
+    // Optimistic update — UI reflects the new state immediately.
+    setOptimisticChapters(next);
+    expectedOrderRef.current = next.map((c) => c.id);
+
+    const payload = next.map((c) => ({ id: c.id, sectionLabel: c.sectionLabel ?? null }));
     startTransition(async () => {
-      await reorderAction(orderedIds);
-      router.refresh();
+      try {
+        await reorderAction(payload);
+        router.refresh();
+      } catch (e) {
+        console.error('[ChapterList] reorder failed', e);
+        toast.error('Échec du déplacement du chapitre.');
+        // Roll back the optimistic state — props are still the
+        // pre-drop order so just clearing the override re-shows them.
+        expectedOrderRef.current = null;
+        setOptimisticChapters(null);
+      }
     });
   }
   function handleDuplicate(id: string, title: string) {
@@ -229,14 +441,14 @@ export function ChapterList({
     );
   }
 
-  // Group chapters by section. Order of sections = order in which each
-  // section first appears in `chapters`. Within a section, chapters keep
-  // their original `chapter.order`. This gives the manager a stable
-  // grouped view regardless of how the chapters are interleaved in DB.
+  // Group chapters by section. Uses `effectiveChapters` (optimistic
+  // override during a drag, falling back to props.chapters otherwise)
+  // so the UI updates instantly on drop without waiting for the
+  // server roundtrip + refresh.
   const groupedChapters = (() => {
     const groups = new Map<string, ChapterRow[]>();
     const order: string[] = [];
-    for (const c of chapters) {
+    for (const c of effectiveChapters) {
       const key = c.sectionLabel?.trim() || '__none__';
       if (!groups.has(key)) {
         groups.set(key, []);
@@ -255,22 +467,6 @@ export function ChapterList({
   // re-typing (and accidentally creating a duplicate).
   const existingSections = groupedChapters.filter((g) => g.sectionLabel != null).map((g) => g.sectionLabel as string);
 
-  // Cross-section drag : when SortableList returns the reordered ids of a
-  // section's slice, we splice them back into the full list at the correct
-  // position so the global `chapter.order` stays a contiguous sequence.
-  function handleSectionReorder(sectionLabel: string | null, newOrder: string[]) {
-    const all = chapters.map((c) => c.id);
-    // Remove the chapters of this section from the global list.
-    const sectionIds = new Set(newOrder);
-    const remaining = all.filter((id) => !sectionIds.has(id));
-    // Find the position where the first chapter of this section currently is.
-    const firstIdxInGlobal = all.findIndex((id) => sectionIds.has(id));
-    const insertAt = Math.max(0, firstIdxInGlobal);
-    const reassembled = [...remaining.slice(0, insertAt), ...newOrder, ...remaining.slice(insertAt)];
-    handleReorder(reassembled);
-    void sectionLabel; // currently unused, kept for future per-section logic
-  }
-
   return (
     <div className="space-y-3">
       {groupedChapters.length > 1 && (
@@ -288,123 +484,146 @@ export function ChapterList({
           ))}
         </div>
       )}
-      {groupedChapters.map((group, groupIdx) => (
-        <div key={group.sectionLabel ?? '__none__'} className="space-y-0">
-          <div className="border-border bg-muted/40 text-brand-primary-700 flex items-center gap-2 rounded-t-md border border-b-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide">
-            {group.sectionLabel ? (
-              <span>📁 {group.sectionLabel}</span>
-            ) : (
-              <span className="text-muted-foreground italic">(sans section)</span>
-            )}
-            <span className="text-muted-foreground/70">· {group.items.length} chapitre(s)</span>
-            {/* Section reorder ↑/↓ — swaps the whole group with its
+      {/* Single DndContext spanning ALL sections so the user can drag
+          a chapter between sections (cross-section drag-and-drop).
+          The chapter's section_label is auto-updated on drop. The
+          `id` prop is required to avoid an SSR hydration mismatch
+          on the auto-generated DndDescribedBy ids (see `dndId`
+          above). */}
+      <DndContext
+        id={dndId}
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        {groupedChapters.map((group, groupIdx) => (
+          <div key={group.sectionLabel ?? '__none__'} className="space-y-0">
+            <div className="border-border bg-muted/40 text-brand-primary-700 flex items-center gap-2 rounded-t-md border border-b-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide">
+              {group.sectionLabel ? (
+                <span>📁 {group.sectionLabel}</span>
+              ) : (
+                <span className="text-muted-foreground italic">(sans section)</span>
+              )}
+              <span className="text-muted-foreground/70">· {group.items.length} chapitre(s)</span>
+              {/* Section reorder ↑/↓ — swaps the whole group with its
                  neighbour in the chapter list. Disabled at the boundaries
                  so the first section can't go higher and the last can't
                  go lower. */}
-            <div className="ml-auto flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                title="Remonter cette section"
-                disabled={groupIdx === 0 || isPending}
-                onClick={() => {
-                  startTransition(async () => {
-                    try {
-                      await moveSectionAction(group.sectionLabel, -1);
-                      router.refresh();
-                    } catch (e) {
-                      toast.error(`Déplacement échoué : ${e instanceof Error ? e.message : String(e)}`);
-                    }
-                  });
-                }}
-              >
-                <ArrowUp className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                title="Descendre cette section"
-                disabled={groupIdx === groupedChapters.length - 1 || isPending}
-                onClick={() => {
-                  startTransition(async () => {
-                    try {
-                      await moveSectionAction(group.sectionLabel, 1);
-                      router.refresh();
-                    } catch (e) {
-                      toast.error(`Déplacement échoué : ${e instanceof Error ? e.message : String(e)}`);
-                    }
-                  });
-                }}
-              >
-                <ArrowDown className="h-3.5 w-3.5" />
-              </Button>
+              <div className="ml-auto flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Remonter cette section"
+                  disabled={groupIdx === 0 || isPending}
+                  onClick={() => {
+                    startTransition(async () => {
+                      try {
+                        await moveSectionAction(group.sectionLabel, -1);
+                        router.refresh();
+                      } catch (e) {
+                        toast.error(`Déplacement échoué : ${e instanceof Error ? e.message : String(e)}`);
+                      }
+                    });
+                  }}
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Descendre cette section"
+                  disabled={groupIdx === groupedChapters.length - 1 || isPending}
+                  onClick={() => {
+                    startTransition(async () => {
+                      try {
+                        await moveSectionAction(group.sectionLabel, 1);
+                        router.refresh();
+                      } catch (e) {
+                        toast.error(`Déplacement échoué : ${e instanceof Error ? e.message : String(e)}`);
+                      }
+                    });
+                  }}
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
-          </div>
-          <div className="border-border rounded-b-md border">
-            <SortableList
-              items={group.items}
-              onReorder={(ids) => handleSectionReorder(group.sectionLabel, ids)}
-              itemClassName="border-b border-border last:border-b-0"
-              renderItem={(c, dragHandle, idx) => {
-                const isEditing = editingId === c.id;
-                // Section header is now rendered above each section group, not
-                // inline per row, so we no longer emit it here.
-                void idx;
-                function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    commitEdit(c.id, c.title);
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    cancelEdit();
-                  }
-                }
-                return (
-                  <div className="rounded px-2 py-3 transition-colors">
-                    <div className="flex items-center gap-2">
-                      {dragHandle}
-                      {isEditing ? (
-                        <>
-                          <span className="text-muted-foreground font-mono text-xs">{c.order}.</span>
-                          <Input
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            placeholder="Titre du chapitre"
-                            className="h-8 flex-1 text-sm"
-                            autoFocus
-                            onKeyDown={handleKey}
-                          />
-                          <Input
-                            value={editSlug}
-                            onChange={(e) => setEditSlug(e.target.value)}
-                            placeholder="STEP_SLUG"
-                            className="h-8 w-[180px] font-mono text-xs"
-                            onKeyDown={handleKey}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Enregistrer"
-                            disabled={isPending}
-                            onClick={() => commitEdit(c.id, c.title)}
-                          >
-                            <Check className="h-4 w-4 text-emerald-600" />
-                          </Button>
-                          <Button variant="ghost" size="sm" title="Annuler" disabled={isPending} onClick={cancelEdit}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          {/*
+            <div className="border-border rounded-b-md border">
+              <SortableContext items={group.items.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                <SectionDroppable id={`section-drop-${group.sectionLabel ?? '__none__'}`}>
+                  {group.items.map((c, idx) => {
+                    const isEditing = editingId === c.id;
+                    // Section header is now rendered above each section group, not
+                    // inline per row, so we no longer emit it here.
+                    void idx;
+                    function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        commitEdit(c.id, c.title);
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                    }
+                    return (
+                      <SortableChapterRow key={c.id} id={c.id} className="border-border border-b last:border-b-0">
+                        {(dragHandle) => (
+                          <div className="rounded px-2 py-3 transition-colors">
+                            <div className="flex items-center gap-2">
+                              {dragHandle}
+                              {isEditing ? (
+                                <>
+                                  <span className="text-muted-foreground font-mono text-xs">{c.order}.</span>
+                                  <Input
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    placeholder="Titre du chapitre"
+                                    className="h-8 flex-1 text-sm"
+                                    autoFocus
+                                    onKeyDown={handleKey}
+                                  />
+                                  <Input
+                                    value={editSlug}
+                                    onChange={(e) => setEditSlug(e.target.value)}
+                                    placeholder="STEP_SLUG"
+                                    className="h-8 w-[180px] font-mono text-xs"
+                                    onKeyDown={handleKey}
+                                  />
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    title="Enregistrer"
+                                    disabled={isPending}
+                                    onClick={() => commitEdit(c.id, c.title)}
+                                  >
+                                    <Check className="h-4 w-4" />
+                                    Enregistrer
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Annuler"
+                                    disabled={isPending}
+                                    onClick={cancelEdit}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  {/*
                   Row layout : the "open chapter" Link is split into two
-                  segments around the Pencil button so the pencil sits
-                  visually right after the title — per UX feedback, the user
-                  was confusing the pencil (renommer) with the ChevronRight
-                  (entrer dans le chapitre). The pencil moved to the left
-                  near the title (less-used action, but where it logically
-                  belongs), and the chevron stays at the far right as the
-                  unambiguous "enter chapter" affordance.
+                  segments around the "expand details" button so the
+                  affordance sits visually right after the title. The
+                  chevron-down icon signals "déplier / voir plus" — when
+                  clicked it expands the inline edit form (title, slug,
+                  section, card image, tags, masquer de la navigation…).
+                  We previously used a Pencil icon but it competed with
+                  the "enter chapter" ChevronRight at the far right and
+                  felt like a destructive rename — ChevronDown reads as
+                  "expand", which is what actually happens.
 
                   Two Link nodes pointing to the same destination is a bit
                   redundant but is the cleanest HTML-valid way to interleave
@@ -413,168 +632,218 @@ export function ChapterList({
                   share the same href + `hover:underline` so the row reads
                   visually as a single clickable area.
                 */}
-                          <Link
-                            href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
-                            className="flex items-center gap-3 hover:underline"
-                          >
-                            <span className="text-muted-foreground font-mono text-xs">{c.order}.</span>
-                            {c.cardImage && (
-                              // Small thumbnail of the chapter card image — gives the
-                              // author a visual marker to spot a chapter at a glance
-                              // (same image as the section-panorama card).
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={c.cardImage}
-                                alt=""
-                                className="border-border h-8 w-12 shrink-0 rounded border object-cover"
-                              />
-                            )}
-                            <span className="font-medium">{c.title}</span>
-                          </Link>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Renommer (titre + slug + section + carte)"
-                            disabled={isPending}
-                            onClick={() => startEdit(c)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Link
-                            href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
-                            className="flex flex-1 items-center gap-3 hover:underline"
-                          >
-                            <code className="text-muted-foreground text-xs">({c.slug})</code>
-                            <DiffBadge diff={c.diff} />
-                            <ChevronRight className="text-muted-foreground ml-auto h-4 w-4" />
-                          </Link>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Dupliquer"
-                            disabled={isPending}
-                            onClick={() => handleDuplicate(c.id, c.title)}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Supprimer"
-                            disabled={isPending}
-                            onClick={() => handleDelete(c.id, c.title)}
-                          >
-                            <Trash2 className="text-destructive h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                    {isEditing && (
-                      <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
-                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-                          Section sidebar
-                        </label>
-                        <SectionPicker
-                          value={editSectionLabel}
-                          onChange={setEditSectionLabel}
-                          existingSections={existingSections}
-                          currentSection={c.sectionLabel ?? null}
-                        />
-                        <p className="text-muted-foreground basis-full text-[10px]">
-                          Choisis une section existante dans le dropdown, ou « + Nouvelle section… » pour en créer une.
-                          Vide = chapitre non groupé.
-                        </p>
-                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-                          Ordre
-                        </label>
-                        <Input
-                          type="number"
-                          value={editSectionOrder}
-                          onChange={(e) => setEditSectionOrder(e.target.value)}
-                          placeholder="(auto)"
-                          className="h-8 w-[80px] text-xs"
-                          onKeyDown={handleKey}
-                        />
-                        <div className="basis-full" />
-                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-                          Titre carte
-                        </label>
-                        <Input
-                          value={editCardShortTitle}
-                          onChange={(e) => setEditCardShortTitle(e.target.value)}
-                          placeholder={`(défaut : ${c.title})`}
-                          className="h-8 flex-1 text-sm"
-                          onKeyDown={handleKey}
-                        />
-                        <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-                          Image carte
-                        </label>
-                        <Input
-                          value={editCardImage}
-                          onChange={(e) => setEditCardImage(e.target.value)}
-                          placeholder="URL ou upload"
-                          className="h-8 flex-1 text-xs"
-                          onKeyDown={handleKey}
-                        />
-                        <input
-                          ref={cardImageInputRef}
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp,image/gif"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) void handleCardImageUpload(file);
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={cardImageUploading}
-                          onClick={() => cardImageInputRef.current?.click()}
-                          title="Uploader une image"
-                        >
-                          <Upload className="h-3.5 w-3.5" />
-                          {cardImageUploading ? '…' : ''}
-                        </Button>
-                        {editCardImage && (
-                          <div className="basis-full">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={editCardImage}
-                              alt={`Aperçu ${c.title}`}
-                              className="border-border mt-1 h-24 w-auto rounded border object-cover"
-                            />
-                          </div>
-                        )}
-                        <p className="text-muted-foreground basis-full text-[10px]">
-                          Le titre court et l'image servent au visuel de transition de chapitre (panorama de section) en
-                          fin de chapitre.
-                        </p>
-                        {/* Maintenance tags for the chapter's card_image —
+                                  <Link
+                                    href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
+                                    className="flex items-center gap-3 hover:underline"
+                                  >
+                                    <span className="text-muted-foreground font-mono text-xs">{c.order}.</span>
+                                    {c.cardImage && (
+                                      // Small thumbnail of the chapter card image — gives the
+                                      // author a visual marker to spot a chapter at a glance
+                                      // (same image as the section-panorama card).
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={c.cardImage}
+                                        alt=""
+                                        className="border-border h-8 w-12 shrink-0 rounded border object-cover"
+                                      />
+                                    )}
+                                    <span className="font-medium">{c.title}</span>
+                                  </Link>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Voir les paramètres du chapitre (titre, slug, section, carte, tags…)"
+                                    disabled={isPending}
+                                    onClick={() => startEdit(c)}
+                                  >
+                                    <ChevronDown className="h-4 w-4" />
+                                  </Button>
+                                  <Link
+                                    href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
+                                    className="flex flex-1 items-center gap-3 hover:underline"
+                                  >
+                                    <code className="text-muted-foreground text-xs">({c.slug})</code>
+                                    <DiffBadge diff={c.diff} />
+                                    <ChevronRight className="text-muted-foreground ml-auto h-4 w-4" />
+                                  </Link>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Dupliquer"
+                                    disabled={isPending}
+                                    onClick={() => handleDuplicate(c.id, c.title)}
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Supprimer"
+                                    disabled={isPending}
+                                    onClick={() => handleDelete(c.id, c.title)}
+                                  >
+                                    <Trash2 className="text-destructive h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                            {isEditing && (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
+                                <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                                  Section sidebar
+                                </label>
+                                <SectionPicker
+                                  value={editSectionLabel}
+                                  onChange={setEditSectionLabel}
+                                  existingSections={existingSections}
+                                  currentSection={c.sectionLabel ?? null}
+                                />
+                                <p className="text-muted-foreground basis-full text-[10px]">
+                                  Choisis une section existante dans le dropdown, ou « + Nouvelle section… » pour en
+                                  créer une. Vide = chapitre non groupé.
+                                </p>
+                                <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                                  Ordre
+                                </label>
+                                <Input
+                                  type="number"
+                                  value={editSectionOrder}
+                                  onChange={(e) => setEditSectionOrder(e.target.value)}
+                                  placeholder="(auto)"
+                                  className="h-8 w-[80px] text-xs"
+                                  onKeyDown={handleKey}
+                                />
+                                <div className="basis-full" />
+                                <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                                  Titre carte
+                                </label>
+                                <Input
+                                  value={editCardShortTitle}
+                                  onChange={(e) => setEditCardShortTitle(e.target.value)}
+                                  placeholder={`(défaut : ${c.title})`}
+                                  className="h-8 flex-1 text-sm"
+                                  onKeyDown={handleKey}
+                                />
+                                <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                                  Image carte
+                                </label>
+                                <Input
+                                  value={editCardImage}
+                                  onChange={(e) => setEditCardImage(e.target.value)}
+                                  placeholder="URL ou upload"
+                                  className="h-8 flex-1 text-xs"
+                                  onKeyDown={handleKey}
+                                />
+                                <input
+                                  ref={cardImageInputRef}
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp,image/gif"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) void handleCardImageUpload(file);
+                                  }}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={cardImageUploading}
+                                  onClick={() => cardImageInputRef.current?.click()}
+                                  title="Uploader une image"
+                                >
+                                  <Upload className="h-3.5 w-3.5" />
+                                  {cardImageUploading ? '…' : ''}
+                                </Button>
+                                {editCardImage && (
+                                  <div className="basis-full">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={editCardImage}
+                                      alt={`Aperçu ${c.title}`}
+                                      className="border-border mt-1 h-24 w-auto rounded border object-cover"
+                                    />
+                                  </div>
+                                )}
+                                <p className="text-muted-foreground basis-full text-[10px]">
+                                  Le titre court et l'image servent au visuel de transition de chapitre (panorama de
+                                  section) en fin de chapitre.
+                                </p>
+                                {/* Opt-out toggle : when checked the chapter is
+                            invisible in the sidebar AND in the panorama
+                            cards. Useful for "thank you" / 404 /
+                            branching-only chapters. */}
+                                <label className="mt-2 flex basis-full cursor-pointer items-start gap-2 rounded-md border border-amber-300 bg-amber-50/50 px-3 py-2 text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={editHiddenFromNav}
+                                    onChange={(e) => setEditHiddenFromNav(e.target.checked)}
+                                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-amber-600"
+                                  />
+                                  <span>
+                                    <span className="font-medium text-amber-900">Masquer de la navigation</span>
+                                    <br />
+                                    <span className="text-muted-foreground text-[10px] leading-snug">
+                                      Le chapitre n'apparaîtra ni dans la sidebar ni dans les cartes du panorama de
+                                      section. Il reste accessible par URL directe ou via un branchement programmatique.
+                                    </span>
+                                  </span>
+                                </label>
+                                {/* Maintenance tags for the chapter's card_image —
                             same vocabulary as block-level tags (the global
                             `tag` table is shared). Persisted directly via
                             `chapter_tag` join, no draft/publish cycle. */}
-                        <div className="basis-full space-y-2 pt-2">
-                          <TagsHelpBanner contextHint="Décris ici l'interface produit que l'image-carte de ce chapitre représente (ex. fiche patient, agenda)." />
-                          <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-                            Tags de maintenance
-                          </label>
-                          <TagsField target={{ kind: 'chapter', chapterId: c.id }} />
-                        </div>
-                      </div>
-                    )}
-                    {/* Navbar chips removed from this row per UX feedback : too
-                noisy in a list of 10+ chapters. The chips are still rendered
-                INSIDE the chapter detail view (`ChapterEditor.tsx`), per
-                block, where the context makes the variant relevant. */}
-                  </div>
-                );
-              }}
-            />
+                                <div className="basis-full space-y-2 pt-2">
+                                  <TagsHelpBanner contextHint="Décris ici l'interface produit que l'image-carte de ce chapitre représente (ex. fiche patient, agenda)." />
+                                  <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                                    Tags de maintenance
+                                  </label>
+                                  <TagsField target={{ kind: 'chapter', chapterId: c.id }} />
+                                </div>
+                              </div>
+                            )}
+                            {/* Navbar chips removed from this row per UX
+                              feedback : too noisy in a list of 10+
+                              chapters. The chips are still rendered
+                              INSIDE the chapter detail view
+                              (`ChapterEditor.tsx`), per block, where
+                              the context makes the variant relevant. */}
+                          </div>
+                        )}
+                      </SortableChapterRow>
+                    );
+                  })}
+                </SectionDroppable>
+              </SortableContext>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+        {/* DragOverlay renders a portal-mounted ghost of the row that
+          stays glued to the cursor for the whole duration of the drag,
+          including when crossing the boundary between two
+          SortableContexts (sections). Without it, the dragged row's
+          local transform alone made the visual disappear the moment
+          it left its source section. */}
+        <DragOverlay dropAnimation={null}>
+          {draggingChapter ? (
+            <div className="border-border bg-background flex items-center gap-2 rounded-md border px-2 py-3 shadow-lg">
+              <GripVertical className="text-muted-foreground h-4 w-4" />
+              <span className="text-muted-foreground font-mono text-xs">{draggingChapter.order}.</span>
+              {draggingChapter.cardImage && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={draggingChapter.cardImage}
+                  alt=""
+                  className="border-border h-8 w-12 shrink-0 rounded border object-cover"
+                />
+              )}
+              <span className="font-medium">{draggingChapter.title}</span>
+              <code className="text-muted-foreground text-xs">({draggingChapter.slug})</code>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 }
@@ -650,5 +919,69 @@ function SectionPicker({
       <option disabled>──────────</option>
       <option value="__new__">+ Nouvelle section…</option>
     </select>
+  );
+}
+
+/**
+ * Per-row dnd-kit wrapper. Uses `useSortable` to register the row in
+ * its parent SortableContext, exposes a `dragHandle` JSX node to the
+ * child render-prop so the visual handle (GripVertical) sits where
+ * the row layout wants it.
+ *
+ * Identical interaction model to the old `<SortableList>` row
+ * (cursor-grab, 0.5 opacity while dragging, 5 px activation distance
+ * inherited from the parent sensors).
+ */
+function SortableChapterRow({
+  id,
+  className,
+  children,
+}: {
+  id: string;
+  className?: string;
+  children: (handle: ReactNode) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  const handle = (
+    <button
+      ref={setActivatorNodeRef}
+      type="button"
+      className="text-muted-foreground hover:text-foreground cursor-grab touch-none px-1 active:cursor-grabbing"
+      title="Glisser pour réordonner ou changer de section"
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  );
+  return (
+    <div ref={setNodeRef} style={style} className={cn(className)}>
+      {children(handle)}
+    </div>
+  );
+}
+
+/**
+ * Section-level drop zone. The `<SortableContext>` already accepts
+ * drops on its sortable items, but it doesn't recognise the empty
+ * area below them — so a chapter dragged into a brand-new section
+ * (no items yet) wouldn't have a target. `useDroppable` adds that
+ * fallback : `id` is the section sentinel (`section-drop-<label>`)
+ * that the top-level `handleDragEnd` parses to assign the chapter
+ * to the right section.
+ */
+function SectionDroppable({ id, children }: { id: string; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={cn('min-h-[8px] transition-colors', isOver && 'bg-amber-50/50')}>
+      {children}
+    </div>
   );
 }

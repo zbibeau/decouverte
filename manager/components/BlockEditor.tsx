@@ -2,22 +2,22 @@
 
 import type { ContentBlock } from '@shared/content-schema';
 import { GripVertical } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
 import { DiffProvider } from '@/components/blocks/DiffContext';
 import { FieldHoverProvider } from '@/components/blocks/FieldHoverContext';
 import { PayloadEditor } from '@/components/blocks/PayloadEditor';
+import { SearchMatchProvider } from '@/components/blocks/SearchMatchContext';
 import { SimulatorProvider } from '@/components/blocks/SimulatorContext';
-import type {
-  ChapterMeta,
-  NavbarVariantMeta,
-  VariableMeta,
-} from '@/components/blocks/editor-types';
+import type { ChapterMeta, NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
 import { DraftBlockDiffPanel } from '@/components/DraftBlockDiffPanel';
+import { InPageSearchInput } from '@/components/InPageSearchInput';
 import { PreviewPanel } from '@/components/PreviewPanel';
+import { SearchHighlightBanner } from '@/components/SearchHighlightBanner';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/Toaster';
+import { findMatchingFieldPaths, findMatchingFieldSnippets, harvestNestedTagIds } from '@/lib/blockSearch';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { FIELD_RAIL_COLORS } from '@/lib/fieldRailColors';
 import { useBackArrowToParent } from '@/lib/useListKeyboardNav';
@@ -76,12 +76,11 @@ const AUTO_SAVE_DELAY = 600;
 export function BlockEditor(props: Props) {
   const router = useRouter();
   const toast = useToast();
+  const searchParams = useSearchParams();
   // ← (or h) returns to the chapter's block list. Disabled while typing in
   // an input/textarea so it doesn't steal cursor-left in form fields.
   useBackArrowToParent(`/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}`);
-  const [block, setBlock] = useState<ContentBlock>(
-    { type: props.type, payload: props.initialPayload } as ContentBlock,
-  );
+  const [block, setBlock] = useState<ContentBlock>({ type: props.type, payload: props.initialPayload } as ContentBlock);
   // True until the user has saved at least once.
   // Tracks whether we're in "creation" mode (manual save) or "edition" mode (auto-save).
   const [isCreating, setIsCreating] = useState(props.isNew);
@@ -97,6 +96,74 @@ export function BlockEditor(props: Props) {
   // `preview:highlightField` postMessage.
   const [hoveredField, setHoveredField] = useState<string | null>(null);
 
+  // ⌘K search context — the palette appends `?q=<query>` to the
+  // navigation URL when the user picks a result. The yellow banner
+  // (rendered below) reads that URL directly. The in-page filter
+  // input is a SEPARATE source of truth (`localSearch`) so the user
+  // can keep filtering AFTER dismissing the banner.
+  //
+  // Seeding rule : when arriving from ⌘K, we only pre-fill the
+  // in-page input if there is at least one MATCHING FIELD in the
+  // payload. If the block was matched by something other than its
+  // field values (e.g. a maintenance tag, or its `summarizeBlock`
+  // output), pre-filling would be misleading — the user would type
+  // nothing yet see "pa" in the input with no field highlighted.
+  // Better to start blank ; the user can re-type if they want to
+  // search within fields.
+  const urlQuery = searchParams.get('q')?.trim() ?? '';
+  const [localSearch, setLocalSearch] = useState(() => {
+    if (!urlQuery) return '';
+    const matches = findMatchingFieldPaths(props.initialPayload as unknown, urlQuery);
+    return matches.length > 0 ? urlQuery : '';
+  });
+  useEffect(() => {
+    if (!urlQuery) {
+      setLocalSearch('');
+      return;
+    }
+    const matches = findMatchingFieldPaths(block.payload, urlQuery);
+    setLocalSearch(matches.length > 0 ? urlQuery : '');
+    // Intentionally NOT depending on `block.payload` — we only re-seed
+    // when the URL query itself changes, otherwise typing in a matched
+    // field would clear the input the instant the user removes the
+    // matching substring (annoying).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlQuery]);
+
+  // The effective query used everywhere downstream : local input
+  // wins so typing after clearing the banner keeps the experience
+  // interactive without bouncing back to URL state.
+  const searchQuery = localSearch.trim();
+  const searchMatchPaths = useMemo(() => {
+    if (!searchQuery) return new Set<string>();
+    return new Set(findMatchingFieldPaths(block.payload, searchQuery));
+  }, [searchQuery, block.payload]);
+  // Snippets — keyed by the same JSON paths. Field consumes both via
+  // SearchMatchContext to render the "matched text" preview line.
+  const searchMatchSnippets = useMemo(() => {
+    if (!searchQuery) return new Map<string, string>();
+    return findMatchingFieldSnippets(block.payload, searchQuery, 32);
+  }, [searchQuery, block.payload]);
+
+  // Auto-scroll the first matched field into view on mount + when
+  // the query changes (typing in the in-page input retriggers a
+  // scroll to the first match so the user sees the new result
+  // without scrolling manually).
+  useEffect(() => {
+    if (!searchQuery || searchMatchPaths.size === 0) return;
+    requestAnimationFrame(() => {
+      const first = document.querySelector<HTMLElement>('[data-search-match="true"]');
+      if (first) {
+        first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    });
+    // We intentionally watch `searchQuery` only — re-walking the
+    // payload on every keystroke is fine, but re-running the scroll
+    // on every payload tick would steal focus from the field the
+    // user is editing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
   // Visible block tracking — used to decide if the block being edited is
   // currently in the iframe viewport, and on which side (above/below) it
   // is when scrolled offscreen, so the floating "Revenir" banner can point
@@ -106,9 +173,7 @@ export function BlockEditor(props: Props) {
   // Field-rail positions reported by the Solid renderer for the currently
   // edited block. The PreviewPanel draws them as coloured vertical bars in
   // the gutter beside the iframe.
-  const [fieldRails, setFieldRails] = useState<
-    Array<{ key: string; top: number; height: number }>
-  >([]);
+  const [fieldRails, setFieldRails] = useState<Array<{ key: string; top: number; height: number }>>([]);
 
   // ---- Lifted variable-simulator state (shared between PreviewPanel and
   //      inline simulators inside child editors). String-formed so it can
@@ -223,12 +288,8 @@ export function BlockEditor(props: Props) {
   const editedBlockOffscreen = useMemo<'above' | 'below' | null>(() => {
     if (isCreating || !visibleBlockId || visibleBlockId === props.blockId) return null;
     const list = props.chapterBlocks ?? [];
-    const visibleIdx = list.findIndex(
-      (b) => (b as { id?: string }).id === visibleBlockId,
-    );
-    const editingIdx = list.findIndex(
-      (b) => (b as { id?: string }).id === props.blockId,
-    );
+    const visibleIdx = list.findIndex((b) => (b as { id?: string }).id === visibleBlockId);
+    const editingIdx = list.findIndex((b) => (b as { id?: string }).id === props.blockId);
     if (visibleIdx < 0 || editingIdx < 0) return null;
     return visibleIdx < editingIdx ? 'below' : 'above';
   }, [isCreating, visibleBlockId, props.blockId, props.chapterBlocks]);
@@ -245,9 +306,7 @@ export function BlockEditor(props: Props) {
   const activeVariables = useMemo(() => {
     const blocksForScan: ContentBlock[] = isCreating
       ? [block]
-      : (props.chapterBlocks ?? []).map((b) =>
-          (b as { id?: string }).id === props.blockId ? block : b,
-        );
+      : (props.chapterBlocks ?? []).map((b) => ((b as { id?: string }).id === props.blockId ? block : b));
     const usedKeys = extractUsedVariableKeys(blocksForScan);
     return props.variables.filter((v) => usedKeys.has(v.key));
   }, [isCreating, block, props.chapterBlocks, props.blockId, props.variables]);
@@ -268,10 +327,9 @@ export function BlockEditor(props: Props) {
       // through without further translations.
       if (typeof result === 'string' && result !== props.blockId) {
         toast.info('Brouillon créé automatiquement pour ce bloc');
-        router.replace(
-          `/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${result}`,
-          { scroll: false },
-        );
+        router.replace(`/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${result}`, {
+          scroll: false,
+        });
         router.refresh();
       }
     } catch (e) {
@@ -293,10 +351,9 @@ export function BlockEditor(props: Props) {
           lastSavedRef.current = JSON.stringify(payload);
           setStatus('saved');
           toast.success('Bloc créé');
-          router.replace(
-            `/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${newId}`,
-            { scroll: false },
-          );
+          router.replace(`/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${newId}`, {
+            scroll: false,
+          });
           router.refresh();
         } catch (e) {
           console.error('[BlockEditor] create failed', e);
@@ -308,16 +365,22 @@ export function BlockEditor(props: Props) {
       await persist(payload);
       setIsCreating(false);
       // Strip ?new=1 from the URL without remounting the component.
-      router.replace(
-        `/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${props.blockId}`,
-        { scroll: false },
-      );
+      router.replace(`/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${props.blockId}`, {
+        scroll: false,
+      });
       router.refresh();
     });
   }
 
   // Auto-save in edit mode: debounced after each change. Skipped for
   // `componentRef` blocks (manual save) and while still in creation mode.
+  //
+  // Special case : when the set of nested `tagIds` changes (the user
+  // added or removed a maintenance tag on a nested block), we BYPASS
+  // the 600 ms debounce. Discrete pill-clicks don't need to coalesce
+  // with surrounding keystrokes, and the user expects immediate
+  // persistence — otherwise navigating away within 600 ms loses the
+  // tag, with the misleading "Tags enregistrés" toast already shown.
   useEffect(() => {
     if (isCreating) return;
     const serialized = JSON.stringify(block.payload);
@@ -325,6 +388,25 @@ export function BlockEditor(props: Props) {
 
     if (isManualSave) {
       setStatus((s) => (s === 'saving' ? s : 'dirty'));
+      return;
+    }
+
+    // Compare nested-tag fingerprints before / after the change.
+    // `harvestNestedTagIds` walks the payload and returns the
+    // deduplicated set of all `tagIds` arrays found at any depth.
+    // Sorted join makes the comparison order-insensitive.
+    const lastPayload = (() => {
+      try {
+        return JSON.parse(lastSavedRef.current);
+      } catch {
+        return {};
+      }
+    })();
+    const tagsBefore = [...harvestNestedTagIds(lastPayload)].sort().join(',');
+    const tagsAfter = [...harvestNestedTagIds(block.payload)].sort().join(',');
+    if (tagsBefore !== tagsAfter) {
+      setStatus('pending');
+      void persist(block.payload as Record<string, unknown>);
       return;
     }
 
@@ -364,9 +446,7 @@ export function BlockEditor(props: Props) {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
   function navigateToBlock(targetId: string) {
-    router.push(
-      `/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${targetId}`,
-    );
+    router.push(`/parcours/${props.parcoursSlug}/chapters/${props.chapterSlug}/blocks/${targetId}`);
   }
 
   function handlePreviewBlockClick(clickedId: string) {
@@ -387,9 +467,7 @@ export function BlockEditor(props: Props) {
     setPendingNavigation(null);
     try {
       if (isCreating && props.createAction) {
-        const newId = await props.createAction(
-          block.payload as Record<string, unknown>,
-        );
+        const newId = await props.createAction(block.payload as Record<string, unknown>);
         lastSavedRef.current = JSON.stringify(block.payload);
         toast.success('Bloc créé');
         // The just-created block now has a real id; we still navigate to the
@@ -420,8 +498,7 @@ export function BlockEditor(props: Props) {
   const simulatorContextValue = useMemo(
     () => ({
       values: simValues,
-      setValue: (key: string, value: string) =>
-        setSimValues((prev) => ({ ...prev, [key]: value })),
+      setValue: (key: string, value: string) => setSimValues((prev) => ({ ...prev, [key]: value })),
       variables: props.variables,
     }),
     [simValues, props.variables],
@@ -444,14 +521,23 @@ export function BlockEditor(props: Props) {
   );
 
   return (
-    <div
-      ref={splitRef}
-      className="flex flex-col gap-0 lg:h-[calc(100vh-96px)] lg:flex-row"
-    >
+    <div ref={splitRef} className="flex flex-col gap-0 lg:h-[calc(100vh-96px)] lg:flex-row">
       <div
         className="w-full space-y-4 lg:h-full lg:overflow-y-auto lg:pr-3"
         style={isLg ? { width: leftWidth, flexShrink: 0 } : undefined}
       >
+        {/* Surface the ⌘K search context when the user landed on this
+            block editor from the palette (via the pencil on a matched
+            row in the chapter, or directly clicking a block result). */}
+        <SearchHighlightBanner />
+        {/* In-page filter — persists across banner dismissal so the
+            user can keep searching field values without re-opening
+            ⌘K. Seeded from `?q=` on mount, but independent afterwards. */}
+        <InPageSearchInput
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="🔍 Filtrer les champs de ce bloc…"
+        />
         {!isCreating && (
           <DraftBlockDiffPanel
             status={props.draftStatus}
@@ -461,47 +547,41 @@ export function BlockEditor(props: Props) {
         )}
         <DiffProvider
           current={block.payload}
-          source={isCreating ? null : props.sourcePayload ?? null}
+          source={isCreating ? null : (props.sourcePayload ?? null)}
           blockIsNew={props.draftStatus === 'new'}
         >
           <FieldHoverProvider setHoveredField={setHoveredField}>
             <SimulatorProvider value={simulatorContextValue}>
-              <PayloadEditor
-                block={block}
-                onChange={setBlock}
-                variables={props.variables}
-                chapters={props.chapters}
-                currentChapterSlug={props.chapterSlug}
-                navbarVariants={props.navbarVariants}
-              />
+              <SearchMatchProvider query={searchQuery} paths={searchMatchPaths} snippets={searchMatchSnippets}>
+                <PayloadEditor
+                  block={block}
+                  onChange={setBlock}
+                  variables={props.variables}
+                  chapters={props.chapters}
+                  currentChapterSlug={props.chapterSlug}
+                  navbarVariants={props.navbarVariants}
+                />
+              </SearchMatchProvider>
             </SimulatorProvider>
           </FieldHoverProvider>
         </DiffProvider>
 
-        <div className="sticky bottom-0 flex items-center gap-3 rounded-md border border-border bg-white/95 p-2 shadow-sm backdrop-blur">
+        <div className="border-border sticky bottom-0 flex items-center gap-3 rounded-md border bg-white/95 p-2 shadow-sm backdrop-blur">
           {isCreating ? (
             <>
               <Button onClick={handleManualSave} disabled={isPending || status === 'saving'}>
                 {status === 'saving' ? 'Création…' : 'Créer le bloc'}
               </Button>
-              <span className="text-[10px] text-muted-foreground">
-                Premier enregistrement manuel. Les modifications suivantes seront sauvegardées
-                automatiquement.
+              <span className="text-muted-foreground text-[10px]">
+                Premier enregistrement manuel. Les modifications suivantes seront sauvegardées automatiquement.
               </span>
             </>
           ) : isManualSave ? (
             <>
-              <Button
-                onClick={handleEditSave}
-                disabled={!isDirty || isPending || status === 'saving'}
-              >
+              <Button onClick={handleEditSave} disabled={!isDirty || isPending || status === 'saving'}>
                 {status === 'saving' ? 'Enregistrement…' : 'Enregistrer'}
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleRevert}
-                disabled={!isDirty || isPending || status === 'saving'}
-              >
+              <Button variant="outline" onClick={handleRevert} disabled={!isDirty || isPending || status === 'saving'}>
                 Annuler
               </Button>
               <SaveIndicator status={status} manualSave />
@@ -522,8 +602,8 @@ export function BlockEditor(props: Props) {
         title="Glisser pour redimensionner — double-clic pour réinitialiser"
         className="group relative hidden w-4 cursor-col-resize items-center justify-center lg:flex lg:h-full"
       >
-        <div className="h-16 w-[3px] rounded-full bg-border transition-colors group-hover:bg-primary/60" />
-        <GripVertical className="pointer-events-none absolute h-4 w-4 text-muted-foreground/40 transition-colors group-hover:text-primary" />
+        <div className="bg-border group-hover:bg-primary/60 h-16 w-[3px] rounded-full transition-colors" />
+        <GripVertical className="text-muted-foreground/40 group-hover:text-primary pointer-events-none absolute h-4 w-4 transition-colors" />
       </div>
 
       <div className="hidden min-w-0 flex-1 lg:block lg:h-full lg:overflow-y-auto lg:pl-3">
@@ -561,30 +641,22 @@ export function BlockEditor(props: Props) {
           onClick={() => setPendingNavigation(null)}
         >
           <div
-            className="w-full max-w-md rounded-lg border border-border bg-white p-5 shadow-lg"
+            className="border-border w-full max-w-md rounded-lg border bg-white p-5 shadow-lg"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
           >
             <h3 className="text-sm font-semibold">Modifications non sauvegardées</h3>
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-2 text-xs">
               {isCreating
                 ? "Ce bloc n'est pas encore créé. Tu peux le créer maintenant avant d'ouvrir l'autre bloc, ou abandonner sa création."
                 : 'Tu as des modifs en cours sur ce bloc. Comment veux-tu continuer ?'}
             </p>
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setPendingNavigation(null)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setPendingNavigation(null)}>
                 Annuler
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={confirmDiscardThenNavigate}
-              >
+              <Button variant="outline" size="sm" onClick={confirmDiscardThenNavigate}>
                 {isCreating ? 'Abandonner la création' : 'Ouvrir sans sauvegarder'}
               </Button>
               <Button
@@ -594,11 +666,7 @@ export function BlockEditor(props: Props) {
                 }}
                 disabled={status === 'saving'}
               >
-                {status === 'saving'
-                  ? 'Enregistrement…'
-                  : isCreating
-                  ? 'Créer puis ouvrir'
-                  : 'Enregistrer puis ouvrir'}
+                {status === 'saving' ? 'Enregistrement…' : isCreating ? 'Créer puis ouvrir' : 'Enregistrer puis ouvrir'}
               </Button>
             </div>
           </div>
@@ -619,14 +687,14 @@ function SaveIndicator({ status, manualSave }: { status: SaveStatus; manualSave?
       );
     case 'pending':
       return (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
           Modifications en attente…
         </span>
       );
     case 'saving':
       return (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
           Enregistrement…
         </span>
@@ -640,16 +708,16 @@ function SaveIndicator({ status, manualSave }: { status: SaveStatus; manualSave?
       );
     case 'error':
       return (
-        <span className="flex items-center gap-1.5 text-xs text-destructive">
-          <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+        <span className="text-destructive flex items-center gap-1.5 text-xs">
+          <span className="bg-destructive h-1.5 w-1.5 rounded-full" />
           Échec de l&apos;enregistrement
         </span>
       );
     case 'idle':
     default:
       return (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+        <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <span className="bg-muted-foreground/30 h-1.5 w-1.5 rounded-full" />
           {manualSave ? 'Enregistrement manuel' : 'Auto-enregistrement actif'}
         </span>
       );

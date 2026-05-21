@@ -17,6 +17,41 @@ import { parsePathContext } from '@/lib/palette/parsePathContext';
 import { useCommandPaletteHotkeys } from '@/lib/palette/useCommandPaletteHotkeys';
 
 /**
+ * Match `haystack` against a user-typed `query`.
+ *
+ * Two-pass strategy :
+ *   1. Strict case-insensitive substring — catches the common case
+ *      (typing "fiche pati" surfaces every block whose searchable
+ *      text contains that exact phrase).
+ *   2. Hierarchical-tag fallback : when the query contains a ">",
+ *      we split on it and accept the row if AT LEAST ONE segment
+ *      (length ≥ 2) is a substring of the haystack. Lets a query
+ *      like "réglage > acte" surface a block tagged
+ *      "réglages > patient" via the shared "réglage" stem — same
+ *      editorial intent, slightly different spelling. Without
+ *      this, typing a full hierarchical label finds only EXACT
+ *      tag matches, which surprises editors who use ">" as a
+ *      category prefix.
+ *
+ * Both `haystack` and `query` must already be lowercased by the
+ * caller (perf : avoids re-lowercasing on every keystroke).
+ */
+function matchesQuery(haystack: string, query: string): boolean {
+  if (!query) return true;
+  if (haystack.includes(query)) return true;
+  if (query.includes('>')) {
+    const segments = query
+      .split('>')
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 2);
+    if (segments.length > 0 && segments.some((s) => haystack.includes(s))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Global command palette opened by ⌘K / Ctrl+K. Single entry point to
  * navigate the manager and add new blocks fast.
  *
@@ -91,15 +126,12 @@ export function CommandPalette() {
     };
   }, [open, ctx.parcoursSlug]);
 
-  // Reset query + highlight when closing so re-opening feels fresh
-  // (otherwise a phantom row stays highlighted from the previous session,
-  // and the preview pane would show stale content on re-open).
-  useEffect(() => {
-    if (!open) {
-      setSearch('');
-      setHighlightedValue('');
-    }
-  }, [open]);
+  // Search query + highlighted row INTENTIONALLY persist across
+  // close/re-open. The user expects that ⌘K → search → Esc → ⌘K
+  // brings them back to where they were, without having to re-type
+  // their query (much faster for iterative audit workflows). If
+  // they really want a fresh slate, they can ✕ the input or clear
+  // the field manually.
 
   // The chapter we're currently inside (URL-derived). Passed to the
   // preview pane so the "+ Add block" preview tells the user where the
@@ -109,9 +141,47 @@ export function CommandPalette() {
     return data?.chapters.find((c) => c.slug === ctx.chapterSlug)?.title ?? null;
   }, [data?.chapters, ctx.chapterSlug]);
 
+  // Dedup : chapters whose only reason to appear is that one of their
+  // child blocks matches the search. From a maintenance-audit
+  // standpoint the chapter row is redundant — clicking the more
+  // specific block row leads to the same edit target in one less
+  // step. We hide the chapter row when :
+  //   - the search query is non-empty
+  //   - the chapter doesn't match directly (title / slug / its own
+  //     tag labels via `directSearchText`)
+  //   - AND at least one of its blocks matches the query
+  // If the chapter matches by itself (e.g. its title contains the
+  // query), the row stays — it carries unique value (chapter-level
+  // edits like title, tags, etc.).
+  //
+  // Uses the SAME matcher as the cmdk filter below (strict substring
+  // with a hierarchical-tag fallback) so the dedup logic stays in
+  // sync with what cmdk actually renders.
+  const redundantChapterIds = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || !data) return new Set<string>();
+    const ids = new Set<string>();
+    for (const c of data.chapters) {
+      const direct =
+        matchesQuery(c.title.toLowerCase(), q) ||
+        matchesQuery(c.slug.toLowerCase(), q) ||
+        matchesQuery(c.directSearchText.toLowerCase(), q);
+      if (direct) continue;
+      const hasMatchingBlock = data.blocks.some((b) => b.chapterId === c.id && matchesQuery(b.searchText, q));
+      if (hasMatchingBlock) ids.add(c.id);
+    }
+    return ids;
+  }, [search, data]);
+
   function go(href: string) {
     setOpen(false);
-    router.push(href);
+    // Append the current search query as `?q=<encoded>` so the
+    // destination page can highlight the matching block(s) and tell
+    // the user where their term actually appears. Skipped when the
+    // query is empty so we don't pollute URLs with `?q=`.
+    const q = search.trim();
+    const final = q ? `${href}${href.includes('?') ? '&' : '?'}q=${encodeURIComponent(q)}` : href;
+    router.push(final);
   }
 
   async function handleInsertBlock(type: string) {
@@ -156,6 +226,20 @@ export function CommandPalette() {
         label="Palette de commandes"
         value={highlightedValue}
         onValueChange={setHighlightedValue}
+        // Override cmdk's default fuzzy matcher with the shared
+        // `matchesQuery` helper. Default fuzzy scored items whose
+        // chars appeared scattered across keywords — typing
+        // "fiche pati" was bleeding into unrelated blocks. The
+        // helper applies strict substring + a hierarchical-tag
+        // fallback (see its docstring above). Score is 0/1 so
+        // ordering falls back to natural DOM order (still grouped
+        // by section).
+        filter={(value, search, keywords) => {
+          const q = search.trim().toLowerCase();
+          if (!q) return 1;
+          const haystack = `${(keywords ?? []).join(' ')} ${value}`.toLowerCase();
+          return matchesQuery(haystack, q) ? 1 : 0;
+        }}
         className="border-border w-full max-w-5xl overflow-hidden rounded-xl border bg-white shadow-2xl"
       >
         <div className="border-border flex items-center gap-2 border-b px-3 py-2">
@@ -240,34 +324,48 @@ export function CommandPalette() {
                   </Command.Group>
                 )}
 
-                {/* === Chapitres (current parcours) === */}
+                {/* === Chapitres (current parcours) ===
+                      Chapters whose only match is via a child block are
+                      filtered out (see `redundantChapterIds` above) —
+                      the block row already covers the same edit
+                      target, and a duplicate row would falsely suggest
+                      "two things to fix" in an audit workflow. */}
                 {(data?.chapters?.length ?? 0) > 0 && (
                   <Command.Group heading="Chapitres">
-                    {data!.chapters.map((c) => {
-                      // Show a snippet under the chapter title when the query
-                      // matched inside an *aggregated* block (and not in the
-                      // title itself — that's already visible above). Lets
-                      // "saturation" surface the chapter, with a teaser of
-                      // where the word lives.
-                      const titleMatches = c.title.toLowerCase().includes(search.trim().toLowerCase());
-                      const snippet =
-                        search.trim() && !titleMatches
-                          ? (extractSnippet(c.searchText, search, 32) ?? undefined)
-                          : undefined;
-                      return (
-                        <PaletteItem
-                          key={c.id}
-                          icon={<Hash className="text-primary h-3.5 w-3.5" />}
-                          label={c.title}
-                          hint={c.slug}
-                          snippet={snippet}
-                          highlight={search}
-                          value={`chapter-${c.id}`}
-                          keywords={[c.title, c.title, c.slug, c.searchText]}
-                          onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`)}
-                        />
-                      );
-                    })}
+                    {data!.chapters
+                      .filter((c) => !redundantChapterIds.has(c.id))
+                      .map((c) => {
+                        // Tags on the chapter that themselves match the
+                        // query — rendered as colored pills on the row so
+                        // the user sees the match comes from a tag.
+                        const q = search.trim().toLowerCase();
+                        const matchingTags = q ? c.tags.filter((t) => t.label.toLowerCase().includes(q)) : [];
+                        // Snippet under the title when the query matched
+                        // inside an *aggregated* block (and not in the
+                        // title itself — that's already visible above).
+                        // Skipped when a tag matches : the colored chip
+                        // already conveys the match cleanly, the snippet
+                        // would just duplicate / clutter the row.
+                        const titleMatches = c.title.toLowerCase().includes(q);
+                        const snippet =
+                          q && !titleMatches && matchingTags.length === 0
+                            ? (extractSnippet(c.searchText, search, 32) ?? undefined)
+                            : undefined;
+                        return (
+                          <PaletteItem
+                            key={c.id}
+                            icon={<Hash className="text-primary h-3.5 w-3.5" />}
+                            label={c.title}
+                            hint={c.slug}
+                            snippet={snippet}
+                            highlight={search}
+                            matchChips={matchingTags}
+                            value={`chapter-${c.id}`}
+                            keywords={[c.title, c.title, c.slug, c.searchText]}
+                            onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`)}
+                          />
+                        );
+                      })}
                   </Command.Group>
                 )}
 
@@ -275,13 +373,20 @@ export function CommandPalette() {
                 {(data?.blocks?.length ?? 0) > 0 && (
                   <Command.Group heading="Blocs">
                     {data!.blocks.map((b) => {
-                      // Snippet rendered only when the query matched deep in
-                      // the payload — if it matched the summary we already
-                      // show that. Hides noise when there's no query (palette
-                      // just opened) by passing undefined.
-                      const summaryMatches = b.summary.toLowerCase().includes(search.trim().toLowerCase());
+                      // Tags on the block that themselves match the
+                      // query — surfaced as colored pills inline on the
+                      // row so the user sees the match comes from a tag.
+                      const q = search.trim().toLowerCase();
+                      const matchingTags = q ? b.tags.filter((t) => t.label.toLowerCase().includes(q)) : [];
+                      // Snippet rendered only when the query matched
+                      // deep in the payload — if it matched the summary
+                      // OR a tag, we already convey that elsewhere (the
+                      // summary is the row label ; the tag is its own
+                      // colored pill). Doubling with a snippet would
+                      // just clutter.
+                      const summaryMatches = b.summary.toLowerCase().includes(q);
                       const snippet =
-                        search.trim() && !summaryMatches
+                        q && !summaryMatches && matchingTags.length === 0
                           ? (extractSnippet(b.searchText, search, 32) ?? undefined)
                           : undefined;
                       return (
@@ -292,22 +397,25 @@ export function CommandPalette() {
                           hint={`${(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type} · ${b.chapterTitle}`}
                           snippet={snippet}
                           highlight={search}
+                          matchChips={matchingTags}
                           value={`block-${b.id}`}
                           // primaryText duplicated so cmdk's fuzzy matcher
                           // weighs a hit on titles/labels above one buried
                           // in the body. summary is also high-signal so it
                           // stays at the front. secondaryText is the long
                           // body content — present but unweighted.
-                          keywords={[
-                            b.summary,
-                            b.summary,
-                            b.primaryText,
-                            b.primaryText,
-                            b.type,
-                            b.chapterTitle,
-                            b.chapterSlug,
-                            b.secondaryText,
-                          ]}
+                          //
+                          // `chapterTitle` and `chapterSlug` were
+                          // intentionally removed : including them made
+                          // every block of a chapter match whenever the
+                          // chapter's name contained the query (e.g.
+                          // searching "patient" on the chapter "Copie —
+                          // création du dossier patient" surfaced ALL its
+                          // blocks, even those whose own content had
+                          // nothing to do with "patient"). The chapter
+                          // itself still appears as its own row in the
+                          // Chapitres section if its title matches.
+                          keywords={[b.summary, b.summary, b.primaryText, b.primaryText, b.type, b.secondaryText]}
                           onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`)}
                         />
                       );
@@ -358,6 +466,7 @@ export function CommandPalette() {
               currentParcoursSlug={ctx.parcoursSlug ?? null}
               currentChapterTitle={currentChapterTitle}
               scopes={registeredScopes}
+              search={search}
             />
           </div>
         </div>

@@ -14,24 +14,17 @@ import {
   reorderBlocks,
 } from '@/lib/actions';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
+import { harvestNestedTagIds } from '@/lib/blockSearch';
 import type { ContentBlock } from '@shared/content-schema';
 import { createClient } from '@/lib/supabase/server';
 
-export default async function ChapterEditPage({
-  params,
-}: {
-  params: Promise<{ slug: string; chapterSlug: string }>;
-}) {
+export default async function ChapterEditPage({ params }: { params: Promise<{ slug: string; chapterSlug: string }> }) {
   const raw = await params;
   const slug = decodeURIComponent(raw.slug);
   const chapterSlug = decodeURIComponent(raw.chapterSlug);
   const supabase = await createClient();
 
-  const { data: parcours } = await supabase
-    .from('parcours')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle();
+  const { data: parcours } = await supabase.from('parcours').select('id').eq('slug', slug).maybeSingle();
 
   // Prefer the draft version when one exists, fall back to published.
   const versionId = await getEditingVersionId(slug);
@@ -83,12 +76,7 @@ export default async function ChapterEditPage({
     'use server';
     const sample = SAMPLE_PAYLOADS[type as ContentBlock['type']];
     if (!sample) throw new Error(`Type de bloc inconnu : ${type}`);
-    const { blockId } = await insertSampleBlock(
-      slug,
-      chapter!.id,
-      type,
-      sample.payload,
-    );
+    const { blockId } = await insertSampleBlock(slug, chapter!.id, type, sample.payload);
     // Return the new block id so the client can open its editor right away
     // (router.push from `handleInsertSample` in ChapterEditor). Otherwise the
     // user has to click the inserted row's pencil — an extra step that breaks
@@ -117,6 +105,67 @@ export default async function ChapterEditPage({
   // pill next to each block row when the block payload references one.
   const navbarVariants = await getNavbarVariants(slug);
 
+  // Maintenance tags attached to each block via the `block_tag` join
+  // table, plus tags found NESTED inside the payload (children of
+  // card / toolContentSection / conditional store their tag IDs
+  // inline via `payload.tagIds`). Both are merged so the row chip
+  // shows the COMPLETE set of tags affecting this block — auditors
+  // care about "what does this block touch overall", not where the
+  // tag is anchored.
+  const blockIds = (blocks ?? []).map((b) => b.id as string);
+  const tagsByBlock = new Map<string, Array<{ id: string; label: string; color: string }>>();
+  if (blockIds.length > 0) {
+    const { data: tagRows } = await supabase
+      .from('block_tag')
+      .select('block_id, tag:tag(id, label, color)')
+      .in('block_id', blockIds);
+    for (const row of tagRows ?? []) {
+      const bid = (row as { block_id: string }).block_id;
+      const t = (
+        row as {
+          tag: { id: string; label: string; color: string } | { id: string; label: string; color: string }[] | null;
+        }
+      ).tag;
+      if (!t) continue;
+      const tag = Array.isArray(t) ? t[0] : t;
+      if (!tag) continue;
+      const arr = tagsByBlock.get(bid) ?? [];
+      arr.push({ id: tag.id, label: tag.label, color: tag.color });
+      tagsByBlock.set(bid, arr);
+    }
+  }
+
+  // Walk each block's payload to harvest nested tag IDs, fetch the
+  // matching `tag` rows in one extra roundtrip, then merge into
+  // `tagsByBlock` (deduplicated by id).
+  const nestedTagIds = new Set<string>();
+  for (const b of blocks ?? []) {
+    const ids = harvestNestedTagIds(b.payload);
+    for (const id of ids) nestedTagIds.add(id);
+  }
+  if (nestedTagIds.size > 0) {
+    const { data: nestedTagRows } = await supabase
+      .from('tag')
+      .select('id, label, color')
+      .in('id', [...nestedTagIds]);
+    const tagById = new Map<string, { id: string; label: string; color: string }>();
+    for (const r of nestedTagRows ?? []) {
+      const row = r as { id: string; label: string; color: string };
+      tagById.set(row.id, row);
+    }
+    for (const b of blocks ?? []) {
+      const ids = harvestNestedTagIds(b.payload);
+      if (ids.size === 0) continue;
+      const arr = tagsByBlock.get(b.id as string) ?? [];
+      const known = new Set(arr.map((t) => t.id));
+      for (const id of ids) {
+        const tag = tagById.get(id);
+        if (tag && !known.has(tag.id)) arr.push(tag);
+      }
+      tagsByBlock.set(b.id as string, arr);
+    }
+  }
+
   return (
     <ChapterEditor
       parcoursSlug={slug}
@@ -127,6 +176,7 @@ export default async function ChapterEditPage({
         type: b.type,
         payload: (b.payload ?? {}) as Record<string, unknown>,
         diff: blockDiffs.get(b.id),
+        tags: tagsByBlock.get(b.id) ?? [],
       }))}
       variables={(variables ?? []).map((v) => ({
         id: v.id,

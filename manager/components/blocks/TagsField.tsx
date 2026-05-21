@@ -38,14 +38,25 @@ import { parsePathContext } from '@/lib/palette/parsePathContext';
  *   - Case-insensitive dedup against the current target's tags
  */
 
-export type TagsFieldTarget = { kind: 'block' } | { kind: 'chapter'; chapterId: string };
+export type TagsFieldTarget =
+  | { kind: 'block' }
+  | { kind: 'chapter'; chapterId: string }
+  /** Controlled mode : the field doesn't talk to the DB at all. The
+   *  parent owns the `valueIds` state and is notified via `onChange`.
+   *  Used for nested blocks (children of card / toolContentSection /
+   *  conditional…) where there's no `block_tag` row — the tags live
+   *  inline in the parent block's payload as `tagIds: string[]`. */
+  | { kind: 'controlled'; valueIds: string[]; onChange: (next: string[]) => void };
 
 export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
   const pathname = usePathname();
   const resolvedTarget = useMemo<
-    { kind: 'block'; blockId: string | null } | { kind: 'chapter'; chapterId: string }
+    | { kind: 'block'; blockId: string | null }
+    | { kind: 'chapter'; chapterId: string }
+    | { kind: 'controlled'; valueIds: string[]; onChange: (next: string[]) => void }
   >(() => {
     if (target?.kind === 'chapter') return target;
+    if (target?.kind === 'controlled') return target;
     const { blockId } = parsePathContext(pathname ?? '');
     return { kind: 'block', blockId };
   }, [target, pathname]);
@@ -87,8 +98,30 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
   }, []);
 
   // Target-specific tag load. Re-fires when target identity changes.
-  const targetKey = resolvedTarget.kind === 'block' ? resolvedTarget.blockId : resolvedTarget.chapterId;
+  // - block / chapter : fetch the join rows from the DB
+  // - controlled : resolve the parent-provided `valueIds` against
+  //   the global `allTags` vocabulary (no roundtrip).
+  const targetKey =
+    resolvedTarget.kind === 'block'
+      ? resolvedTarget.blockId
+      : resolvedTarget.kind === 'chapter'
+        ? resolvedTarget.chapterId
+        : null;
+  const controlledIdsKey = resolvedTarget.kind === 'controlled' ? resolvedTarget.valueIds.join(',') : '';
   useEffect(() => {
+    if (resolvedTarget.kind === 'controlled') {
+      // Inline mode : derive from `valueIds` + `allTags`. Skipping
+      // missing IDs (e.g. a tag deleted from the library elsewhere)
+      // keeps the field stable instead of showing dangling rows.
+      const byId = new Map(allTags.map((t) => [t.id, t]));
+      const resolved = resolvedTarget.valueIds
+        .map((id) => byId.get(id))
+        .filter((t): t is Tag => t !== undefined)
+        .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+      setCurrentTags(resolved);
+      setLoadingCurrent(false);
+      return;
+    }
     if (resolvedTarget.kind === 'block' && !resolvedTarget.blockId) {
       setLoadingCurrent(false);
       setCurrentTags([]);
@@ -111,9 +144,10 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetKey, resolvedTarget.kind]);
+  }, [targetKey, resolvedTarget.kind, controlledIdsKey, allTags]);
 
-  // Persist `next` to the server immediately. Optimistic with rollback.
+  // Persist `next` to the server (block/chapter) OR to the parent's
+  // onChange (controlled). Optimistic with rollback in DB modes.
   async function persistTags(next: Tag[]) {
     const previous = currentTags;
     setCurrentTags(next);
@@ -123,7 +157,12 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
     dirtyRef.current = true;
     try {
       const ids = next.map((t) => t.id);
-      if (resolvedTarget.kind === 'block') {
+      if (resolvedTarget.kind === 'controlled') {
+        // Just bubble up — the parent decides how to persist (usually
+        // by stashing the IDs into its payload state, then the block
+        // editor's normal save flow takes care of writing).
+        resolvedTarget.onChange(ids);
+      } else if (resolvedTarget.kind === 'block') {
         if (!resolvedTarget.blockId) return;
         await setBlockTags(resolvedTarget.blockId, ids);
       } else {
@@ -215,7 +254,8 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
     setHighlightIdx(0);
   }, [suggestions.length]);
 
-  const targetReady = resolvedTarget.kind === 'chapter' || resolvedTarget.blockId !== null;
+  const targetReady =
+    resolvedTarget.kind === 'chapter' || resolvedTarget.kind === 'controlled' || resolvedTarget.blockId !== null;
   const showDropdown = targetReady && focused && (suggestions.length > 0 || loadingAll || input.trim().length > 0);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {

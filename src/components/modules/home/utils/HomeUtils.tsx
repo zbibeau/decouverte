@@ -85,10 +85,14 @@ export function buildDynamicSections(
   currentSlug: string | undefined,
   setStepBySlug: (slug: string) => void,
 ): { data: NavGroupData; actualStep?: string } {
+  // Chapters opted out of navigation (`hiddenFromNav`) never appear
+  // in the sidebar. They stay reachable via direct URL / programmatic
+  // setCurrentStep — typical use is a "thank you" or 404 chapter.
+  const visibleChapters = chapters.filter((c) => !c.hiddenFromNav);
   // Preserve the order in which sections first appear.
   const groupOrder: (string | null)[] = [];
   const groups = new Map<string | null, ChapterStub[]>();
-  for (const c of chapters) {
+  for (const c of visibleChapters) {
     const key = c.sectionLabel && c.sectionLabel.trim() !== '' ? c.sectionLabel : null;
     if (!groups.has(key)) {
       groups.set(key, []);

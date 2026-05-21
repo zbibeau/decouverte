@@ -1,21 +1,12 @@
 'use client';
 
-import {
-  CornerDownLeft,
-  FileText,
-  Image as ImageIcon,
-  Keyboard,
-  Layers,
-  ListOrdered,
-  MoveVertical,
-  PlayCircle,
-  Plus,
-  Sparkles,
-} from 'lucide-react';
+import { CornerDownLeft, FileText, Keyboard, Layers, ListOrdered, MoveVertical, Plus, Sparkles } from 'lucide-react';
 
+import { useMemo } from 'react';
+
+import { LivePreviewIframe } from '@/components/palette/LivePreviewIframe';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
-import { stripHtml } from '@/lib/blockSearch';
 import { TAG_COLOR_CLASSES, isTagColor } from '@/lib/tagColors';
 import type { PaletteBlock, PaletteChapter, PaletteData, PaletteParcours, PaletteVariable } from '@/lib/actions';
 
@@ -49,6 +40,13 @@ interface PreviewPaneProps {
   /** Scope actions registered by nested editors — the palette router
    *  needs them to render the right preview for `scope-*` values. */
   scopes: AddActionScope[];
+  /** Current ⌘K search query — propagated from the palette so the
+   *  schematic previews (chapter / parcours / variable / scope) can
+   *  highlight matching substrings in their text content. The block
+   *  / add iframe previews are unaffected (the rendered block is
+   *  shown live, search highlights would require postMessage tricks
+   *  inside the iframe — out of scope for v1). */
+  search?: string;
 }
 
 type ParsedValue =
@@ -88,42 +86,132 @@ function parseValue(v: string): ParsedValue {
 // Top-level router
 // ============================================================================
 
-export function PreviewPane({ value, data, currentParcoursSlug, currentChapterTitle, scopes }: PreviewPaneProps) {
+export function PreviewPane({
+  value,
+  data,
+  currentParcoursSlug,
+  currentChapterTitle,
+  scopes,
+  search,
+}: PreviewPaneProps) {
   const parsed = parseValue(value);
-  if (!parsed) return <EmptyState />;
 
-  if (parsed.kind === 'add') {
-    return <AddBlockPreview type={parsed.type} chapterTitle={currentChapterTitle} />;
+  // ─── Live preview mode (block / add-block rows) ────────────────────
+  // Compute the block to show in the iframe. The iframe itself is
+  // ALWAYS rendered while PreviewPane is mounted (= while the palette
+  // is open) so the Solid app boots once and is reused across rows.
+  // When `liveBlock` is null, the iframe wrapper is hidden via
+  // `display:none` but stays in the DOM — boot state is preserved.
+  const liveBlock = useMemo<{ type: string; payload: Record<string, unknown> } | null>(() => {
+    if (parsed?.kind === 'add') {
+      const sample = (SAMPLE_PAYLOADS as Record<string, { payload: Record<string, unknown> }>)[parsed.type];
+      return sample ? { type: parsed.type, payload: sample.payload } : null;
+    }
+    if (parsed?.kind === 'block') {
+      const b = data?.blocks.find((bl) => bl.id === parsed.id);
+      return b ? { type: b.type, payload: b.payload } : null;
+    }
+    return null;
+  }, [parsed, data]);
+
+  // Header + footer info for the iframe mode — recomputed only when
+  // the parsed value changes.
+  const liveHeader = useMemo(() => {
+    if (parsed?.kind === 'add') {
+      const label = (BLOCK_TYPE_LABELS as Record<string, string>)[parsed.type] ?? parsed.type;
+      return <PreviewHeader eyebrow="Ajouter" title={label} icon={<Plus className="h-4 w-4 text-emerald-600" />} />;
+    }
+    if (parsed?.kind === 'block') {
+      const b = data?.blocks.find((bl) => bl.id === parsed.id);
+      if (!b) return null;
+      const label = (BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type;
+      return (
+        <PreviewHeader
+          eyebrow={`${label} · ${b.chapterTitle}`}
+          title={b.summary || `Bloc ${b.type}`}
+          icon={<Layers className="h-4 w-4 text-violet-600" />}
+        />
+      );
+    }
+    return null;
+  }, [parsed, data]);
+
+  const liveFooter = useMemo(() => {
+    if (parsed?.kind === 'add' && currentChapterTitle) {
+      return (
+        <p className="text-muted-foreground text-xs">
+          Sera inséré dans : <span className="text-foreground font-medium">{currentChapterTitle}</span>
+        </p>
+      );
+    }
+    if (parsed?.kind === 'block') {
+      return (
+        <p className="text-muted-foreground flex items-center gap-1 text-xs">
+          <CornerDownLeft className="h-3 w-3" /> Entrée pour ouvrir l&apos;éditeur du bloc
+        </p>
+      );
+    }
+    return null;
+  }, [parsed, currentChapterTitle]);
+
+  // ─── Schematic mode (chapter / parcours / variable / scope) ─────────
+  // Resolved sub-preview rendered only when the iframe isn't in use.
+  // Each branch falls back to EmptyState when the referenced item
+  // isn't found in `data` (stale rows, deleted entities, etc.).
+  let schematic: React.ReactNode = null;
+  if (!liveBlock) {
+    if (!parsed) {
+      schematic = <EmptyState />;
+    } else if (parsed.kind === 'chapter') {
+      const chapter = data?.chapters.find((c) => c.id === parsed.id);
+      if (!chapter) schematic = <EmptyState reason="Chapitre introuvable." />;
+      else {
+        const blocks = (data?.blocks ?? []).filter((b) => b.chapterId === chapter.id);
+        schematic = <ChapterPreview chapter={chapter} blocks={blocks} search={search} />;
+      }
+    } else if (parsed.kind === 'parcours') {
+      const parcours = data?.parcours.find((p) => p.id === parsed.id);
+      if (!parcours) schematic = <EmptyState reason="Parcours introuvable." />;
+      else {
+        const isCurrent = parcours.slug === currentParcoursSlug;
+        schematic = (
+          <ParcoursPreview parcours={parcours} chapters={isCurrent ? (data?.chapters ?? []) : null} search={search} />
+        );
+      }
+    } else if (parsed.kind === 'variable') {
+      const variable = data?.variables.find((v) => v.id === parsed.id);
+      if (!variable) schematic = <EmptyState reason="Variable introuvable." />;
+      else schematic = <VariablePreview variable={variable} search={search} />;
+    } else if (parsed.kind === 'scope') {
+      const scope = scopes.find((s) => s.id === parsed.scopeId);
+      const action = scope?.actions.find((a) => a.id === parsed.actionId);
+      if (!scope || !action) schematic = <EmptyState />;
+      else schematic = <ScopeActionPreview scopeLabel={scope.label} action={action} search={search} />;
+    } else {
+      schematic = <EmptyState />;
+    }
   }
-  if (parsed.kind === 'block') {
-    const block = data?.blocks.find((b) => b.id === parsed.id);
-    if (!block) return <EmptyState reason="Bloc introuvable." />;
-    return <BlockPreview block={block} />;
-  }
-  if (parsed.kind === 'chapter') {
-    const chapter = data?.chapters.find((c) => c.id === parsed.id);
-    if (!chapter) return <EmptyState reason="Chapitre introuvable." />;
-    const blocks = (data?.blocks ?? []).filter((b) => b.chapterId === chapter.id);
-    return <ChapterPreview chapter={chapter} blocks={blocks} />;
-  }
-  if (parsed.kind === 'parcours') {
-    const parcours = data?.parcours.find((p) => p.id === parsed.id);
-    if (!parcours) return <EmptyState reason="Parcours introuvable." />;
-    const isCurrent = parcours.slug === currentParcoursSlug;
-    return <ParcoursPreview parcours={parcours} chapters={isCurrent ? (data?.chapters ?? []) : null} />;
-  }
-  if (parsed.kind === 'variable') {
-    const variable = data?.variables.find((v) => v.id === parsed.id);
-    if (!variable) return <EmptyState reason="Variable introuvable." />;
-    return <VariablePreview variable={variable} />;
-  }
-  if (parsed.kind === 'scope') {
-    const scope = scopes.find((s) => s.id === parsed.scopeId);
-    const action = scope?.actions.find((a) => a.id === parsed.actionId);
-    if (!scope || !action) return <EmptyState />;
-    return <ScopeActionPreview scopeLabel={scope.label} action={action} />;
-  }
-  return <EmptyState />;
+
+  return (
+    <>
+      {/* Live preview block — iframe is ALWAYS rendered (hidden via
+          `display:none` when not in use) so the Solid app boots once
+          per palette session and only the postMessage payload
+          changes on subsequent highlights. */}
+      <div className={liveBlock ? 'flex h-full flex-col overflow-hidden' : 'hidden'}>
+        {liveHeader && <div className="border-border border-b px-4 py-3">{liveHeader}</div>}
+        <div className="bg-muted/10 flex-1 overflow-hidden">
+          <LivePreviewIframe block={liveBlock} className="h-full w-full border-0" />
+        </div>
+        {liveFooter && <div className="border-border bg-muted/30 border-t px-4 py-2">{liveFooter}</div>}
+      </div>
+
+      {/* Schematic preview for non-block rows — re-mounted as the
+          highlighted row changes (these aren't expensive enough to
+          warrant the persistent-mount trick). */}
+      {schematic}
+    </>
+  );
 }
 
 // ============================================================================
@@ -143,54 +231,74 @@ function EmptyState({ reason }: { reason?: string }) {
   );
 }
 
+/**
+ * Wraps every occurrence of `query` in `text` with a yellow `<mark>`.
+ * Used by the schematic previews (chapter / parcours / variable /
+ * scope) to make the matched substring pop wherever it appears in
+ * the preview content. Case-insensitive, preserves original casing.
+ * Returns the plain string when the query is empty or doesn't match.
+ */
+function Highlighted({ text, query }: { text: string; query?: string }) {
+  const q = (query ?? '').trim().toLowerCase();
+  if (!q) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const idx = lower.indexOf(q, cursor);
+    if (idx === -1) {
+      parts.push(text.slice(cursor));
+      break;
+    }
+    if (idx > cursor) parts.push(text.slice(cursor, idx));
+    parts.push(
+      <mark key={`h-${idx}`} className="rounded-sm bg-amber-200 px-0.5 text-amber-950">
+        {text.slice(idx, idx + q.length)}
+      </mark>,
+    );
+    cursor = idx + q.length;
+  }
+  return <>{parts}</>;
+}
+
 // ============================================================================
 // Sub-previews
 // ============================================================================
 
-function AddBlockPreview({ type, chapterTitle }: { type: string; chapterTitle: string | null }) {
-  const sample = (SAMPLE_PAYLOADS as Record<string, { payload: Record<string, unknown>; description?: string }>)[type];
-  const label = (BLOCK_TYPE_LABELS as Record<string, string>)[type] ?? type;
-  return (
-    <PreviewLayout
-      header={<PreviewHeader eyebrow="Ajouter" title={label} icon={<Plus className="h-4 w-4 text-emerald-600" />} />}
-      footer={
-        chapterTitle ? (
-          <p className="text-muted-foreground text-xs">
-            Sera inséré dans : <span className="text-foreground font-medium">{chapterTitle}</span>
-          </p>
-        ) : null
-      }
-    >
-      {sample?.description && <p className="text-muted-foreground mb-3 text-xs italic">{sample.description}</p>}
-      <BlockPayloadSchematic type={type} payload={sample?.payload ?? {}} />
-    </PreviewLayout>
-  );
-}
+// `AddBlockPreview` and `BlockPreview` were removed when the
+// PreviewPane started rendering the actual Solid block via an iframe
+// (see `LivePreviewIframe`). The header/footer for block/add rows is
+// now inlined in the top-level component above, alongside the
+// persistent iframe. The schematic helpers (BlockPayloadSchematic and
+// friends) are likewise retired for block previews ; they live below
+// for now but are no longer wired in. If we ever need a fallback
+// "no-iframe" mode (e.g. SSR snapshot, print view), we can revive
+// them.
 
-function BlockPreview({ block }: { block: PaletteBlock }) {
-  const label = (BLOCK_TYPE_LABELS as Record<string, string>)[block.type] ?? block.type;
-  return (
-    <PreviewLayout
-      header={
-        <PreviewHeader
-          eyebrow={`${label} · ${block.chapterTitle}`}
-          title={block.summary || `Bloc ${block.type}`}
-          icon={<Layers className="h-4 w-4 text-violet-600" />}
-        />
-      }
-      footer={
-        <p className="text-muted-foreground flex items-center gap-1 text-xs">
-          <CornerDownLeft className="h-3 w-3" /> Entrée pour ouvrir l'éditeur du bloc
-        </p>
-      }
-    >
-      <BlockPayloadSchematic type={block.type} payload={block.payload} tags={block.tags} />
-    </PreviewLayout>
-  );
-}
-
-function ChapterPreview({ chapter, blocks }: { chapter: PaletteChapter; blocks: PaletteBlock[] }) {
+function ChapterPreview({
+  chapter,
+  blocks,
+  search,
+}: {
+  chapter: PaletteChapter;
+  blocks: PaletteBlock[];
+  search?: string;
+}) {
   const hasForm = blocks.some((b) => b.type === 'form');
+  // Sort matching blocks to the top when a search is active — the
+  // user is auditing, the relevant blocks should be the first thing
+  // they see.
+  const sortedBlocks = useMemo(() => {
+    const q = (search ?? '').trim().toLowerCase();
+    if (!q) return blocks;
+    const matches: PaletteBlock[] = [];
+    const others: PaletteBlock[] = [];
+    for (const b of blocks) {
+      if (b.searchText.includes(q)) matches.push(b);
+      else others.push(b);
+    }
+    return [...matches, ...others];
+  }, [blocks, search]);
   return (
     <PreviewLayout
       header={
@@ -218,10 +326,15 @@ function ChapterPreview({ chapter, blocks }: { chapter: PaletteChapter; blocks: 
         <p className="text-muted-foreground text-sm italic">Ce chapitre n'a pas encore de bloc.</p>
       ) : (
         <ol className="space-y-1.5">
-          {blocks.slice(0, 12).map((b, i) => {
+          {sortedBlocks.slice(0, 12).map((b, i) => {
             const typeLabel = (BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type;
+            const q = (search ?? '').trim().toLowerCase();
+            const isMatch = q ? b.searchText.includes(q) : false;
             return (
-              <li key={b.id} className="flex items-start gap-2 text-sm">
+              <li
+                key={b.id}
+                className={`flex items-start gap-2 text-sm ${isMatch ? '-mx-1 rounded bg-amber-50/70 px-1' : ''}`}
+              >
                 <span className="bg-muted text-muted-foreground mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-medium">
                   {i + 1}
                 </span>
@@ -229,7 +342,9 @@ function ChapterPreview({ chapter, blocks }: { chapter: PaletteChapter; blocks: 
                   <span className="mr-1.5 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                     {typeLabel}
                   </span>
-                  <span className="text-foreground">{b.summary || `Bloc ${b.type}`}</span>
+                  <span className="text-foreground">
+                    <Highlighted text={b.summary || `Bloc ${b.type}`} query={search} />
+                  </span>
                 </span>
               </li>
             );
@@ -249,7 +364,15 @@ function ChapterPreview({ chapter, blocks }: { chapter: PaletteChapter; blocks: 
   );
 }
 
-function ParcoursPreview({ parcours, chapters }: { parcours: PaletteParcours; chapters: PaletteChapter[] | null }) {
+function ParcoursPreview({
+  parcours,
+  chapters,
+  search,
+}: {
+  parcours: PaletteParcours;
+  chapters: PaletteChapter[] | null;
+  search?: string;
+}) {
   return (
     <PreviewLayout
       header={
@@ -283,7 +406,9 @@ function ParcoursPreview({ parcours, chapters }: { parcours: PaletteParcours; ch
               <span className="bg-muted text-muted-foreground mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-medium">
                 {i + 1}
               </span>
-              <span className="text-foreground">{c.title}</span>
+              <span className="text-foreground">
+                <Highlighted text={c.title} query={search} />
+              </span>
             </li>
           ))}
           {chapters.length > 14 && (
@@ -297,13 +422,13 @@ function ParcoursPreview({ parcours, chapters }: { parcours: PaletteParcours; ch
   );
 }
 
-function VariablePreview({ variable }: { variable: PaletteVariable }) {
+function VariablePreview({ variable, search }: { variable: PaletteVariable; search?: string }) {
   return (
     <PreviewLayout
       header={
         <PreviewHeader
           eyebrow="Variable"
-          title={variable.label || variable.key}
+          title={<Highlighted text={variable.label || variable.key} query={search} />}
           icon={<ListOrdered className="h-4 w-4 text-amber-600" />}
         />
       }
@@ -311,7 +436,9 @@ function VariablePreview({ variable }: { variable: PaletteVariable }) {
       <dl className="space-y-2 text-sm">
         <div className="flex items-center gap-2">
           <dt className="text-muted-foreground w-16 shrink-0 text-xs uppercase">Clé</dt>
-          <dd className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">{variable.key}</dd>
+          <dd className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+            <Highlighted text={variable.key} query={search} />
+          </dd>
         </div>
         <div className="flex items-center gap-2">
           <dt className="text-muted-foreground w-16 shrink-0 text-xs uppercase">Type</dt>
@@ -329,18 +456,26 @@ function VariablePreview({ variable }: { variable: PaletteVariable }) {
 function ScopeActionPreview({
   scopeLabel,
   action,
+  search,
 }: {
   scopeLabel: string;
   action: { label: string; description?: string };
+  search?: string;
 }) {
   return (
     <PreviewLayout
       header={
-        <PreviewHeader eyebrow={scopeLabel} title={action.label} icon={<Plus className="h-4 w-4 text-emerald-600" />} />
+        <PreviewHeader
+          eyebrow={scopeLabel}
+          title={<Highlighted text={action.label} query={search} />}
+          icon={<Plus className="h-4 w-4 text-emerald-600" />}
+        />
       }
     >
       {action.description ? (
-        <p className="text-foreground text-sm">{action.description}</p>
+        <p className="text-foreground text-sm">
+          <Highlighted text={action.description} query={search} />
+        </p>
       ) : (
         <p className="text-muted-foreground text-sm italic">Action sans description.</p>
       )}
@@ -377,7 +512,9 @@ function PreviewHeader({
   rightChip,
 }: {
   eyebrow: string;
-  title: string;
+  /** Accepts either a plain string or a React node so callers can
+   *  pass `<Highlighted ...>` to mark a matched substring. */
+  title: React.ReactNode;
   icon: React.ReactNode;
   rightChip?: React.ReactNode;
 }) {
@@ -397,350 +534,6 @@ function SlugChip({ slug }: { slug: string }) {
   return (
     <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]">{slug}</span>
   );
-}
-
-// ============================================================================
-// Block payload schematic — per-type rendering of an arbitrary payload
-// ============================================================================
-
-function BlockPayloadSchematic({
-  type,
-  payload,
-  tags,
-}: {
-  type: string;
-  payload: Record<string, unknown>;
-  /** Rich tags (with color) attached to this block. Only forwarded to
-   *  the media schematics — other types ignore the prop. */
-  tags?: { label: string; color: string }[];
-}) {
-  switch (type) {
-    case 'heroTitle':
-      return <HeroTitleSchematic payload={payload} tags={tags} />;
-    case 'text':
-      return <TextSchematic payload={payload} />;
-    case 'video':
-      return <VideoSchematic payload={payload} tags={tags} />;
-    case 'keyPointsCard':
-      return <KeyPointsSchematic payload={payload} />;
-    case 'faqCard':
-      return <FaqSchematic payload={payload} />;
-    case 'card':
-      return <CardSchematic payload={payload} />;
-    case 'conditional':
-      return <ConditionalSchematic payload={payload} />;
-    case 'componentRef':
-      return <ComponentRefSchematic payload={payload} />;
-    case 'toolContentSection':
-      return <ToolContentSchematic payload={payload} />;
-    case 'form':
-      return <FormSchematic payload={payload} />;
-    case 'photoCarousel':
-      return <PhotoCarouselSchematic payload={payload} tags={tags} />;
-    default:
-      return <FallbackSchematic payload={payload} />;
-  }
-}
-
-// ---------------- Per-type schematics ----------------
-
-function HeroTitleSchematic({
-  payload,
-  tags,
-}: {
-  payload: Record<string, unknown>;
-  tags?: { label: string; color: string }[];
-}) {
-  const title = typeof payload.title === 'string' ? payload.title : '(sans titre)';
-  const number = payload.number;
-  const illustration = typeof payload.illustration === 'string' ? payload.illustration : null;
-  return (
-    <div className="space-y-2">
-      <div className="flex items-baseline gap-2">
-        {typeof number === 'number' && (
-          <span className="bg-primary/10 text-primary rounded px-1.5 py-0.5 text-[10px] font-bold">#{number}</span>
-        )}
-        <h3 className="text-base font-semibold leading-tight">{title}</h3>
-      </div>
-      {illustration && (
-        <p className="text-muted-foreground flex items-center gap-1 text-xs">
-          <ImageIcon className="h-3 w-3" />
-          <span className="truncate font-mono">{illustration}</span>
-        </p>
-      )}
-      <TagsRow tags={tags} />
-    </div>
-  );
-}
-
-function TextSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const html = typeof payload.html === 'string' ? payload.html : '';
-  const text = stripHtml(html).trim();
-  if (!text) return <Empty />;
-  const truncated = text.length > 320 ? `${text.slice(0, 320)}…` : text;
-  return <p className="text-foreground leading-relaxed">{truncated}</p>;
-}
-
-function VideoSchematic({
-  payload,
-  tags,
-}: {
-  payload: Record<string, unknown>;
-  tags?: { label: string; color: string }[];
-}) {
-  const src = typeof payload.vimeoSrc === 'string' ? payload.vimeoSrc : null;
-  const file = typeof payload.fileUrl === 'string' ? payload.fileUrl : null;
-  return (
-    <div className="space-y-2">
-      <div className="border-border bg-muted/30 flex items-center gap-2 rounded-md border px-3 py-2">
-        <PlayCircle className="text-muted-foreground h-5 w-5" />
-        <div className="min-w-0">
-          {src ? (
-            <>
-              <p className="text-muted-foreground text-xs uppercase tracking-wide">Vimeo</p>
-              <p className="truncate font-mono text-xs">{src}</p>
-            </>
-          ) : file ? (
-            <>
-              <p className="text-muted-foreground text-xs uppercase tracking-wide">Fichier</p>
-              <p className="truncate font-mono text-xs">{file}</p>
-            </>
-          ) : (
-            <p className="text-muted-foreground text-xs italic">Vidéo sans source.</p>
-          )}
-        </div>
-      </div>
-      <TagsRow tags={tags} />
-    </div>
-  );
-}
-
-function KeyPointsSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const main = (payload.main as Record<string, unknown> | undefined) ?? {};
-  const exception = payload.exception as Record<string, unknown> | undefined;
-  const mainTitle = typeof main.title === 'string' ? main.title : '(sans titre)';
-  const mainItems = Array.isArray(main.items) ? (main.items as { text?: string }[]) : [];
-  return (
-    <div className="space-y-3">
-      <div>
-        <h4 className="font-semibold leading-tight">{mainTitle}</h4>
-        {mainItems.length > 0 && (
-          <ul className="text-foreground mt-1.5 list-inside list-disc space-y-0.5 text-sm">
-            {mainItems.slice(0, 4).map((it, i) => (
-              <li key={i} className="truncate">
-                {it.text ?? ''}
-              </li>
-            ))}
-            {mainItems.length > 4 && (
-              <li className="text-muted-foreground list-none italic">
-                + {mainItems.length - 4} autre{mainItems.length - 4 > 1 ? 's' : ''}…
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
-      {exception && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-amber-900">Exception</p>
-          {typeof exception.title === 'string' && <p className="text-sm font-semibold">{exception.title}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FaqSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const qs = Array.isArray(payload.questions) ? (payload.questions as { title?: string }[]) : [];
-  if (qs.length === 0) return <Empty />;
-  return (
-    <ol className="space-y-1.5">
-      {qs.slice(0, 5).map((q, i) => (
-        <li key={i} className="flex items-start gap-2">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">
-            ?
-          </span>
-          <span className="text-foreground text-sm">{q.title ?? '(sans titre)'}</span>
-        </li>
-      ))}
-      {qs.length > 5 && (
-        <li className="text-muted-foreground pl-7 text-xs italic">
-          + {qs.length - 5} autre{qs.length - 5 > 1 ? 's' : ''}…
-        </li>
-      )}
-    </ol>
-  );
-}
-
-function CardSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const children = Array.isArray(payload.children) ? (payload.children as { type?: string }[]) : [];
-  return (
-    <div className="space-y-2">
-      <p className="text-muted-foreground text-xs uppercase tracking-wide">
-        {children.length} bloc{children.length > 1 ? 's' : ''} enfant{children.length > 1 ? 's' : ''}
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {children.slice(0, 8).map((c, i) => (
-          <span key={i} className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-            {(BLOCK_TYPE_LABELS as Record<string, string>)[c.type ?? ''] ?? c.type ?? '?'}
-          </span>
-        ))}
-        {children.length > 8 && (
-          <span className="text-muted-foreground text-[10px] italic">+ {children.length - 8}…</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ConditionalSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const cond = payload.condition as Record<string, unknown> | undefined;
-  const thenArr = Array.isArray(payload.then) ? (payload.then as unknown[]) : [];
-  const elseArr = Array.isArray(payload.else) ? (payload.else as unknown[]) : [];
-  const summary = cond ? prettyCondition(cond) : '(pas de condition)';
-  return (
-    <div className="space-y-2">
-      <div className="bg-muted text-foreground rounded-md px-3 py-2 font-mono text-xs">{summary}</div>
-      <div className="text-muted-foreground flex gap-4 text-xs">
-        <span>
-          <strong className="text-emerald-700">Alors :</strong> {thenArr.length} bloc{thenArr.length > 1 ? 's' : ''}
-        </span>
-        <span>
-          <strong className="text-rose-700">Sinon :</strong> {elseArr.length} bloc{elseArr.length > 1 ? 's' : ''}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function prettyCondition(c: Record<string, unknown>): string {
-  if (typeof c.variable === 'string' && typeof c.op === 'string') {
-    return `${c.variable} ${c.op} ${JSON.stringify(c.value)}`;
-  }
-  if (Array.isArray(c.all)) return `tout (${(c.all as unknown[]).length} sous-conditions)`;
-  if (Array.isArray(c.any)) return `au moins une (${(c.any as unknown[]).length} sous-conditions)`;
-  return JSON.stringify(c);
-}
-
-function ComponentRefSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const name = typeof payload.name === 'string' ? payload.name : '(sans nom)';
-  return (
-    <div>
-      <p className="text-muted-foreground text-xs uppercase tracking-wide">Composant Solid</p>
-      <p className="bg-muted mt-1 rounded px-2 py-1 font-mono text-sm">{name}</p>
-    </div>
-  );
-}
-
-function ToolContentSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const title = typeof payload.title === 'string' ? payload.title : '(sans titre)';
-  const subtitle = typeof payload.subtitle === 'string' ? payload.subtitle : null;
-  const advantages = Array.isArray(payload.advantagePoints) ? (payload.advantagePoints as string[]) : [];
-  const children = Array.isArray(payload.children) ? (payload.children as unknown[]) : [];
-  return (
-    <div className="space-y-2">
-      <div>
-        <h4 className="text-base font-semibold leading-tight">{title}</h4>
-        {subtitle && <p className="text-muted-foreground text-xs">{subtitle}</p>}
-      </div>
-      {advantages.length > 0 && (
-        <ul className="list-inside list-disc space-y-0.5 text-sm">
-          {advantages.slice(0, 4).map((a, i) => (
-            <li key={i} className="truncate">
-              {a}
-            </li>
-          ))}
-          {advantages.length > 4 && (
-            <li className="text-muted-foreground list-none italic">+ {advantages.length - 4}…</li>
-          )}
-        </ul>
-      )}
-      {children.length > 0 && (
-        <p className="text-muted-foreground text-xs italic">
-          + {children.length} sous-bloc{children.length > 1 ? 's' : ''}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function FormSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const title = typeof payload.title === 'string' ? payload.title : null;
-  const description = typeof payload.description === 'string' ? payload.description : null;
-  const fields = Array.isArray(payload.fields)
-    ? (payload.fields as { label?: string; type?: string; key?: string }[])
-    : [];
-  return (
-    <div className="space-y-2">
-      {title && <h4 className="font-semibold leading-tight">{title}</h4>}
-      {description && <p className="text-muted-foreground text-xs">{description}</p>}
-      <ol className="space-y-1">
-        {fields.slice(0, 6).map((f, i) => (
-          <li key={i} className="flex items-center justify-between gap-2 text-sm">
-            <span className="min-w-0 truncate">{f.label ?? f.key ?? '(sans label)'}</span>
-            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
-              {f.type ?? '?'}
-            </span>
-          </li>
-        ))}
-        {fields.length > 6 && (
-          <li className="text-muted-foreground text-xs italic">
-            + {fields.length - 6} autre{fields.length - 6 > 1 ? 's' : ''}…
-          </li>
-        )}
-      </ol>
-    </div>
-  );
-}
-
-function PhotoCarouselSchematic({
-  payload,
-  tags,
-}: {
-  payload: Record<string, unknown>;
-  tags?: { label: string; color: string }[];
-}) {
-  const photos = Array.isArray(payload.photos)
-    ? (payload.photos as { url?: string; title?: string; alt?: string }[])
-    : [];
-  if (photos.length === 0) return <Empty />;
-  return (
-    <div className="space-y-2">
-      <p className="text-muted-foreground text-xs uppercase tracking-wide">
-        {photos.length} photo{photos.length > 1 ? 's' : ''}
-      </p>
-      <div className="grid grid-cols-2 gap-1.5">
-        {photos.slice(0, 4).map((p, i) => (
-          <div key={i} className="border-border bg-muted relative aspect-video overflow-hidden rounded-md border">
-            {p.url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.url} alt={p.alt ?? ''} className="h-full w-full object-cover" loading="lazy" />
-            ) : null}
-            {p.title && (
-              <span className="absolute bottom-0 left-0 right-0 truncate bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
-                {p.title}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-      {photos.length > 4 && (
-        <p className="text-muted-foreground text-xs italic">
-          + {photos.length - 4} non affichée{photos.length - 4 > 1 ? 's' : ''} ici.
-        </p>
-      )}
-      <TagsRow tags={tags} />
-    </div>
-  );
-}
-
-function FallbackSchematic({ payload }: { payload: Record<string, unknown> }) {
-  const json = JSON.stringify(payload, null, 2);
-  const truncated = json.length > 600 ? `${json.slice(0, 600)}\n…` : json;
-  return <pre className="bg-muted overflow-x-auto rounded-md px-2 py-1.5 text-[11px] leading-relaxed">{truncated}</pre>;
-}
-
-function Empty() {
-  return <p className="text-muted-foreground text-sm italic">Aucun contenu dans ce bloc.</p>;
 }
 
 /**

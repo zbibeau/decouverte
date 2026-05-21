@@ -85,6 +85,12 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
     });
   }
 
+  // Chapters opted out of navigation (`hiddenFromNav`) never appear
+  // in the panorama cards, AND don't count in the "next chapter"
+  // logical ordering — that would skip over them silently rather
+  // than pointing to a card the user can't see.
+  const visibleChapters = createMemo(() => chapters().filter((c) => !c.hiddenFromNav));
+
   // The "anchor" chapter whose section we display. For 'current' mode this
   // is currentStep ; for 'next' mode it's the chapter coming right after in
   // the logical (section-aware) reading order.
@@ -94,7 +100,7 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
     if (mode() === 'next' && parcoursSlug() === DEFAULT_PARCOURS_SLUG) {
       return null;
     }
-    const all = chapters();
+    const all = visibleChapters();
     if (all.length === 0) return null;
     if (mode() === 'next') {
       const ordered = logicallyOrdered(all);
@@ -107,11 +113,17 @@ export const ChapterTransitionGrid: Component<Props> = (props) => {
   });
 
   const sectionChapters = createMemo(() => {
-    const all = chapters();
+    const all = visibleChapters();
     const a = anchor();
     if (!a) return [];
+    // Treat "no section" as its own anonymous group : ungrouped
+    // chapters share the same `(sans section)` slot in the sidebar
+    // and should appear together in the panorama, same as a named
+    // section. Previously we returned [a] (single card) when the
+    // anchor had no `sectionLabel`, which made the transition look
+    // truncated when the editor had simply chosen not to label
+    // their chapters.
     const label = a.sectionLabel?.trim() || null;
-    if (!label) return [a]; // ungrouped chapter — render a single card
     return all
       .filter((c) => (c.sectionLabel?.trim() || null) === label)
       .sort((x, y) => {

@@ -1,5 +1,6 @@
 'use server';
 
+import { removeTagIdFromPayload } from '@/lib/blockSearch';
 import { createClient } from '@/lib/supabase/server';
 import { isTagColor, type Tag, type TagColor } from '@/lib/tagColors';
 
@@ -159,10 +160,46 @@ export async function setTagColor(id: string, color: TagColor): Promise<void> {
   }
 }
 
-/** Permanently delete a tag. ON DELETE CASCADE drops its `block_tag`
- *  rows automatically. */
+/** Permanently delete a tag.
+ *
+ *  Two cleanup passes :
+ *   1. Scan every block payload and scrub the deleted tagId from any
+ *      `tagIds: string[]` arrays found at any depth (nested blocks like
+ *      `card.children[]`, `toolContentSection.children[]`, etc. carry
+ *      their tags inline in `payload.tagIds` since they don't own a
+ *      row in `block_tag`). Without this pass the IDs would become
+ *      dangling references — the palette filters them out at read
+ *      time, but they'd linger forever in the DB.
+ *   2. DELETE the `tag` row itself. ON DELETE CASCADE drops the
+ *      `block_tag` / `chapter_tag` join rows automatically.
+ *
+ *  The payload scrub runs first so a partial failure leaves us with
+ *  a still-present tag (recoverable) rather than dangling IDs (silent
+ *  drift). The scrub only writes blocks whose payload actually
+ *  contained the ID — `removeTagIdFromPayload` returns the original
+ *  reference when nothing changed, so we can cheaply detect dirty
+ *  rows. */
 export async function deleteTag(id: string): Promise<void> {
   const supabase = await createClient();
+
+  // Pass 1 : scrub nested tagIds from every block payload.
+  // Fetched in one shot — payloads are small (~1 KB) and the total
+  // count is in the hundreds, not thousands. Streaming / pagination
+  // would be premature.
+  const { data: blocks, error: fetchErr } = await supabase.from('block').select('id, payload');
+  if (fetchErr) throw new Error(`Lecture des blocs impossible : ${fetchErr.message}`);
+  for (const b of blocks ?? []) {
+    const row = b as { id: string; payload: unknown };
+    const nextPayload = removeTagIdFromPayload(row.payload, id);
+    // Reference equality : `removeTagIdFromPayload` returns the same
+    // object when no change was needed, so we only push UPDATEs for
+    // blocks that actually referenced this tag.
+    if (nextPayload === row.payload) continue;
+    const { error: updErr } = await supabase.from('block').update({ payload: nextPayload }).eq('id', row.id);
+    if (updErr) throw new Error(`Nettoyage du bloc ${row.id} impossible : ${updErr.message}`);
+  }
+
+  // Pass 2 : delete the tag row. CASCADE drops the join rows.
   const { error } = await supabase.from('tag').delete().eq('id', id);
   if (error) throw new Error(`Suppression impossible : ${error.message}`);
 }

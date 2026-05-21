@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { BLANK_PAYLOADS } from '@/lib/blockDefaults';
-import { extractBlockSearchTextWeighted } from '@/lib/blockSearch';
+import { extractBlockSearchTextWeighted, harvestNestedTagIds } from '@/lib/blockSearch';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { slugifyForParcours } from '@/lib/parcoursSlug';
 import { randomPastel } from '@/lib/pastelColors';
@@ -226,7 +226,7 @@ export async function getDraftChapterDiffs(parcoursSlug: string): Promise<Map<st
   const supabase = await createClient();
 
   const CHAPTER_DIFF_FIELDS =
-    'id, slug, title, wrapper_class, branching_next, "order", section_label, section_order, card_image, card_short_title';
+    'id, slug, title, wrapper_class, branching_next, "order", section_label, section_order, card_image, card_short_title, hidden_from_nav';
 
   const { data: draftChapters } = await supabase
     .from('chapter')
@@ -251,6 +251,7 @@ export async function getDraftChapterDiffs(parcoursSlug: string): Promise<Map<st
     section_order: number | null;
     card_image: string | null;
     card_short_title: string | null;
+    hidden_from_nav: boolean | null;
   }> = [];
   if (info.publishedVersionId) {
     const { data: pubs } = await supabase
@@ -330,6 +331,7 @@ export async function getDraftChapterDiffs(parcoursSlug: string): Promise<Map<st
       (pub.section_order ?? null) !== (c.section_order ?? null) ||
       (pub.card_image ?? null) !== (c.card_image ?? null) ||
       (pub.card_short_title ?? null) !== (c.card_short_title ?? null) ||
+      (pub.hidden_from_nav ?? false) !== ((c as { hidden_from_nav?: boolean | null }).hidden_from_nav ?? false) ||
       JSON.stringify(pub.branching_next ?? []) !== JSON.stringify(c.branching_next ?? []);
 
     const dBlocks = draftBlocksByChapter.get(c.id) ?? [];
@@ -819,6 +821,7 @@ export async function updateChapterMeta(parcoursSlug: string, chapterId: string,
   const sectionOrderRaw = formData.get('sectionOrder');
   const cardImageRaw = formData.get('cardImage');
   const cardShortTitleRaw = formData.get('cardShortTitle');
+  const hiddenFromNavRaw = formData.get('hiddenFromNav');
   const update: {
     title: string;
     slug: string;
@@ -826,6 +829,7 @@ export async function updateChapterMeta(parcoursSlug: string, chapterId: string,
     section_order?: number | null;
     card_image?: string | null;
     card_short_title?: string | null;
+    hidden_from_nav?: boolean;
   } = { title, slug };
   if (sectionLabelRaw !== null) {
     const v = String(sectionLabelRaw).trim();
@@ -846,6 +850,11 @@ export async function updateChapterMeta(parcoursSlug: string, chapterId: string,
   if (cardShortTitleRaw !== null) {
     const v = String(cardShortTitleRaw).trim();
     update.card_short_title = v === '' ? null : v;
+  }
+  if (hiddenFromNavRaw !== null) {
+    // FormData round-trips the boolean as "1" / "" — anything truthy
+    // (set by the client checkbox handler) means "hide from nav".
+    update.hidden_from_nav = String(hiddenFromNavRaw).trim() !== '';
   }
 
   const { error } = await supabase.from('chapter').update(update).eq('id', draftChapterId);
@@ -1269,6 +1278,52 @@ export async function reorderChapters(parcoursSlug: string, orderedIds: string[]
   revalidatePath(`/parcours/${parcoursSlug}`);
 }
 
+/**
+ * Same as `reorderChapters` but also reassigns each chapter's
+ * `section_label` in the same atomic-ish pass. Used by the
+ * cross-section drag-and-drop in the ChapterList — when the editor
+ * drops a chapter from section A into section B, the chapter's
+ * order AND its section_label must both update so that the next
+ * render shows it under section B.
+ *
+ * Each entry's `sectionLabel` is set verbatim : `null` for "no
+ * section" (i.e. ungrouped — falls under the "(sans section)" group
+ * in the UI). `section_order` is cleared to NULL on every touched
+ * row so the global `order` decides the in-section position rather
+ * than a stale section_order from a previous section.
+ *
+ * Same two-pass `-n` then `+n` trick as `reorderChapters` to dodge
+ * the unique (version_id, order) constraint mid-write.
+ */
+export async function reorderAndReassignChapters(
+  parcoursSlug: string,
+  orderedItems: Array<{ id: string; sectionLabel: string | null }>,
+): Promise<void> {
+  const supabase = await createClient();
+  const versionId = await getOrCreateDraftVersionId(parcoursSlug);
+
+  for (let i = 0; i < orderedItems.length; i++) {
+    const it = orderedItems[i];
+    const { error } = await supabase
+      .from('chapter')
+      .update({ order: -(i + 1), section_label: it.sectionLabel, section_order: null })
+      .eq('id', it.id)
+      .eq('version_id', versionId);
+    if (error) throw error;
+  }
+  for (let i = 0; i < orderedItems.length; i++) {
+    const it = orderedItems[i];
+    const { error } = await supabase
+      .from('chapter')
+      .update({ order: i + 1 })
+      .eq('id', it.id)
+      .eq('version_id', versionId);
+    if (error) throw error;
+  }
+
+  revalidatePath(`/parcours/${parcoursSlug}`);
+}
+
 // ============================================================
 // Variables
 // ============================================================
@@ -1423,10 +1478,18 @@ export interface PaletteChapter {
   id: string;
   slug: string;
   title: string;
-  /** Aggregated `block.searchText.full` of every block of the chapter. Lets
-   *  the chapter row match its own content (typing "saturation" surfaces
-   *  the chapter where the word lives, not only the matching block). */
+  /** Aggregated `block.searchText.full` of every block of the chapter,
+   *  plus the chapter's own tag labels. Lets the chapter row match its
+   *  own content (typing "saturation" surfaces the chapter where the
+   *  word lives, not only the matching block). */
   searchText: string;
+  /** Only the chapter's OWN searchable text (tag labels of
+   *  `chapter_tag` rows), excluding the aggregated block content.
+   *  Used by the palette to dedup chapter rows that ONLY match via a
+   *  child block — those rows are redundant and hidden in favour of
+   *  the more specific block row that points to the same edit
+   *  target. `title` and `slug` are checked separately. */
+  directSearchText: string;
   /** Maintenance tags attached to this chapter's `card_image`. Same
    *  shape as `PaletteBlock.tags` so the palette can render colored
    *  chips and inject the labels into searchText. */
@@ -1555,13 +1618,22 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
   // the palette can match against its aggregated content. Tags attached
   // to the chapter card_image are seeded right away so they're picked
   // up by the search even if the chapter has no blocks yet.
-  result.chapters = (chapters ?? []).map((c) => ({
-    id: c.id,
-    slug: c.slug,
-    title: c.title,
-    searchText: (tagsByChapter.get(c.id) ?? []).map((t) => t.label).join(' '),
-    tags: tagsByChapter.get(c.id) ?? [],
-  }));
+  result.chapters = (chapters ?? []).map((c) => {
+    const tagLabels = (tagsByChapter.get(c.id) ?? []).map((t) => t.label).join(' ');
+    return {
+      id: c.id,
+      slug: c.slug,
+      title: c.title,
+      // searchText gets the same seed initially ; block contents are
+      // appended further down. Cmdk uses this for the keyword filter.
+      searchText: tagLabels,
+      // directSearchText captures ONLY what the chapter brings on its
+      // own (its tags). Title and slug stay as their own fields and
+      // are checked separately by the dedup logic in CommandPalette.
+      directSearchText: tagLabels,
+      tags: tagsByChapter.get(c.id) ?? [],
+    };
+  });
   result.variables = (variables ?? []).map((v) => ({
     id: v.id,
     key: v.key,
@@ -1606,20 +1678,58 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
     }
   }
 
+  // Nested tags : children of card / toolContentSection / conditional /
+  // faq questions store their tag IDs inline in `payload.tagIds`. We
+  // walk each block's payload to harvest those IDs, fetch the
+  // matching `tag` rows in ONE additional roundtrip, and inject the
+  // labels into the synthetic `payload.tags` so cmdk picks them up
+  // the same way as top-level tags.
+  const allNestedTagIds = new Set<string>();
+  for (const b of blocks ?? []) {
+    const ids = harvestNestedTagIds(b.payload);
+    for (const id of ids) allNestedTagIds.add(id);
+  }
+  const tagById = new Map<string, { id: string; label: string; color: string }>();
+  if (allNestedTagIds.size > 0) {
+    const { data: tagRows } = await supabase
+      .from('tag')
+      .select('id, label, color')
+      .in('id', [...allNestedTagIds]);
+    for (const r of tagRows ?? []) {
+      const row = r as { id: string; label: string; color: string };
+      tagById.set(row.id, row);
+    }
+  }
+
   const chapterById = new Map(result.chapters.map((c) => [c.id, c] as const));
   const chapterSearchAcc = new Map<string, string[]>();
   result.blocks = (blocks ?? []).map((b) => {
     const ch = chapterById.get(b.chapter_id);
     const rawPayload = (b.payload ?? {}) as Record<string, unknown>;
     const blockTags = tagsByBlock.get(b.id) ?? [];
+    // Resolve nested tag IDs against the pre-fetched lookup. Skips
+    // dangling references (deleted tags) — the cleanup pass in
+    // `deleteTag` should already have removed those, but the filter
+    // keeps the palette resilient to any leftover stale IDs.
+    const nestedTagIds = harvestNestedTagIds(rawPayload);
+    const nestedTags = [...nestedTagIds]
+      .map((id) => tagById.get(id))
+      .filter((t): t is { id: string; label: string; color: string } => t !== undefined);
+    // Merge top-level + nested tags, deduplicated by id. The block
+    // row's chips display ALL of them — auditors care about "what
+    // does this block touch overall", not where the tag is anchored.
+    const mergedTags = new Map<string, { id: string; label: string; color: string }>();
+    for (const t of blockTags) mergedTags.set(t.id, t);
+    for (const t of nestedTags) if (!mergedTags.has(t.id)) mergedTags.set(t.id, t);
+    const finalTags = [...mergedTags.values()];
     // Synthetic payload : the stored payload + a `tags: string[]` of
-    // tag labels injected from the JOIN. The walker (with 'tags' in
-    // PRIMARY_KEYS) then harvests them as boosted search terms — same
-    // effect as if the labels lived in the payload, minus the actual
-    // storage.
+    // tag labels (top-level + nested) injected for the walker. The
+    // walker (with 'tags' in PRIMARY_KEYS) then harvests them as
+    // boosted search terms — same effect as if the labels lived in
+    // the payload, minus the actual storage.
     const payload: Record<string, unknown> = {
       ...rawPayload,
-      tags: blockTags.map((t) => t.label),
+      tags: finalTags.map((t) => t.label),
     };
     const weighted = extractBlockSearchTextWeighted(payload);
     const acc = chapterSearchAcc.get(b.chapter_id) ?? [];
@@ -1636,7 +1746,9 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
       secondaryText: weighted.secondary,
       searchText: weighted.full,
       payload,
-      tags: blockTags,
+      // Merged top-level + nested tags — drives the colored chips in
+      // the palette preview pane and the result-row matchChips.
+      tags: finalTags,
     };
   });
   // Write the aggregated chapter searchText back into the chapter rows.

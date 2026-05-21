@@ -78,6 +78,12 @@ export interface VideoBlock {
     contentClass?: string;
     /** Optional pilot-specific Tool1 navbar variant rendered on top of the video. */
     navbar?: { variant: string };
+    /** Inline maintenance tag IDs, used when this VideoBlock appears
+     *  NESTED inside another block's payload (card.children,
+     *  toolContentSection.children, conditional.then/else…). Top-level
+     *  videos still use the `block_tag` join table — this field is
+     *  ignored on top-level instances. Each ID references a `tag` row. */
+    tagIds?: string[];
   };
 }
 
@@ -89,6 +95,9 @@ export interface HeroTitleBlock {
     sectionTitle?: string;
     number?: number;
     illustration?: string;
+    /** Inline maintenance tag IDs — see `VideoBlock.payload.tagIds`
+     *  for the rationale. Used only when this heroTitle is nested. */
+    tagIds?: string[];
   };
 }
 
@@ -264,6 +273,11 @@ export interface ToolContentSectionBlock {
      * FAQ, etc. inside a tool content section without code changes.
      */
     children?: ContentBlock[];
+    /** Inline maintenance tag IDs — see `VideoBlock.payload.tagIds` for the
+     *  rationale. Used only when this toolContentSection is itself nested
+     *  inside another block (rare but possible via children[]). Top-level
+     *  instances use the `block_tag` join table. */
+    tagIds?: string[];
   };
 }
 
@@ -350,6 +364,9 @@ export interface PhotoCarouselBlock {
     aspectRatio?: '16/9' | '4/3' | '3/2' | '1/1' | '21/9';
     /** Auto-advance interval in ms. 0 / undefined disables autoplay. */
     autoplayMs?: number;
+    /** Inline maintenance tag IDs — see `VideoBlock.payload.tagIds`
+     *  for the rationale. Used only when this photoCarousel is nested. */
+    tagIds?: string[];
   };
 }
 

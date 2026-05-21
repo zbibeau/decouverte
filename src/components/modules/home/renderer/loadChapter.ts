@@ -108,6 +108,14 @@ export interface ChapterStub {
    *  Drives the "Retour au formulaire" button shown on the very next chapter
    *  in the reading flow so visitors (and the dev) can revisit their answers. */
   hasForm?: boolean;
+  /** TRUE iff the chapter is opted out of all navigation surfaces : the
+   *  sidebar excludes it, the auto-injected ChapterTransitionGrid
+   *  (top + bottom panorama) excludes it from its section cards AND
+   *  from the "next chapter" logical ordering. Useful for "thank you"
+   *  / 404 / branching-only chapters that shouldn't pollute the
+   *  visible navigation. The chapter stays reachable via direct URL
+   *  or programmatic `setCurrentStep(...)`. */
+  hiddenFromNav?: boolean;
 }
 export async function loadChapterSequence(parcoursSlug: string, versionId?: string): Promise<ChapterStub[]> {
   const supabase = getSupabase();
@@ -143,7 +151,7 @@ export async function loadChapterSequence(parcoursSlug: string, versionId?: stri
 
   const { data: rows } = await supabase
     .from('chapter')
-    .select('id, slug, title, "order", section_label, section_order, card_image, card_short_title')
+    .select('id, slug, title, "order", section_label, section_order, card_image, card_short_title, hidden_from_nav')
     .eq('version_id', effectiveVersionId)
     .order('order', { ascending: true });
 
@@ -174,6 +182,7 @@ export async function loadChapterSequence(parcoursSlug: string, versionId?: stri
     cardImage: (r as { card_image?: string | null }).card_image ?? null,
     cardShortTitle: (r as { card_short_title?: string | null }).card_short_title ?? null,
     hasForm: chaptersWithForm.has(r.id as string),
+    hiddenFromNav: (r as { hidden_from_nav?: boolean | null }).hidden_from_nav ?? false,
   }));
 }
 
