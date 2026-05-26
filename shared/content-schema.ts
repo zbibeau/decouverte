@@ -254,14 +254,20 @@ export interface ToolContentSectionBlock {
     anchorId?: string;
     title: string;
     subtitle?: string;
-    /** Video: either a single fixed vimeo src, or a branching by personWhoHandleCalls. */
+    /** Video: either a single fixed vimeo src, or a branching by personWhoHandleCalls.
+     *  Both variants accept an optional `tagIds` slot so the inline
+     *  video can carry its own maintenance tags. Mirrors the nested
+     *  `VideoBlock.payload.tagIds` shape — same id semantics, but the
+     *  video here lives inside `toolContentSection.payload.video` rather
+     *  than as a `children[]` entry. */
     video?:
-      | { kind: 'fixed'; src: string }
+      | { kind: 'fixed'; src: string; tagIds?: string[] }
       | {
           kind: 'branchOnPersonWhoHandleCalls';
           doctor?: string;
           secretary?: string;
           'remote-secretary'?: string;
+          tagIds?: string[];
         };
     advantageTitle?: string;
     /** Either a bullet list OR a single paragraph (not both). */

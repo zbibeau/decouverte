@@ -225,11 +225,10 @@ function walkForMissingSlots(value: unknown, currentPath: string, out: NestedTag
     return;
   }
   const obj = value as Record<string, unknown>;
-  // Check whether this object looks like a nested ContentBlock with a
-  // taggable type AND has an empty / missing tagIds slot. The check
-  // sits at the `{ type, payload }` level because that's how children
-  // arrays are shaped (see CardBlock.children, ToolContentSection
-  // .children, etc.) ; we look INTO `payload` for the tagIds.
+  // Case 1 : the object looks like a nested ContentBlock with the
+  // standard `{ type, payload }` shape — that's how `children[]`
+  // arrays are structured (CardBlock.children, ToolContentSection
+  // .children, etc.). We look INTO `payload` for the tagIds.
   const type = typeof obj.type === 'string' ? (obj.type as string) : null;
   if (type && TAGGABLE_NESTED_TYPES[type]) {
     const innerPayload = obj.payload as Record<string, unknown> | undefined;
@@ -237,6 +236,23 @@ function walkForMissingSlots(value: unknown, currentPath: string, out: NestedTag
     const slotMissing = !Array.isArray(tagIds) || tagIds.length === 0;
     if (slotMissing) {
       out.push({ type, label: TAGGABLE_NESTED_TYPES[type], path: currentPath || type });
+    }
+  }
+  // Case 2 : inline media config that doesn't sit under a `children[]`
+  // but still carries a `tagIds` slot in its own schema. Currently
+  // this matches `toolContentSection.payload.video` (both `kind:
+  // 'fixed'` and `kind: 'branchOnPersonWhoHandleCalls'` variants).
+  // The detection is shape-based : an object with `kind === 'fixed'`
+  // PLUS a `src` field, or `kind === 'branchOnPersonWhoHandleCalls'`,
+  // is treated as an inline video. If a future inline media adds
+  // similar slots, extend the conditions here.
+  const kind = typeof obj.kind === 'string' ? obj.kind : null;
+  const looksLikeInlineVideo = kind === 'fixed' ? typeof obj.src === 'string' : kind === 'branchOnPersonWhoHandleCalls';
+  if (looksLikeInlineVideo) {
+    const tagIds = obj.tagIds;
+    const slotMissing = !Array.isArray(tagIds) || tagIds.length === 0;
+    if (slotMissing) {
+      out.push({ type: 'inlineVideo', label: 'Vidéo (inline)', path: currentPath || 'video' });
     }
   }
   for (const [k, v] of Object.entries(obj)) {

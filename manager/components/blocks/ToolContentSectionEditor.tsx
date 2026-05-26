@@ -8,16 +8,17 @@ import { Textarea } from '@/components/ui/Textarea';
 import { ChildBlockList } from './ChildBlockList';
 import { Field, Section } from './Field';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
+import { TagsField } from './TagsField';
 import type { PayloadEditorProps } from './editor-types';
 
 type Payload = ToolContentSectionBlock['payload'];
 
 // NB : pas de TagsField sur le toolContentSection lui-même —
-// volontaire. Les tags appartiennent aux sous-blocs (vidéo / photo
-// dans `children[]`) qui les portent visuellement, pour que
-// l'éditeur sache toujours À QUOI un tag est rattaché. Tagger le
-// conteneur produisait un champ flottant en bas du bloc dont le
-// scope n'était pas évident.
+// volontaire. Les tags appartiennent aux sous-blocs visuels (la
+// vidéo inline ici et chacun des `children[]`) pour que l'éditeur
+// sache toujours À QUOI un tag est rattaché. Tagger le conteneur
+// produisait un champ flottant en bas du bloc dont le scope n'était
+// pas évident.
 
 export function ToolContentSectionEditor({
   payload,
@@ -129,6 +130,28 @@ export function ToolContentSectionEditor({
               </Field>
             ))}
           </div>
+        )}
+
+        {/* Tags de maintenance pour la vidéo inline. Rendu uniquement
+            quand une vidéo est configurée (kind ≠ 'none'). Mode
+            `controlled` : la valeur vit dans `payload.video.tagIds` et
+            la sauvegarde se fait via l'autosave du bloc parent (le
+            BlockEditor bypasse le debounce sur les changements de
+            tagIds — cf. BlockEditor.tsx). */}
+        {video && (
+          <Field
+            label="Tags de maintenance pour cette vidéo"
+            path="video.tagIds"
+            hint="Utiles pour retrouver cette vidéo via ⌘K quand la fonctionnalité illustrée évolue."
+          >
+            <TagsField
+              target={{
+                kind: 'controlled',
+                valueIds: video.tagIds ?? [],
+                onChange: (ids) => onChange({ ...payload, video: { ...video, tagIds: ids } }),
+              }}
+            />
+          </Field>
         )}
       </Section>
 
