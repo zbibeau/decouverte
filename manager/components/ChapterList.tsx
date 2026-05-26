@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Copy,
   GripVertical,
+  Pencil,
   Trash2,
   Upload,
   X,
@@ -733,11 +734,17 @@ export function ChapterList({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    title="Voir les paramètres du chapitre (titre, slug, section, carte, tags…)"
+                                    title="Éditer les paramètres du chapitre (titre, slug, section, carte, tags…)"
                                     disabled={isPending}
                                     onClick={() => startEdit(c)}
                                   >
-                                    <ChevronDown className="h-4 w-4" />
+                                    {/* Pencil plutôt que ChevronDown : l'ancienne
+                                        icône avait la même forme que la flèche
+                                        d'expand inline et créait de l'ambiguïté
+                                        (« déplier » vs « éditer »). Le crayon
+                                        reste l'affordance la plus universelle
+                                        pour "modifier les paramètres". */}
+                                    <Pencil className="h-3.5 w-3.5" />
                                   </Button>
                                   <Link
                                     href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
@@ -745,17 +752,25 @@ export function ChapterList({
                                   >
                                     <code className="text-muted-foreground text-xs">({c.slug})</code>
                                     <DiffBadge diff={c.diff} />
-                                    {(c.untaggedBlockCount ?? 0) > 0 && (
-                                      <span
-                                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
-                                        title={`${c.untaggedBlockCount} bloc(s) de ce chapitre n'ont pas encore de tag de maintenance`}
-                                      >
-                                        <span aria-hidden="true">🏷</span>
-                                        <span>{c.untaggedBlockCount} sans tag</span>
-                                      </span>
-                                    )}
                                     <span className="ml-auto" />
                                   </Link>
+                                  {/* "Sans tag" chip pinned to the right, OUTSIDE
+                                      the Link so it doesn't trigger navigation
+                                      (clicking the chip would otherwise feel
+                                      like a filter, not a navigation). The mr-3
+                                      keeps it visually separated from the
+                                      expand chevron so the editor doesn't
+                                      target the chip when aiming for the
+                                      expand affordance. */}
+                                  {(c.untaggedBlockCount ?? 0) > 0 && (
+                                    <span
+                                      className="mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                                      title={`${c.untaggedBlockCount} bloc(s) de ce chapitre n'ont pas encore de tag de maintenance`}
+                                    >
+                                      <span aria-hidden="true">🏷</span>
+                                      <span>{c.untaggedBlockCount} sans tag</span>
+                                    </span>
+                                  )}
                                   {/* Toggle inline expand. The > arrow used to
                                       navigate to the chapter edit page (which is
                                       what the chapter title link still does), but
@@ -1168,23 +1183,22 @@ function ChapterBlocksPreview({
             <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
               {typeLabel}
             </span>
-            {/* Title + tags flow on the LEFT, inline, just like the
-                chapter rows. Éditer → is pushed to the right via
-                `ml-auto` on the link. The title still truncates when
-                space is tight (flex-1 inside a min-w-0 container) but
-                tags sit *right after* it rather than being pushed to
-                the far right. */}
-            <span className="font-medium">{b.summary || `Bloc ${b.type}`}</span>
+            {/* Title takes the remaining space (flex-1 + min-w-0 for
+                truncate), tags + chip "Sans tag" sit right-aligned just
+                before "Éditer →". A `mr-3` on the tag/chip block keeps a
+                visible gap from the link so the editor doesn't aim at
+                the chip when reaching for the navigation. */}
+            <span className="min-w-0 flex-1 truncate font-medium">{b.summary || `Bloc ${b.type}`}</span>
             {b.tags.length === 0 ? (
               <span
-                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                className="mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
                 title="Aucun tag de maintenance sur ce bloc"
               >
                 <span aria-hidden="true">⚠</span>
                 <span>Sans tag</span>
               </span>
             ) : (
-              <span className="flex shrink-0 flex-wrap items-center gap-1">
+              <span className="mr-3 flex shrink-0 flex-wrap items-center gap-1">
                 {b.tags.map((t) => {
                   const safe = isTagColor(t.color) ? t.color : 'amber';
                   const hex = TAG_COLOR_HEX[safe];
@@ -1204,7 +1218,7 @@ function ChapterBlocksPreview({
             )}
             <Link
               href={`/parcours/${parcoursSlug}/chapters/${chapterSlug}/blocks/${b.id}`}
-              className="text-muted-foreground hover:text-foreground ml-auto shrink-0 text-[10px] hover:underline"
+              className="text-muted-foreground hover:text-foreground shrink-0 text-[10px] hover:underline"
               title="Ouvrir l'éditeur du bloc"
             >
               Éditer →
