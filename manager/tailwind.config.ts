@@ -72,15 +72,26 @@ const brand = {
   },
 };
 
+// Maintenance-tag color palette — must be safelisted because the
+// `TAG_COLOR_CLASSES` map in `lib/tagColors.ts` declares the bg / fg /
+// ring / dot classes as static strings consumed at runtime via
+// `${cls.bg}` template literals. Tailwind's JIT scans source files
+// for class-name-shaped substrings, which works for shades that
+// happen to appear elsewhere in `app/` or `components/` (amber, sky,
+// violet) but misses the ones that exist ONLY in tagColors.ts (rose,
+// orange were broken — chips rendered without a background). Listing
+// the full triplet here guarantees every palette key works regardless
+// of where the file lives.
+const TAG_PALETTE_SAFELIST = ['amber', 'rose', 'sky', 'emerald', 'violet', 'slate', 'orange', 'gray'].flatMap((c) => [
+  `bg-${c}-100`,
+  `text-${c}-900`,
+  `ring-${c}-300`,
+  `bg-${c}-400`,
+]);
+
 const config: Config = {
-  // `lib/` must be scanned too : the maintenance-tag system stores its
-  // color-class triplets (`bg-rose-100`, `bg-orange-100`, etc.) as
-  // static strings in `lib/tagColors.ts`. Without scanning lib/, the
-  // JIT only picks up shades that happen to also appear elsewhere
-  // (amber, sky, violet are used in other components — rose and
-  // orange were not, which is why their chips rendered without their
-  // background color).
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
+  safelist: TAG_PALETTE_SAFELIST,
   theme: {
     extend: {
       colors: {
