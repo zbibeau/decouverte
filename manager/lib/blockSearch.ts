@@ -173,6 +173,78 @@ function walkTagIds(value: unknown, out: Set<string>): void {
 }
 
 /**
+ * Walk a payload and surface every NESTED block that *could* hold
+ * maintenance tags (via the `tagIds: string[]` slot) but currently
+ * doesn't. Counterpart to {@link harvestNestedTagIds} : that one
+ * collects existing tags, this one detects empty slots.
+ *
+ * Returns one entry per missing slot with :
+ *   - `label`  → human-facing label ("Vidéo", "Photo Carousel"…) for
+ *                the banner chip, falling back to the technical type
+ *                if unknown
+ *   - `type`   → the block type for finer-grained icons / styling
+ *   - `path`   → dot/bracket path through the payload (e.g.
+ *                `children[2]`, `children[0].children[1]`) — useful
+ *                if we ever want to scroll-to-anchor a specific
+ *                nested editor section
+ *
+ * Detection rule : an inline object is considered a "tag slot" when
+ * its `type` matches one of the schemas that allow `tagIds` when
+ * nested (Video, HeroTitle, PhotoCarousel, ToolContentSection — see
+ * shared/content-schema.ts). The slot is "missing" when its `tagIds`
+ * is undefined OR an empty array.
+ *
+ * The walker is intentionally permissive — it doesn't validate the
+ * full schema, just looks for the `{ type, payload }` shape that
+ * matches a nested ContentBlock. New taggable types are picked up
+ * automatically by extending TAGGABLE_NESTED_TYPES below.
+ */
+export interface NestedTagSlot {
+  type: string;
+  label: string;
+  path: string;
+}
+
+const TAGGABLE_NESTED_TYPES: Record<string, string> = {
+  video: 'Vidéo',
+  heroTitle: 'Bandeau de titre',
+  photoCarousel: 'Photo carousel',
+  toolContentSection: 'Tool section',
+};
+
+export function findMissingNestedTagSlots(payload: unknown): NestedTagSlot[] {
+  const out: NestedTagSlot[] = [];
+  walkForMissingSlots(payload, '', out);
+  return out;
+}
+
+function walkForMissingSlots(value: unknown, currentPath: string, out: NestedTagSlot[]): void {
+  if (value == null || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => walkForMissingSlots(item, `${currentPath}[${i}]`, out));
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  // Check whether this object looks like a nested ContentBlock with a
+  // taggable type AND has an empty / missing tagIds slot. The check
+  // sits at the `{ type, payload }` level because that's how children
+  // arrays are shaped (see CardBlock.children, ToolContentSection
+  // .children, etc.) ; we look INTO `payload` for the tagIds.
+  const type = typeof obj.type === 'string' ? (obj.type as string) : null;
+  if (type && TAGGABLE_NESTED_TYPES[type]) {
+    const innerPayload = obj.payload as Record<string, unknown> | undefined;
+    const tagIds = innerPayload?.tagIds;
+    const slotMissing = !Array.isArray(tagIds) || tagIds.length === 0;
+    if (slotMissing) {
+      out.push({ type, label: TAGGABLE_NESTED_TYPES[type], path: currentPath || type });
+    }
+  }
+  for (const [k, v] of Object.entries(obj)) {
+    walkForMissingSlots(v, currentPath ? `${currentPath}.${k}` : k, out);
+  }
+}
+
+/**
  * Returns a new payload with every occurrence of `tagId` removed
  * from any `tagIds: string[]` array found at any depth. The original
  * payload is returned unchanged (referentially) when no tagId

@@ -12,6 +12,7 @@ import {
   reorderAndReassignChapters,
   updateChapterMeta,
 } from '@/lib/actions';
+import { harvestNestedTagIds } from '@/lib/blockSearch';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ChapterListPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -79,11 +80,19 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
   // Per-chapter list of navbar variants used by top-level blocks. Helps the
   // author scan at a glance which chapter is split into which sub-parts
   // (Tool 1 navbars = sous-parties visuelles d'un chapitre).
+  // PLUS : count of untagged blocks per chapter, surfaced as a "🏷 N sans
+  // tag" pill on each row so the editor sees coverage gaps at a glance.
   const chapterIds = (chapters ?? []).map((c) => c.id);
   const navbarUsageByChapter = new Map<string, string[]>();
+  const untaggedBlockCountByChapter = new Map<string, number>();
   const allNavbarVariants = await getNavbarVariants(slug);
   if (chapterIds.length > 0) {
-    const { data: blockRows } = await supabase.from('block').select('chapter_id, payload').in('chapter_id', chapterIds);
+    const { data: blockRows } = await supabase
+      .from('block')
+      .select('id, chapter_id, payload')
+      .in('chapter_id', chapterIds)
+      .is('parent_block_id', null);
+    // Walk navbar variants (existing logic, untouched).
     for (const b of blockRows ?? []) {
       const variant = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
       if (!variant) continue;
@@ -91,18 +100,51 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
       if (!arr.includes(variant)) arr.push(variant);
       navbarUsageByChapter.set(b.chapter_id, arr);
     }
+    // Untagged-block computation : a block counts as "tagged" if it has
+    // EITHER a row in `block_tag` (top-level) OR a non-empty `tagIds`
+    // array nested somewhere in its payload (via the existing
+    // harvestNestedTagIds walker). Same semantics as the publish-time
+    // tag review so the counts match between the bandeau / la modale.
+    const allBlockIds = (blockRows ?? []).map((b) => b.id as string);
+    const taggedBlockIds = new Set<string>();
+    if (allBlockIds.length > 0) {
+      const { data: btRows } = await supabase.from('block_tag').select('block_id').in('block_id', allBlockIds);
+      for (const r of btRows ?? []) taggedBlockIds.add((r as { block_id: string }).block_id);
+    }
+    for (const b of blockRows ?? []) {
+      const isTopLevelTagged = taggedBlockIds.has(b.id as string);
+      const hasNestedTags = harvestNestedTagIds(b.payload).size > 0;
+      if (isTopLevelTagged || hasNestedTags) continue;
+      untaggedBlockCountByChapter.set(b.chapter_id, (untaggedBlockCountByChapter.get(b.chapter_id) ?? 0) + 1);
+    }
   }
   // Tiny lookup so the list shows the human title + colour rather than the
   // raw key (falls back to the key when a variant is missing in the
   // registry — typically an undeclared legacy value).
   const navbarVariantByKey = new Map(allNavbarVariants.map((v) => [v.key, v]));
 
+  // Parcours-wide total of untagged blocks (sum of all per-chapter
+  // counts). Surfaced in the card header so the editor sees coverage
+  // at a glance even on the published view (where DraftStatusBar's
+  // counter is hidden).
+  const totalUntaggedBlocks = [...untaggedBlockCountByChapter.values()].reduce((sum, n) => sum + n, 0);
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Chapitres</CardTitle>
-          <p className="text-muted-foreground text-xs">{(chapters ?? []).length} chapitre(s)</p>
+          <p className="text-muted-foreground text-xs">
+            {(chapters ?? []).length} chapitre(s)
+            {totalUntaggedBlocks > 0 && (
+              <>
+                {' · '}
+                <span className="font-medium text-amber-700">
+                  🏷 {totalUntaggedBlocks} bloc{totalUntaggedBlocks > 1 ? 's' : ''} sans tag
+                </span>
+              </>
+            )}
+          </p>
         </CardHeader>
         <CardContent>
           <ChapterList
@@ -122,6 +164,7 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
                 const v = navbarVariantByKey.get(key);
                 return { key, title: v?.title ?? key, color: v?.color };
               }),
+              untaggedBlockCount: untaggedBlockCountByChapter.get(c.id) ?? 0,
             }))}
             reorderAction={reorderChaptersAction}
             deleteAction={deleteChapterAction}

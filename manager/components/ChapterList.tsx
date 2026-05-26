@@ -68,6 +68,12 @@ interface ChapterRow {
    *  small colored chips so the author sees at a glance which "sous-parties"
    *  the chapter contains. */
   navbars?: Array<{ key: string; title: string; color?: string }>;
+  /** Number of blocks in this chapter that carry NO maintenance tag (neither
+   *  top-level via `block_tag` nor nested via `payload.tagIds`). Rendered as
+   *  a small amber "🏷 N sans tag" chip on the row so the editor spots
+   *  coverage gaps without opening every chapter. Undefined = the page
+   *  didn't compute it (legacy callers). */
+  untaggedBlockCount?: number;
 }
 
 interface Props {
@@ -661,6 +667,15 @@ export function ChapterList({
                                   >
                                     <code className="text-muted-foreground text-xs">({c.slug})</code>
                                     <DiffBadge diff={c.diff} />
+                                    {(c.untaggedBlockCount ?? 0) > 0 && (
+                                      <span
+                                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                                        title={`${c.untaggedBlockCount} bloc(s) de ce chapitre n'ont pas encore de tag de maintenance`}
+                                      >
+                                        <span aria-hidden="true">🏷</span>
+                                        <span>{c.untaggedBlockCount} sans tag</span>
+                                      </span>
+                                    )}
                                     <ChevronRight className="text-muted-foreground ml-auto h-4 w-4" />
                                   </Link>
                                   <Button

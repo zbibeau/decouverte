@@ -17,7 +17,13 @@ import { PreviewPanel } from '@/components/PreviewPanel';
 import { SearchHighlightBanner } from '@/components/SearchHighlightBanner';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/Toaster';
-import { findMatchingFieldPaths, findMatchingFieldSnippets, harvestNestedTagIds } from '@/lib/blockSearch';
+import {
+  findMatchingFieldPaths,
+  findMatchingFieldSnippets,
+  findMissingNestedTagSlots,
+  harvestNestedTagIds,
+} from '@/lib/blockSearch';
+import { loadBlockTags } from '@/lib/tags';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { FIELD_RAIL_COLORS } from '@/lib/fieldRailColors';
 import { useBackArrowToParent } from '@/lib/useListKeyboardNav';
@@ -539,6 +545,13 @@ export function BlockEditor(props: Props) {
           placeholder="🔍 Filtrer les champs de ce bloc…"
         />
         {!isCreating && (
+          <MissingTagsBanner
+            blockId={props.blockId}
+            payload={block.payload as Record<string, unknown>}
+            blockType={props.type}
+          />
+        )}
+        {!isCreating && (
           <DraftBlockDiffPanel
             status={props.draftStatus}
             currentPayload={block.payload as Record<string, unknown>}
@@ -722,4 +735,117 @@ function SaveIndicator({ status, manualSave }: { status: SaveStatus; manualSave?
         </span>
       );
   }
+}
+
+/* --------------------------------------------------------------------- */
+/* MissingTagsBanner                                                     */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Banner pinned at the top of the block editor that surfaces every
+ * EMPTY maintenance-tag slot in the current block, both :
+ *   - the **top-level** slot (`block_tag` join, one per block), and
+ *   - the **nested** slots (children of Video / HeroTitle /
+ *     PhotoCarousel / ToolContentSection in `payload.children[]`).
+ *
+ * Each slot renders as a small amber chip. The chips are read-only
+ * indicators ; the actual TagsField widgets stay in their natural
+ * sub-sections (the user said : « les avoir aussi dans les bonnes
+ * sous-sections si nécessaire »). Their presence at the very top is
+ * meant as a checklist — once a slot is filled, the corresponding
+ * chip disappears.
+ *
+ * The top-level slot is detected via a `loadBlockTags()` client fetch
+ * (one query per block-edit-page mount). The nested slots are derived
+ * synchronously from `payload` via {@link findMissingNestedTagSlots},
+ * so they update live as the user adds tags inside a child without
+ * re-fetching.
+ */
+function MissingTagsBanner({
+  blockId,
+  payload,
+  blockType,
+}: {
+  blockId: string;
+  payload: Record<string, unknown>;
+  blockType: string;
+}) {
+  const [topLevelHasTag, setTopLevelHasTag] = useState<boolean | null>(null);
+
+  // Re-fetch when the blockId changes (cross-block navigation) AND
+  // when the local payload mutates — saving a tag via TagsField in
+  // `block` mode hits the DB directly, so a re-fetch keeps the banner
+  // honest. `payload` reference equality is enough : `setBlock` always
+  // produces a fresh object.
+  useEffect(() => {
+    let cancelled = false;
+    loadBlockTags(blockId)
+      .then((tags) => {
+        if (!cancelled) setTopLevelHasTag(tags.length > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setTopLevelHasTag(true); // optimistic — don't nag on a transient fetch error
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [blockId, payload]);
+
+  const nestedSlots = useMemo(() => findMissingNestedTagSlots(payload), [payload]);
+  const topLevelMissing = topLevelHasTag === false;
+  const totalMissing = (topLevelMissing ? 1 : 0) + nestedSlots.length;
+  if (totalMissing === 0) return null;
+
+  // Map technical block type to a friendlier label for the top-level
+  // chip. The nested chips already carry their own label from the
+  // schema lookup table.
+  const TOP_LEVEL_LABEL: Record<string, string> = {
+    video: 'Vidéo',
+    heroTitle: 'Bandeau de titre',
+    photoCarousel: 'Photo carousel',
+    toolContentSection: 'Tool section',
+    card: 'Card',
+    keyPointsCard: 'Key points',
+    faqCard: 'FAQ',
+    text: 'Texte',
+    form: 'Formulaire',
+    conditional: 'Conditionnel',
+    componentRef: 'Composant custom',
+    chapterTransition: 'Transition de chapitre',
+  };
+  const topLabel = TOP_LEVEL_LABEL[blockType] ?? blockType;
+
+  return (
+    <div
+      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+      data-testid="missing-tags-banner"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">🏷 Tags à ajouter ({totalMissing}) —</span>
+        {topLevelMissing && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium"
+            title="Le bloc lui-même n'a pas encore de tag de maintenance"
+          >
+            <span aria-hidden="true">⚠</span>
+            <span>Ce bloc ({topLabel})</span>
+          </span>
+        )}
+        {nestedSlots.map((slot, i) => (
+          <span
+            key={`${slot.path}-${i}`}
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium"
+            title={`Sous-bloc ${slot.label} sans tag (path : ${slot.path})`}
+          >
+            <span aria-hidden="true">⚠</span>
+            <span>Sous-bloc {slot.label}</span>
+          </span>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[10px] italic text-amber-700/80">
+        Ces tags se renseignent dans les sous-sections « Tags de maintenance » ci-dessous. Cette zone disparaît dès que
+        tous les slots sont remplis.
+      </p>
+    </div>
+  );
 }

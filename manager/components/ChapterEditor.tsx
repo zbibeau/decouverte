@@ -113,7 +113,21 @@ function HighlightedSnippet({ snippet, query }: { snippet: string; query: string
  * are no tags so the row keeps its layout untouched.
  */
 function BlockTagsChips({ tags }: { tags?: BlockRow['tags'] }) {
-  if (!tags || tags.length === 0) return null;
+  if (!tags || tags.length === 0) {
+    // Empty state : surface a small amber "Sans tag" badge instead of
+    // rendering nothing. Helps the editor spot blocks that still need
+    // a maintenance tag at a glance — matches the orange counter shown
+    // at the top of the block list.
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+        title="Aucun tag de maintenance sur ce bloc"
+      >
+        <span aria-hidden="true">⚠</span>
+        <span>Sans tag</span>
+      </span>
+    );
+  }
   return (
     <span className="flex shrink-0 items-center gap-1">
       {tags.map((t) => {
@@ -393,6 +407,23 @@ export function ChapterEditor(props: Props) {
               {props.blocks.length} bloc(s). Clique sur un bloc pour le centrer dans la preview, sur le crayon pour
               l&apos;éditer.
             </p>
+            {/* Permanent untagged-block counter for this chapter. Mirrors
+                the parcours-level counter in DraftStatusBar but scoped
+                to the current chapter so the editor sees coverage at a
+                glance while working inside one. */}
+            {(() => {
+              const untagged = props.blocks.filter((b) => (b.tags?.length ?? 0) === 0).length;
+              if (untagged === 0) {
+                return props.blocks.length > 0 ? (
+                  <p className="mt-1 text-[11px] text-emerald-700">🏷 Tous les blocs sont taggés</p>
+                ) : null;
+              }
+              return (
+                <p className="mt-1 text-[11px] font-medium text-amber-700">
+                  🏷 {untagged} bloc{untagged > 1 ? 's' : ''} sans tag dans ce chapitre
+                </p>
+              );
+            })()}
           </CardHeader>
           <CardContent ref={listRef} className="max-h-[calc(100vh-280px)] overflow-y-auto">
             <SortableList
