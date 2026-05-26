@@ -3,6 +3,7 @@ import {
   getDraftChapterDiffs,
   getDraftDeletedChapterCount,
   getDraftStatus,
+  getDraftTagReviewSummary,
   publishDraft,
 } from '@/lib/actions';
 import { ConfirmForm } from '@/components/ConfirmForm';
@@ -26,9 +27,10 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
   }
 
   if (status.hasDraft) {
-    const [diffs, deletedCount] = await Promise.all([
+    const [diffs, deletedCount, tagReview] = await Promise.all([
       getDraftChapterDiffs(parcoursSlug),
       getDraftDeletedChapterCount(parcoursSlug),
+      getDraftTagReviewSummary(parcoursSlug),
     ]);
     let newCount = 0;
     let modifiedCount = 0;
@@ -42,6 +44,13 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
     if (modifiedCount > 0) summary.push(`${modifiedCount} modifié${modifiedCount > 1 ? 's' : ''}`);
     if (deletedCount > 0) summary.push(`${deletedCount} supprimé${deletedCount > 1 ? 's' : ''}`);
     const summaryText = summary.join(' · ');
+    // Pre-publish tag review : how many rows have NO tag attached
+    // yet ? Renders as a permanent counter in the banner so the
+    // editor sees the upcoming review work without having to
+    // initiate publication.
+    const untaggedRows =
+      tagReview.blocks.filter((b) => b.tags.length === 0).length +
+      tagReview.chapters.filter((c) => c.tags.length === 0).length;
 
     // Empty draft (draft exists but is byte-identical to published) :
     // showing the amber "Vous éditez le brouillon" banner with both
@@ -79,15 +88,31 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
           ✏️ Vous éditez le <strong>brouillon v{status.draftVersionNumber}</strong>
           {status.publishedVersionNumber != null && <> (publié : v{status.publishedVersionNumber})</>} —{' '}
           <span className="font-medium">{summaryText}</span>
+          {/* Permanent tag-review counter : shows how many new/modified
+              rows still lack a tag. Always visible (orange when > 0,
+              neutral-green hint when 0) so the editor anticipates the
+              modale work without surprise at publish time. */}
+          {tagReview.total > 0 && (
+            <>
+              {' · '}
+              {untaggedRows > 0 ? (
+                <span className="font-medium text-amber-800">
+                  🏷 {untaggedRows} sans tag (sur {tagReview.total} à revoir)
+                </span>
+              ) : (
+                <span className="text-emerald-700">🏷 tous taggés ({tagReview.total} à confirmer)</span>
+              )}
+            </>
+          )}
         </span>
         <div className="ml-auto flex items-center gap-2">
           {/* Publish — client component so we can call `router.refresh()`
-              after the action resolves. Server-side `revalidatePath` alone
-              doesn't always refresh nested routes (chapter / block detail
-              pages), leaving stale "Modifié" / "Nouveau" badges until the
-              user manually reloads. */}
+              after the action resolves. Routes through TagReviewModal
+              when the draft has new/modified rows (see
+              PublishDraftButton). */}
           <PublishDraftButton
             publishAction={publishAction}
+            parcoursSlug={parcoursSlug}
             confirmMessage={`Publier le brouillon v${status.draftVersionNumber} ?\n\n${
               newCount > 0 ? `• ${newCount} nouveau(x)\n` : ''
             }${modifiedCount > 0 ? `• ${modifiedCount} modifié(s)\n` : ''}${

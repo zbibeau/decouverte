@@ -378,6 +378,218 @@ export async function getDraftDeletedChapterCount(parcoursSlug: string): Promise
 }
 
 /**
+ * Pre-publish tag review : enumerate every new / modified block and
+ * chapter of the draft alongside their current tag set. Powers :
+ *   - the permanent counter shown in DraftStatusBar
+ *     ("🏷 X blocs/chapitres à revoir avant publication")
+ *   - the TagReviewModal opened when the editor clicks Publier (each
+ *     row offers to confirm the existing tags, add a tag, or skip)
+ *
+ * Why a separate function rather than augmenting `getDraftChapterDiffs` :
+ * the existing diff fns return only the *status* per row (new /
+ * modified / pristine). The review needs the full picture per row
+ * (summary, chapter context, tag list incl. nested tagIds) and is
+ * called from a different render path (PublishDraftButton flow), so
+ * it shouldn't slow down the existing diff badges shown on every
+ * page render.
+ *
+ * Returns an empty payload when no draft exists or the parcours has
+ * no changes — the modal then never opens, the counter says 0.
+ */
+export interface DraftTagReviewBlock {
+  id: string;
+  type: string;
+  /** `summarizeBlock` output — typically the block's title or first line. */
+  summary: string;
+  chapterId: string;
+  chapterSlug: string;
+  chapterTitle: string;
+  tags: { id: string; label: string; color: string }[];
+  diff: 'new' | 'modified';
+}
+export interface DraftTagReviewChapter {
+  id: string;
+  slug: string;
+  title: string;
+  tags: { id: string; label: string; color: string }[];
+  diff: 'new' | 'modified';
+}
+export interface DraftTagReviewSummary {
+  blocks: DraftTagReviewBlock[];
+  chapters: DraftTagReviewChapter[];
+  /** `blocks.length + chapters.length` — count of rows to review. */
+  total: number;
+}
+
+export async function getDraftTagReviewSummary(parcoursSlug: string): Promise<DraftTagReviewSummary> {
+  const info = await getParcoursVersionInfo(parcoursSlug);
+  if (!info.draftVersionId) return { blocks: [], chapters: [], total: 0 };
+  const supabase = await createClient();
+
+  // 1. Per-chapter diff status (reuses the existing function so the
+  //    "new/modified" verdict matches what the UI shows elsewhere).
+  const chapterDiffs = await getDraftChapterDiffs(parcoursSlug);
+  if (chapterDiffs.size === 0) return { blocks: [], chapters: [], total: 0 };
+
+  // 2. Draft chapter rows — needed for slug/title/diff and to bound
+  //    the block query.
+  const { data: draftChaptersRaw } = await supabase
+    .from('chapter')
+    .select('id, slug, title')
+    .eq('version_id', info.draftVersionId);
+  const draftChapters = draftChaptersRaw ?? [];
+  const chapterIdToMeta = new Map<string, { slug: string; title: string }>();
+  for (const c of draftChapters)
+    chapterIdToMeta.set(c.id as string, { slug: c.slug as string, title: c.title as string });
+
+  // 3. Per-chapter tags (chapter_tag join), filtered to chapters
+  //    actually flagged as new/modified.
+  const reviewableChapterIds = [...chapterDiffs.entries()]
+    .filter(([, status]) => status === 'new' || status === 'modified')
+    .map(([id]) => id);
+  const chapterTagsById = new Map<string, { id: string; label: string; color: string }[]>();
+  if (reviewableChapterIds.length > 0) {
+    const { data: chTagRows } = await supabase
+      .from('chapter_tag')
+      .select('chapter_id, tag:tag(id, label, color)')
+      .in('chapter_id', reviewableChapterIds);
+    for (const row of chTagRows ?? []) {
+      const cid = (row as { chapter_id: string }).chapter_id;
+      const t = (
+        row as {
+          tag: { id: string; label: string; color: string } | { id: string; label: string; color: string }[] | null;
+        }
+      ).tag;
+      if (!t) continue;
+      const tag = Array.isArray(t) ? t[0] : t;
+      if (!tag) continue;
+      const arr = chapterTagsById.get(cid) ?? [];
+      arr.push({ id: tag.id, label: tag.label, color: tag.color });
+      chapterTagsById.set(cid, arr);
+    }
+  }
+
+  // 4. Block rows : we need per-block diff status. `getDraftBlockDiffs`
+  //    is per-chapter, so we call it once per reviewable chapter (the
+  //    chapters that are themselves new/modified — block edits land
+  //    there or in pristine chapters whose blocks happen to differ).
+  //    Edge case : a pristine chapter whose block payload differs
+  //    from published. Cheap to cover : fetch ALL draft blocks and
+  //    check each against `getDraftBlockDiffs`. The function caches
+  //    nothing but is small.
+  const allDraftChapterIds = draftChapters.map((c) => c.id as string);
+  const blockReview: DraftTagReviewBlock[] = [];
+  if (allDraftChapterIds.length > 0) {
+    const { data: draftBlocks } = await supabase
+      .from('block')
+      .select('id, type, payload, chapter_id')
+      .in('chapter_id', allDraftChapterIds)
+      .is('parent_block_id', null);
+
+    // Per-block diff status — batch by chapter to amortise the calls.
+    const diffsByChapter = new Map<string, Map<string, 'new' | 'modified' | 'pristine'>>();
+    for (const chapterId of allDraftChapterIds) {
+      diffsByChapter.set(chapterId, await getDraftBlockDiffs(parcoursSlug, chapterId));
+    }
+
+    // Block tags : top-level via block_tag + nested via payload.tagIds.
+    const blockIds = (draftBlocks ?? []).map((b) => b.id as string);
+    const blockTagsById = new Map<string, { id: string; label: string; color: string }[]>();
+    if (blockIds.length > 0) {
+      const { data: btRows } = await supabase
+        .from('block_tag')
+        .select('block_id, tag:tag(id, label, color)')
+        .in('block_id', blockIds);
+      for (const row of btRows ?? []) {
+        const bid = (row as { block_id: string }).block_id;
+        const t = (
+          row as {
+            tag: { id: string; label: string; color: string } | { id: string; label: string; color: string }[] | null;
+          }
+        ).tag;
+        if (!t) continue;
+        const tag = Array.isArray(t) ? t[0] : t;
+        if (!tag) continue;
+        const arr = blockTagsById.get(bid) ?? [];
+        arr.push({ id: tag.id, label: tag.label, color: tag.color });
+        blockTagsById.set(bid, arr);
+      }
+    }
+
+    // Resolve nested tagIds (children of card / toolContentSection /
+    // conditional) against the global tag table — same merge pattern as
+    // `loadPaletteData`.
+    const nestedTagIds = new Set<string>();
+    for (const b of draftBlocks ?? []) {
+      for (const id of harvestNestedTagIds(b.payload)) nestedTagIds.add(id);
+    }
+    const tagById = new Map<string, { id: string; label: string; color: string }>();
+    if (nestedTagIds.size > 0) {
+      const { data: tagRows } = await supabase
+        .from('tag')
+        .select('id, label, color')
+        .in('id', [...nestedTagIds]);
+      for (const r of tagRows ?? []) {
+        const row = r as { id: string; label: string; color: string };
+        tagById.set(row.id, row);
+      }
+    }
+
+    for (const b of draftBlocks ?? []) {
+      const status = diffsByChapter.get(b.chapter_id as string)?.get(b.id as string);
+      if (status !== 'new' && status !== 'modified') continue;
+      const meta = chapterIdToMeta.get(b.chapter_id as string);
+      if (!meta) continue;
+      // Merge top-level + nested tags (dedup by id).
+      const merged = new Map<string, { id: string; label: string; color: string }>();
+      for (const t of blockTagsById.get(b.id as string) ?? []) merged.set(t.id, t);
+      for (const id of harvestNestedTagIds(b.payload)) {
+        const t = tagById.get(id);
+        if (t && !merged.has(t.id)) merged.set(t.id, t);
+      }
+      blockReview.push({
+        id: b.id as string,
+        type: b.type as string,
+        summary: summarizeBlock(b.type as string, (b.payload ?? {}) as Record<string, unknown>),
+        chapterId: b.chapter_id as string,
+        chapterSlug: meta.slug,
+        chapterTitle: meta.title,
+        tags: [...merged.values()],
+        diff: status,
+      });
+    }
+  }
+
+  // 5. Chapter rows : only those flagged new/modified.
+  const chapterReview: DraftTagReviewChapter[] = [];
+  for (const cid of reviewableChapterIds) {
+    const meta = chapterIdToMeta.get(cid);
+    if (!meta) continue;
+    chapterReview.push({
+      id: cid,
+      slug: meta.slug,
+      title: meta.title,
+      tags: chapterTagsById.get(cid) ?? [],
+      diff: chapterDiffs.get(cid) as 'new' | 'modified',
+    });
+  }
+
+  // Order : untagged first (most urgent), then by chapter order
+  // implicit via the draft fetch order.
+  function untaggedFirst<T extends { tags: unknown[] }>(a: T, b: T): number {
+    return a.tags.length - b.tags.length;
+  }
+  blockReview.sort(untaggedFirst);
+  chapterReview.sort(untaggedFirst);
+
+  return {
+    blocks: blockReview,
+    chapters: chapterReview,
+    total: blockReview.length + chapterReview.length,
+  };
+}
+
+/**
  * Fetch the published source payload (and diff status) for a given draft
  * block — used by the block editor to render a "modifications since
  * published" summary panel. Returns null source when the block is brand new

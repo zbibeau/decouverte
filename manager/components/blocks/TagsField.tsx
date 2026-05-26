@@ -39,7 +39,12 @@ import { parsePathContext } from '@/lib/palette/parsePathContext';
  */
 
 export type TagsFieldTarget =
-  | { kind: 'block' }
+  /** Block mode. `blockId` optional : falls back to the one parsed
+   *  from the URL when omitted (the default in the block editor
+   *  page). Pass it explicitly when rendering TagsField outside of a
+   *  block route — e.g. the pre-publish review modal which iterates
+   *  over many blocks at once. */
+  | { kind: 'block'; blockId?: string }
   | { kind: 'chapter'; chapterId: string }
   /** Controlled mode : the field doesn't talk to the DB at all. The
    *  parent owns the `valueIds` state and is notified via `onChange`.
@@ -57,6 +62,10 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
   >(() => {
     if (target?.kind === 'chapter') return target;
     if (target?.kind === 'controlled') return target;
+    // Block mode : explicit blockId wins, else fall back to the URL.
+    if (target?.kind === 'block' && target.blockId) {
+      return { kind: 'block', blockId: target.blockId };
+    }
     const { blockId } = parsePathContext(pathname ?? '');
     return { kind: 'block', blockId };
   }, [target, pathname]);
