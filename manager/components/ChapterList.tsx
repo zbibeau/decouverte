@@ -1164,11 +1164,17 @@ function ChapterBlocksPreview({
             key={b.id}
             className="border-border/40 flex flex-wrap items-center gap-2 rounded border bg-white px-2 py-1.5 text-xs"
           >
-            <span className="text-muted-foreground w-5 text-right text-[10px]">{b.order}</span>
-            <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+            <span className="text-muted-foreground w-5 shrink-0 text-right text-[10px]">{b.order}</span>
+            <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
               {typeLabel}
             </span>
-            <span className="min-w-0 flex-1 truncate font-medium">{b.summary || `Bloc ${b.type}`}</span>
+            {/* Title + tags flow on the LEFT, inline, just like the
+                chapter rows. Éditer → is pushed to the right via
+                `ml-auto` on the link. The title still truncates when
+                space is tight (flex-1 inside a min-w-0 container) but
+                tags sit *right after* it rather than being pushed to
+                the far right. */}
+            <span className="font-medium">{b.summary || `Bloc ${b.type}`}</span>
             {b.tags.length === 0 ? (
               <span
                 className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
@@ -1198,7 +1204,7 @@ function ChapterBlocksPreview({
             )}
             <Link
               href={`/parcours/${parcoursSlug}/chapters/${chapterSlug}/blocks/${b.id}`}
-              className="text-muted-foreground hover:text-foreground shrink-0 text-[10px] hover:underline"
+              className="text-muted-foreground hover:text-foreground ml-auto shrink-0 text-[10px] hover:underline"
               title="Ouvrir l'éditeur du bloc"
             >
               Éditer →
