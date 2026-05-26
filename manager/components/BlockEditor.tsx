@@ -6,10 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
 import { DiffProvider } from '@/components/blocks/DiffContext';
+import { Section } from '@/components/blocks/Field';
 import { FieldHoverProvider } from '@/components/blocks/FieldHoverContext';
 import { PayloadEditor } from '@/components/blocks/PayloadEditor';
 import { SearchMatchProvider } from '@/components/blocks/SearchMatchContext';
 import { SimulatorProvider } from '@/components/blocks/SimulatorContext';
+import { TagsField, TagsHelpBanner } from '@/components/blocks/TagsField';
 import type { ChapterMeta, NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
 import { DraftBlockDiffPanel } from '@/components/DraftBlockDiffPanel';
 import { InPageSearchInput } from '@/components/InPageSearchInput';
@@ -578,6 +580,24 @@ export function BlockEditor(props: Props) {
             </SimulatorProvider>
           </FieldHoverProvider>
         </DiffProvider>
+
+        {/* Central "Tags de maintenance" section — pinned at the end of
+            the left pane, shared by EVERY block type. Lifting this
+            here (rather than letting each per-type editor render its
+            own TagsField at depth 0) guarantees parity between :
+              - the MissingTagsBanner up top, which detects missing
+                top-level tags via loadBlockTags for any block id, and
+              - the TagsField actually exposed to the editor below
+            so the banner's "Tag à ajouter" claim always maps to an
+            actionable widget. Type-specific editors still render
+            their own TagsField when nested (controlled mode targeting
+            payload.tagIds in the parent's children[]). */}
+        {!isCreating && (
+          <Section title="Tags de maintenance" accentColor="slate">
+            <TagsHelpBanner contextHint="Aide à retrouver ce bloc via ⌘K quand une fonctionnalité produit évolue." />
+            <TagsField />
+          </Section>
+        )}
 
         <div className="border-border sticky bottom-0 flex items-center gap-3 rounded-md border bg-white/95 p-2 shadow-sm backdrop-blur">
           {isCreating ? (

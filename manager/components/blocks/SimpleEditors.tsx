@@ -140,11 +140,11 @@ type VideoPayload = {
 };
 
 export function VideoEditor({ payload, onChange, navbarVariants, depth = 0 }: PayloadEditorProps<VideoPayload>) {
-  // Top-level blocks (depth 0) save tags via the `block_tag` join
-  // table — TagsField defaults to that mode via URL parsing. Nested
-  // blocks (depth ≥ 1) have no DB row of their own ; we stash tag
-  // IDs in the payload and let the parent's normal save flow
-  // propagate the change.
+  // Top-level Video blocks get their TagsField rendered centrally by
+  // BlockEditor (in a "Tags de maintenance" section common to every
+  // block type — see BlockEditor.tsx). Nested videos (depth > 0) have
+  // no `block_tag` row of their own, so we keep an inline controlled
+  // TagsField here targeting `payload.tagIds`.
   const isNested = depth > 0;
   return (
     <div className="space-y-3">
@@ -182,20 +182,20 @@ export function VideoEditor({ payload, onChange, navbarVariants, depth = 0 }: Pa
         />
       </Field>
       {payload.vimeoSrc && <VimeoPreview src={payload.vimeoSrc} />}
-      <TagsHelpBanner contextHint="Décris ici les interfaces / fonctionnalités produit que cette vidéo montre (ex. fiche patient, agenda, messagerie)." />
-      <Field label="Tags de maintenance" path="tags">
-        {isNested ? (
-          <TagsField
-            target={{
-              kind: 'controlled',
-              valueIds: payload.tagIds ?? [],
-              onChange: (ids) => onChange({ ...payload, tagIds: ids }),
-            }}
-          />
-        ) : (
-          <TagsField />
-        )}
-      </Field>
+      {isNested && (
+        <>
+          <TagsHelpBanner contextHint="Décris ici les interfaces / fonctionnalités produit que cette vidéo montre (ex. fiche patient, agenda, messagerie)." />
+          <Field label="Tags de maintenance" path="tags">
+            <TagsField
+              target={{
+                kind: 'controlled',
+                valueIds: payload.tagIds ?? [],
+                onChange: (ids) => onChange({ ...payload, tagIds: ids }),
+              }}
+            />
+          </Field>
+        </>
+      )}
     </div>
   );
 }
@@ -518,20 +518,20 @@ export function HeroTitleEditor({ payload, onChange, depth = 0 }: PayloadEditorP
           )}
         </div>
       </Field>
-      <TagsHelpBanner contextHint="Décris ici ce que l'illustration représente (ex. fiche patient, agenda, page d'accueil)." />
-      <Field label="Tags de maintenance" path="tags">
-        {isNested ? (
-          <TagsField
-            target={{
-              kind: 'controlled',
-              valueIds: payload.tagIds ?? [],
-              onChange: (ids) => onChange({ ...payload, tagIds: ids }),
-            }}
-          />
-        ) : (
-          <TagsField />
-        )}
-      </Field>
+      {isNested && (
+        <>
+          <TagsHelpBanner contextHint="Décris ici ce que l'illustration représente (ex. fiche patient, agenda, page d'accueil)." />
+          <Field label="Tags de maintenance" path="tags">
+            <TagsField
+              target={{
+                kind: 'controlled',
+                valueIds: payload.tagIds ?? [],
+                onChange: (ids) => onChange({ ...payload, tagIds: ids }),
+              }}
+            />
+          </Field>
+        </>
+      )}
     </div>
   );
 }

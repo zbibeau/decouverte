@@ -402,20 +402,20 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
           </div>
         )}
       </Section>
-      <TagsHelpBanner contextHint="Ces tags s'appliquent au carrousel entier (pas à chaque photo). Décris la fonctionnalité produit que les photos illustrent." />
-      <Field label="Tags de maintenance" path="tags">
-        {isNested ? (
-          <TagsField
-            target={{
-              kind: 'controlled',
-              valueIds: payload.tagIds ?? [],
-              onChange: (ids) => onChange({ ...payload, tagIds: ids }),
-            }}
-          />
-        ) : (
-          <TagsField />
-        )}
-      </Field>
+      {isNested && (
+        <>
+          <TagsHelpBanner contextHint="Ces tags s'appliquent au carrousel entier (pas à chaque photo). Décris la fonctionnalité produit que les photos illustrent." />
+          <Field label="Tags de maintenance" path="tags">
+            <TagsField
+              target={{
+                kind: 'controlled',
+                valueIds: payload.tagIds ?? [],
+                onChange: (ids) => onChange({ ...payload, tagIds: ids }),
+              }}
+            />
+          </Field>
+        </>
+      )}
     </ScopeRoot>
   );
 }
