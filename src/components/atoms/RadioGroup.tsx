@@ -67,7 +67,6 @@ export const RadioGroup = (_props: RadioGroupProps) => {
     <RadioGroupCMP.Root
       value={props.value}
       onValueChange={(data) => {
-        console.log('data', data);
         props.onChange && props.onChange(data.value);
       }}
       class="space-y-1"

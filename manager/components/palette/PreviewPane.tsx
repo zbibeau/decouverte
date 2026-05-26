@@ -264,16 +264,10 @@ function Highlighted({ text, query }: { text: string; query?: string }) {
 // ============================================================================
 // Sub-previews
 // ============================================================================
-
-// `AddBlockPreview` and `BlockPreview` were removed when the
-// PreviewPane started rendering the actual Solid block via an iframe
-// (see `LivePreviewIframe`). The header/footer for block/add rows is
-// now inlined in the top-level component above, alongside the
-// persistent iframe. The schematic helpers (BlockPayloadSchematic and
-// friends) are likewise retired for block previews ; they live below
-// for now but are no longer wired in. If we ever need a fallback
-// "no-iframe" mode (e.g. SSR snapshot, print view), we can revive
-// them.
+// Block previews go through a persistent <LivePreviewIframe> (see the
+// top-level component above) ; only the non-block rows (chapter /
+// parcours / variable / scope) still render their schematic helper
+// below.
 
 function ChapterPreview({
   chapter,

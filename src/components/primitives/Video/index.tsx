@@ -76,35 +76,6 @@ export const defaultVideoI18nPropsFR: VideoI18nProps = {
   exitFullscreen: 'Quitter le mode plein écran',
 };
 
-// IF WE WANT TO USE PLACEHOLDER
-// export const Video = (props: VideoProps & { height: string }) => {
-//   const [playerIsDisplay, setPlayerIsDisplay] = createSignal(props.isAutoplay);
-
-//   createEffect(() => {
-//     setPlayerIsDisplay(props.isAutoplay);
-//   });
-
-//   return (
-//     <>
-//       <div class="group relative rounded-md" onClick={() => setPlayerIsDisplay(true)}>
-//         {!playerIsDisplay() && (
-//           <div
-//             class={cx(
-//               'absolute z-20 flex h-full w-full cursor-pointer items-center justify-center rounded-md bg-video-radial-gradient',
-//             )}
-//           >
-//             <div>
-//               <i class="icon bg-video-play-button block h-[80px] w-[80px] group-hover:hidden" />
-//               <i class="icon bg-video-play-button-alt hidden h-[80px] w-[80px] group-hover:block" />
-//             </div>
-//           </div>
-//         )}
-//         <VideoPlayer play={playerIsDisplay()} {...props} />
-//       </div>
-//     </>
-//   );
-// };
-
 /**
  * COPIED FROM https://github.com/vidstack/examples/tree/main/player/solid/tailwind-css
  */
