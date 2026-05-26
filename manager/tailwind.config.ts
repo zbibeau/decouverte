@@ -73,7 +73,14 @@ const brand = {
 };
 
 const config: Config = {
-  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  // `lib/` must be scanned too : the maintenance-tag system stores its
+  // color-class triplets (`bg-rose-100`, `bg-orange-100`, etc.) as
+  // static strings in `lib/tagColors.ts`. Without scanning lib/, the
+  // JIT only picks up shades that happen to also appear elsewhere
+  // (amber, sky, violet are used in other components — rose and
+  // orange were not, which is why their chips rendered without their
+  // background color).
+  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
@@ -93,21 +100,13 @@ const config: Config = {
         brand: brand,
       },
       fontFamily: {
-        sans: [
-          'Inter',
-          'ui-sans-serif',
-          'system-ui',
-          '-apple-system',
-          'Segoe UI',
-          'sans-serif',
-        ],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
       boxShadow: {
         brand: '0 1px 2px 0 rgba(110, 30, 210, 0.06), 0 1px 3px 0 rgba(110, 30, 210, 0.10)',
       },
       backgroundImage: {
-        'brand-radial':
-          'radial-gradient(100% 100% at 50% 0%, rgba(180, 128, 255, 0.18) 0%, rgba(255,255,255,0) 70%)',
+        'brand-radial': 'radial-gradient(100% 100% at 50% 0%, rgba(180, 128, 255, 0.18) 0%, rgba(255,255,255,0) 70%)',
       },
     },
   },
