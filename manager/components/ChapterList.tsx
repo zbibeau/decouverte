@@ -40,6 +40,8 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
+import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
 import { uploadImageDirect } from '@/lib/uploadImageClient';
 import { cn } from '@/lib/utils';
@@ -74,6 +76,20 @@ interface ChapterRow {
    *  coverage gaps without opening every chapter. Undefined = the page
    *  didn't compute it (legacy callers). */
   untaggedBlockCount?: number;
+  /** Compact preview of this chapter's blocks — surfaced when the editor
+   *  clicks the row's `>` arrow to expand the chapter inline (rather than
+   *  navigating to the chapter editor page). Each entry carries enough
+   *  to render a read-only row : type, ordered position, summary text
+   *  and the merged tag list. Edit interactions still happen on the
+   *  chapter page proper. Empty array = no blocks ; undefined = the
+   *  page didn't compute it. */
+  blocksPreview?: Array<{
+    id: string;
+    type: string;
+    order: number;
+    summary: string;
+    tags: { id: string; label: string; color: string }[];
+  }>;
 }
 
 interface Props {
@@ -137,6 +153,20 @@ export function ChapterList({
   // Local "edit mode" state — only one row at a time. When set, the row
   // renders an inline edit form instead of the static link.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Chapter ids currently expanded in-place — the > arrow toggles
+  // membership. Rendering reads from `c.blocksPreview` so no fetch is
+  // needed when the editor opens or closes a chapter ; the preview
+  // refreshes on the next router.refresh() (e.g. after a block edit
+  // elsewhere reloads the page).
+  const [expandedChapterIds, setExpandedChapterIds] = useState<Set<string>>(new Set());
+  function toggleExpand(id: string) {
+    setExpandedChapterIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const [editTitle, setEditTitle] = useState('');
   const [editSlug, setEditSlug] = useState('');
   const [editSectionLabel, setEditSectionLabel] = useState('');
@@ -676,8 +706,33 @@ export function ChapterList({
                                         <span>{c.untaggedBlockCount} sans tag</span>
                                       </span>
                                     )}
-                                    <ChevronRight className="text-muted-foreground ml-auto h-4 w-4" />
+                                    <span className="ml-auto" />
                                   </Link>
+                                  {/* Toggle inline expand. The > arrow used to
+                                      navigate to the chapter edit page (which is
+                                      what the chapter title link still does), but
+                                      the editor asked for a peek-without-leaving
+                                      experience. Clicking now reveals the blocks
+                                      preview below. */}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title={
+                                      expandedChapterIds.has(c.id)
+                                        ? 'Refermer le résumé des blocs'
+                                        : 'Voir les blocs de ce chapitre (aperçu en place)'
+                                    }
+                                    disabled={isPending}
+                                    onClick={() => toggleExpand(c.id)}
+                                    aria-expanded={expandedChapterIds.has(c.id)}
+                                  >
+                                    <ChevronRight
+                                      className={cn(
+                                        'h-4 w-4 transition-transform',
+                                        expandedChapterIds.has(c.id) && 'rotate-90',
+                                      )}
+                                    />
+                                  </Button>
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -820,6 +875,21 @@ export function ChapterList({
                               INSIDE the chapter detail view
                               (`ChapterEditor.tsx`), per block, where
                               the context makes the variant relevant. */}
+                            {/* Inline expand : read-only preview of the
+                                chapter's blocks. Rendered only when the
+                                chapter is in `expandedChapterIds` AND
+                                not currently being edited (the edit
+                                form already takes the full row). The
+                                editor still navigates to the chapter
+                                page (via the title link) to actually
+                                edit ; this preview is just a peek. */}
+                            {expandedChapterIds.has(c.id) && !isEditing && (
+                              <ChapterBlocksPreview
+                                blocks={c.blocksPreview ?? []}
+                                chapterSlug={c.slug}
+                                parcoursSlug={parcoursSlug}
+                              />
+                            )}
                           </div>
                         )}
                       </SortableChapterRow>
@@ -993,6 +1063,101 @@ function SectionDroppable({ id, children }: { id: string; children: ReactNode })
   return (
     <div ref={setNodeRef} className={cn('min-h-[8px] transition-colors', isOver && 'bg-amber-50/50')}>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Read-only preview of a chapter's blocks, rendered inline in the
+ * ChapterList when the editor clicks the `>` arrow on a row to
+ * expand it. Each line shows :
+ *   - the order index,
+ *   - the type label (« Vidéo », « Texte »…),
+ *   - the `summarizeBlock` output (title / first line),
+ *   - tag chips (or an amber « Sans tag » placeholder),
+ *   - a tiny « Éditer → » link that navigates to the block editor.
+ *
+ * No interaction beyond the edit link — drag-and-drop, duplicate,
+ * delete, etc. all live on the dedicated chapter page. The point is
+ * to let the editor scan the contents of all chapters at a glance
+ * without leaving the list view.
+ */
+function ChapterBlocksPreview({
+  blocks,
+  chapterSlug,
+  parcoursSlug,
+}: {
+  blocks: Array<{
+    id: string;
+    type: string;
+    order: number;
+    summary: string;
+    tags: { id: string; label: string; color: string }[];
+  }>;
+  chapterSlug: string;
+  parcoursSlug: string;
+}) {
+  if (blocks.length === 0) {
+    return (
+      <div className="bg-muted/20 border-border/60 text-muted-foreground mt-2 rounded-md border-l-2 px-3 py-2 pl-8 text-xs italic">
+        Aucun bloc dans ce chapitre.
+      </div>
+    );
+  }
+  return (
+    <div className="bg-muted/20 border-border/60 mt-2 space-y-1 rounded-md border-l-2 px-3 py-2 pl-8">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+        Aperçu des blocs ({blocks.length})
+      </p>
+      {blocks.map((b) => {
+        const typeLabel = (BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type;
+        return (
+          <div
+            key={b.id}
+            className="border-border/40 flex flex-wrap items-center gap-2 rounded border bg-white px-2 py-1.5 text-xs"
+          >
+            <span className="text-muted-foreground w-5 text-right text-[10px]">{b.order}</span>
+            <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+              {typeLabel}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-medium">{b.summary || `Bloc ${b.type}`}</span>
+            {b.tags.length === 0 ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                title="Aucun tag de maintenance sur ce bloc"
+              >
+                <span aria-hidden="true">⚠</span>
+                <span>Sans tag</span>
+              </span>
+            ) : (
+              <span className="flex shrink-0 flex-wrap items-center gap-1">
+                {b.tags.map((t) => {
+                  const safe = isTagColor(t.color) ? t.color : 'amber';
+                  const hex = TAG_COLOR_HEX[safe];
+                  return (
+                    <span
+                      key={t.id}
+                      className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                      style={{ backgroundColor: hex.chip, color: hex.text }}
+                      title={`Tag : ${t.label}`}
+                    >
+                      <span aria-hidden="true">🏷</span>
+                      <span>{t.label}</span>
+                    </span>
+                  );
+                })}
+              </span>
+            )}
+            <Link
+              href={`/parcours/${parcoursSlug}/chapters/${chapterSlug}/blocks/${b.id}`}
+              className="text-muted-foreground hover:text-foreground shrink-0 text-[10px] hover:underline"
+              title="Ouvrir l'éditeur du bloc"
+            >
+              Éditer →
+            </Link>
+          </div>
+        );
+      })}
     </div>
   );
 }

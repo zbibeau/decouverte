@@ -13,6 +13,7 @@ import {
   updateChapterMeta,
 } from '@/lib/actions';
 import { harvestNestedTagIds } from '@/lib/blockSearch';
+import { summarizeBlock } from '@/lib/blockSummary';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ChapterListPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -85,13 +86,28 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
   const chapterIds = (chapters ?? []).map((c) => c.id);
   const navbarUsageByChapter = new Map<string, string[]>();
   const untaggedBlockCountByChapter = new Map<string, number>();
+  // Per-chapter compact preview list shown by ChapterList's inline
+  // expand : each entry carries enough to display a row (type +
+  // summary + tag chips) without re-fetching when the editor toggles
+  // the > arrow.
+  const blocksPreviewByChapter = new Map<
+    string,
+    Array<{
+      id: string;
+      type: string;
+      order: number;
+      summary: string;
+      tags: { id: string; label: string; color: string }[];
+    }>
+  >();
   const allNavbarVariants = await getNavbarVariants(slug);
   if (chapterIds.length > 0) {
     const { data: blockRows } = await supabase
       .from('block')
-      .select('id, chapter_id, payload')
+      .select('id, chapter_id, type, "order", payload')
       .in('chapter_id', chapterIds)
-      .is('parent_block_id', null);
+      .is('parent_block_id', null)
+      .order('order', { ascending: true });
     // Walk navbar variants (existing logic, untouched).
     for (const b of blockRows ?? []) {
       const variant = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
@@ -107,15 +123,70 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
     // tag review so the counts match between the bandeau / la modale.
     const allBlockIds = (blockRows ?? []).map((b) => b.id as string);
     const taggedBlockIds = new Set<string>();
+    // Top-level tags : block_tag rows + the tag metadata in one JOIN.
+    const tagsByBlockId = new Map<string, { id: string; label: string; color: string }[]>();
     if (allBlockIds.length > 0) {
-      const { data: btRows } = await supabase.from('block_tag').select('block_id').in('block_id', allBlockIds);
-      for (const r of btRows ?? []) taggedBlockIds.add((r as { block_id: string }).block_id);
+      const { data: btRows } = await supabase
+        .from('block_tag')
+        .select('block_id, tag:tag(id, label, color)')
+        .in('block_id', allBlockIds);
+      for (const row of btRows ?? []) {
+        const bid = (row as { block_id: string }).block_id;
+        taggedBlockIds.add(bid);
+        const t = (
+          row as {
+            tag: { id: string; label: string; color: string } | { id: string; label: string; color: string }[] | null;
+          }
+        ).tag;
+        if (!t) continue;
+        const tag = Array.isArray(t) ? t[0] : t;
+        if (!tag) continue;
+        const arr = tagsByBlockId.get(bid) ?? [];
+        arr.push({ id: tag.id, label: tag.label, color: tag.color });
+        tagsByBlockId.set(bid, arr);
+      }
+    }
+    // Resolve nested tagIds (children of card / toolContentSection
+    // /…) against the global tag table — one extra query, same merge
+    // pattern as loadPaletteData.
+    const allNestedTagIds = new Set<string>();
+    for (const b of blockRows ?? []) {
+      for (const id of harvestNestedTagIds(b.payload)) allNestedTagIds.add(id);
+    }
+    const tagById = new Map<string, { id: string; label: string; color: string }>();
+    if (allNestedTagIds.size > 0) {
+      const { data: tagRows } = await supabase
+        .from('tag')
+        .select('id, label, color')
+        .in('id', [...allNestedTagIds]);
+      for (const r of tagRows ?? []) {
+        const row = r as { id: string; label: string; color: string };
+        tagById.set(row.id, row);
+      }
     }
     for (const b of blockRows ?? []) {
       const isTopLevelTagged = taggedBlockIds.has(b.id as string);
-      const hasNestedTags = harvestNestedTagIds(b.payload).size > 0;
-      if (isTopLevelTagged || hasNestedTags) continue;
-      untaggedBlockCountByChapter.set(b.chapter_id, (untaggedBlockCountByChapter.get(b.chapter_id) ?? 0) + 1);
+      const nestedIds = harvestNestedTagIds(b.payload);
+      const hasNestedTags = nestedIds.size > 0;
+      if (!isTopLevelTagged && !hasNestedTags) {
+        untaggedBlockCountByChapter.set(b.chapter_id, (untaggedBlockCountByChapter.get(b.chapter_id) ?? 0) + 1);
+      }
+      // Merge top-level + nested tags (dedup by id) into the preview list.
+      const merged = new Map<string, { id: string; label: string; color: string }>();
+      for (const t of tagsByBlockId.get(b.id as string) ?? []) merged.set(t.id, t);
+      for (const id of nestedIds) {
+        const t = tagById.get(id);
+        if (t && !merged.has(t.id)) merged.set(t.id, t);
+      }
+      const previewArr = blocksPreviewByChapter.get(b.chapter_id) ?? [];
+      previewArr.push({
+        id: b.id as string,
+        type: b.type as string,
+        order: b.order as number,
+        summary: summarizeBlock(b.type as string, (b.payload ?? {}) as Record<string, unknown>),
+        tags: [...merged.values()],
+      });
+      blocksPreviewByChapter.set(b.chapter_id, previewArr);
     }
   }
   // Tiny lookup so the list shows the human title + colour rather than the
@@ -165,6 +236,7 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
                 return { key, title: v?.title ?? key, color: v?.color };
               }),
               untaggedBlockCount: untaggedBlockCountByChapter.get(c.id) ?? 0,
+              blocksPreview: blocksPreviewByChapter.get(c.id) ?? [],
             }))}
             reorderAction={reorderChaptersAction}
             deleteAction={deleteChapterAction}
