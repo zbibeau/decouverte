@@ -1530,12 +1530,30 @@ export interface PaletteVariable {
   label: string;
   type: string;
 }
+/** Unique tag (deduplicated by id) used somewhere in the current
+ *  parcours — on a block via `block_tag`, on a chapter via
+ *  `chapter_tag`, or nested inline in a payload's `tagIds`. Powers
+ *  the palette's "🏷 Tags" section : the editor can browse the
+ *  vocabulary actually present in this parcours and use a tag to
+ *  filter the other rows. */
+export interface PaletteTag {
+  id: string;
+  label: string;
+  color: string;
+  /** How many block rows + chapter rows the tag is attached to. Shown
+   *  in the palette so the editor sees "réglage > acte (3)" at a
+   *  glance. */
+  usageCount: number;
+}
 export interface PaletteData {
   parcours: PaletteParcours[];
   /** Filled only when `currentParcoursSlug` is provided. */
   chapters: PaletteChapter[];
   blocks: PaletteBlock[];
   variables: PaletteVariable[];
+  /** Deduplicated list of tags actually used on chapters or blocks of
+   *  the current parcours (empty when `currentParcoursSlug` is absent). */
+  tags: PaletteTag[];
 }
 
 /**
@@ -1566,6 +1584,7 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
     chapters: [],
     blocks: [],
     variables: [],
+    tags: [],
   };
 
   if (!currentParcoursSlug) return result;
@@ -1760,6 +1779,23 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
       c.searchText = c.searchText ? `${c.searchText} ${parts.join(' ')}` : parts.join(' ');
     }
   }
+
+  // Build the deduplicated tag vocabulary actually used in this parcours.
+  // Each block/chapter already exposes its merged tag list (top-level +
+  // nested) via `tags` so we just collect-and-dedupe by id, tracking
+  // usage count so the palette can display "réglage > acte (3)".
+  const tagCounter = new Map<string, PaletteTag>();
+  function recordTag(t: { id: string; label: string; color: string }) {
+    const existing = tagCounter.get(t.id);
+    if (existing) {
+      existing.usageCount += 1;
+    } else {
+      tagCounter.set(t.id, { id: t.id, label: t.label, color: t.color, usageCount: 1 });
+    }
+  }
+  for (const c of result.chapters) for (const t of c.tags) recordTag(t);
+  for (const b of result.blocks) for (const t of b.tags) recordTag(t);
+  result.tags = [...tagCounter.values()].sort((a, b) => a.label.localeCompare(b.label, 'fr'));
 
   return result;
 }

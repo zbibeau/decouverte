@@ -1,7 +1,7 @@
 'use client';
 
 import { Command } from 'cmdk';
-import { Book, FileText, Hash, Layers, Plus, Search, Variable } from 'lucide-react';
+import { Book, FileText, Hash, Layers, Plus, Search, Tag, Variable, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 
@@ -15,6 +15,7 @@ import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { extractSnippet } from '@/lib/blockSearch';
 import { parsePathContext } from '@/lib/palette/parsePathContext';
 import { useCommandPaletteHotkeys } from '@/lib/palette/useCommandPaletteHotkeys';
+import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
 
 /**
  * Match `haystack` against a user-typed `query`.
@@ -81,6 +82,11 @@ export function CommandPalette() {
   // right-hand PreviewPane mirror whichever row is highlighted right
   // now (without waiting for Enter).
   const [highlightedValue, setHighlightedValue] = useState('');
+  // Active tag filter — when set, the Chapitres / Blocs sections only
+  // show rows carrying this tag id. Picked by clicking a row in the
+  // "🏷 Tags" section. Cleared via the chip's × button (kept separate
+  // from `setOpen` so Esc still closes the whole palette).
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
@@ -141,6 +147,35 @@ export function CommandPalette() {
     return data?.chapters.find((c) => c.slug === ctx.chapterSlug)?.title ?? null;
   }, [data?.chapters, ctx.chapterSlug]);
 
+  // Resolve the currently-active tag (if any) to the full row so we
+  // can render its colored chip in the filter indicator.
+  const selectedTag = useMemo(() => {
+    if (!selectedTagId || !data) return null;
+    return data.tags.find((t) => t.id === selectedTagId) ?? null;
+  }, [selectedTagId, data]);
+
+  // Reset the tag filter automatically when the parcours context
+  // changes (the new parcours has its own tag vocabulary — the
+  // previous selection is meaningless there).
+  useEffect(() => {
+    setSelectedTagId(null);
+  }, [ctx.parcoursSlug]);
+
+  // Chapters / blocks restricted to the active tag (or pass-through
+  // when no filter is set). Computed once so the Chapitres / Blocs
+  // sections, the dedup logic and the section count badges all read
+  // the same source of truth.
+  const filteredChapters = useMemo(() => {
+    if (!data) return [];
+    if (!selectedTagId) return data.chapters;
+    return data.chapters.filter((c) => c.tags.some((t) => t.id === selectedTagId));
+  }, [data, selectedTagId]);
+  const filteredBlocks = useMemo(() => {
+    if (!data) return [];
+    if (!selectedTagId) return data.blocks;
+    return data.blocks.filter((b) => b.tags.some((t) => t.id === selectedTagId));
+  }, [data, selectedTagId]);
+
   // Dedup : chapters whose only reason to appear is that one of their
   // child blocks matches the search. From a maintenance-audit
   // standpoint the chapter row is redundant — clicking the more
@@ -161,17 +196,21 @@ export function CommandPalette() {
     const q = search.trim().toLowerCase();
     if (!q || !data) return new Set<string>();
     const ids = new Set<string>();
-    for (const c of data.chapters) {
+    // Reads `filteredChapters` / `filteredBlocks` so the dedup
+    // mirrors the post-tag-filter view : a chapter doesn't become
+    // "redundant" just because the tag filter is hiding all its
+    // blocks.
+    for (const c of filteredChapters) {
       const direct =
         matchesQuery(c.title.toLowerCase(), q) ||
         matchesQuery(c.slug.toLowerCase(), q) ||
         matchesQuery(c.directSearchText.toLowerCase(), q);
       if (direct) continue;
-      const hasMatchingBlock = data.blocks.some((b) => b.chapterId === c.id && matchesQuery(b.searchText, q));
+      const hasMatchingBlock = filteredBlocks.some((b) => b.chapterId === c.id && matchesQuery(b.searchText, q));
       if (hasMatchingBlock) ids.add(c.id);
     }
     return ids;
-  }, [search, data]);
+  }, [search, data, filteredChapters, filteredBlocks]);
 
   function go(href: string) {
     setOpen(false);
@@ -256,6 +295,38 @@ export function CommandPalette() {
           </kbd>
         </div>
 
+        {/* Active-tag filter indicator. Only rendered when the editor has
+            picked a tag from the "🏷 Tags" section below — clicking the
+            × clears the filter (palette stays open with the search
+            preserved). */}
+        {selectedTag && (
+          <div className="border-border bg-muted/30 flex items-center gap-2 border-b px-3 py-1.5 text-[11px]">
+            <span className="text-muted-foreground">Filtré par tag :</span>
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+              style={{
+                backgroundColor: (isTagColor(selectedTag.color)
+                  ? TAG_COLOR_HEX[selectedTag.color]
+                  : TAG_COLOR_HEX.amber
+                ).chip,
+                color: (isTagColor(selectedTag.color) ? TAG_COLOR_HEX[selectedTag.color] : TAG_COLOR_HEX.amber).text,
+              }}
+            >
+              <span aria-hidden="true">🏷</span>
+              <span>{selectedTag.label}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedTagId(null)}
+              className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] hover:bg-white"
+              aria-label="Retirer le filtre par tag"
+            >
+              <X className="h-3 w-3" />
+              <span>Retirer le filtre</span>
+            </button>
+          </div>
+        )}
+
         {/* Split layout : Command.List on the left (results), PreviewPane
               on the right (schematic preview of the currently-highlighted row).
               Below md the preview pane is hidden — the palette remains
@@ -324,15 +395,52 @@ export function CommandPalette() {
                   </Command.Group>
                 )}
 
+                {/* === Tags (current parcours) ===
+                      Browse the maintenance-tag vocabulary actually used in
+                      this parcours. Selecting a row sets `selectedTagId`,
+                      which scopes the Chapitres / Blocs sections below to
+                      only items carrying that tag. The chip on top of the
+                      palette mirrors the active filter with a × to clear.
+                      Hidden when a filter is already active (the editor
+                      doesn't need to pick again) and when the parcours has
+                      no tags yet (empty section would just be noise). */}
+                {!selectedTagId && (data?.tags?.length ?? 0) > 0 && (
+                  <Command.Group heading="Tags">
+                    {data!.tags.map((t) => {
+                      const hex = isTagColor(t.color) ? TAG_COLOR_HEX[t.color] : TAG_COLOR_HEX.amber;
+                      return (
+                        <PaletteItem
+                          key={`tag-${t.id}`}
+                          icon={<Tag className="h-3.5 w-3.5" style={{ color: hex.dot }} />}
+                          label={t.label}
+                          hint={`${t.usageCount} bloc${t.usageCount > 1 ? 's' : ''} / chapitre${
+                            t.usageCount > 1 ? 's' : ''
+                          }`}
+                          value={`tag-${t.id}`}
+                          // Surface the section via natural French/English
+                          // synonyms in addition to the label itself, so
+                          // typing "filtre", "label", "etiquette" or "tag"
+                          // brings the rows up even when the editor doesn't
+                          // remember a specific tag name.
+                          keywords={[t.label, 'tag', 'label', 'filtre', 'étiquette', 'etiquette', 'maintenance']}
+                          onSelect={() => {
+                            setSelectedTagId(t.id);
+                            setSearch('');
+                          }}
+                        />
+                      );
+                    })}
+                  </Command.Group>
+                )}
+
                 {/* === Chapitres (current parcours) ===
-                      Chapters whose only match is via a child block are
-                      filtered out (see `redundantChapterIds` above) —
-                      the block row already covers the same edit
-                      target, and a duplicate row would falsely suggest
-                      "two things to fix" in an audit workflow. */}
-                {(data?.chapters?.length ?? 0) > 0 && (
+                      Reads `filteredChapters` (= data.chapters restricted
+                      to the active tag if any), then strips out the rows
+                      considered redundant with a matching block row
+                      (see `redundantChapterIds` above). */}
+                {filteredChapters.length > 0 && (
                   <Command.Group heading="Chapitres">
-                    {data!.chapters
+                    {filteredChapters
                       .filter((c) => !redundantChapterIds.has(c.id))
                       .map((c) => {
                         // Tags on the chapter that themselves match the
@@ -370,9 +478,9 @@ export function CommandPalette() {
                 )}
 
                 {/* === Blocs (current parcours, full-text searchable) === */}
-                {(data?.blocks?.length ?? 0) > 0 && (
+                {filteredBlocks.length > 0 && (
                   <Command.Group heading="Blocs">
-                    {data!.blocks.map((b) => {
+                    {filteredBlocks.map((b) => {
                       // Tags on the block that themselves match the
                       // query — surfaced as colored pills inline on the
                       // row so the user sees the match comes from a tag.
