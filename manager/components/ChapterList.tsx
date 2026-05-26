@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ReactNode, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
+import { ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 
 import { TagsField, TagsHelpBanner } from '@/components/blocks/TagsField';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -309,19 +309,13 @@ export function ChapterList({
     return out;
   }, [effectiveChapters, expandedChapterIds]);
 
-  // ↑↓ / →← keyboard navigation. → on a chapter navigates to its page,
-  // → on a block to its block editor — same destinations as Enter on
-  // the corresponding row (see custom keydown below) but → also works
-  // when the user wants to "drill in" via the right arrow regardless
-  // of expand state. ← goes back to the parcours list (home page).
-  const { selectedIdx, isClient } = useListKeyboardNav<NavItem>(
-    navItems,
-    (item) =>
-      item.kind === 'chapter'
-        ? `/parcours/${parcoursSlug}/chapters/${item.chapter.slug}`
-        : `/parcours/${parcoursSlug}/chapters/${item.chapter.slug}/blocks/${item.block.id}`,
-    '/',
-  );
+  // ↑↓ for selection only — we handle → and Enter ourselves via the
+  // custom keydown below so both keys trigger the SAME smart action
+  // (otherwise the hook's → would navigate to the chapter page while
+  // Enter would expand/edit, which is confusing). `getHref` returns
+  // null on every row to suppress the hook's built-in → navigation.
+  // ← still works via `parentHref` ('/' = parcours grid).
+  const { selectedIdx, isClient } = useListKeyboardNav<NavItem>(navItems, () => null, '/');
 
   // O(1) lookup of a row's index in `navItems` from its id (chapter
   // or block). Rendered rows use this to decide whether the keyboard
@@ -334,29 +328,14 @@ export function ChapterList({
     return m;
   }, [navItems]);
 
-  // Enter dispatcher. Smart action :
-  //   - on a collapsed chapter → toggle expand
-  //   - on an expanded chapter → open inline edit form
-  //   - on a block → navigate to its block editor
-  // Reserved for non-typing targets (the existing inline edit form
-  // already binds Enter on its inputs to commitEdit — see handleKey
-  // in the render loop). Disabled while one chapter is in edit mode
-  // so Enter inside the form doesn't accidentally fire here too.
-  useEffect(() => {
-    function isTypingTarget(el: EventTarget | null): boolean {
-      if (!(el instanceof HTMLElement)) return false;
-      if (el.isContentEditable) return true;
-      const tag = el.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== 'Enter') return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTypingTarget(e.target)) return;
-      if (editingId !== null) return;
-      const item = navItems[selectedIdx];
-      if (!item) return;
-      e.preventDefault();
+  // Smart action dispatcher : produces the right behaviour for a given
+  // NavItem. Reused by the keyboard handler (Enter / →) AND the slug
+  // click handler so the three affordances are always in sync.
+  //   - collapsed chapter   → toggle expand
+  //   - expanded chapter    → open inline edit form
+  //   - block (any state)   → navigate to its block editor
+  const dispatchSmartAction = useCallback(
+    (item: NavItem) => {
       if (item.kind === 'chapter') {
         if (expandedChapterIds.has(item.chapter.id)) {
           startEdit(item.chapter);
@@ -366,11 +345,36 @@ export function ChapterList({
       } else {
         router.push(`/parcours/${parcoursSlug}/chapters/${item.chapter.slug}/blocks/${item.block.id}`);
       }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [expandedChapterIds, parcoursSlug],
+  );
+
+  // Enter + → keyboard handler. Reserved for non-typing targets — the
+  // inline edit form's own Enter handler (handleKey in the render
+  // loop) takes precedence inside its inputs. Disabled while a
+  // chapter is in edit mode so Enter inside the form doesn't fire
+  // here too.
+  useEffect(() => {
+    function isTypingTarget(el: EventTarget | null): boolean {
+      if (!(el instanceof HTMLElement)) return false;
+      if (el.isContentEditable) return true;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Enter' && e.key !== 'ArrowRight') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (editingId !== null) return;
+      const item = navItems[selectedIdx];
+      if (!item) return;
+      e.preventDefault();
+      dispatchSmartAction(item);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navItems, selectedIdx, expandedChapterIds, editingId, parcoursSlug]);
+  }, [navItems, selectedIdx, editingId, dispatchSmartAction]);
 
   // Currently-dragging chapter id — drives the DragOverlay below so a
   // ghost of the row follows the cursor even when crossing section
@@ -836,19 +840,25 @@ export function ChapterList({
                                         pour "modifier les paramètres". */}
                                     <Pencil className="h-3.5 w-3.5" />
                                   </Button>
-                                  {/* Click on the slug zone opens the inline edit
-                                      form (chosen over a third navigation link in
-                                      the row, which prêtait à confusion : the
-                                      title is already a Link for that). Hovering
-                                      anywhere on the row turns the background
-                                      violet — see the outer div's `hover:bg-…`.
-                                      The slug itself has its own underline-on-
-                                      hover to signal the affordance. */}
+                                  {/* Click on the slug zone fires the SAME smart
+                                      action as Enter / → on a selected chapter
+                                      row : collapsed → expand, expanded → open
+                                      the inline edit form. Wiring this to
+                                      dispatchSmartAction directly keeps the three
+                                      affordances (clavier, slug click, ↕ chevron)
+                                      in lock-step. The pencil button next to the
+                                      title remains the one-click "open edit" no
+                                      matter the state, for editors who want an
+                                      unconditional edit affordance. */}
                                   <button
                                     type="button"
-                                    onClick={() => startEdit(c)}
+                                    onClick={() => dispatchSmartAction({ kind: 'chapter', chapter: c })}
                                     className="flex flex-1 items-center gap-3 text-left"
-                                    title="Cliquer pour éditer les paramètres du chapitre"
+                                    title={
+                                      expandedChapterIds.has(c.id)
+                                        ? 'Éditer les paramètres du chapitre'
+                                        : 'Déplier ce chapitre pour voir ses blocs'
+                                    }
                                     disabled={isPending}
                                   >
                                     <code className="text-muted-foreground hover:text-foreground text-xs hover:underline">
