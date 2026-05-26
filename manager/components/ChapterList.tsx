@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ReactNode, useEffect, useId, useRef, useState, useTransition } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 
 import { TagsField, TagsHelpBanner } from '@/components/blocks/TagsField';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -268,14 +268,6 @@ export function ChapterList({
       }
     });
   }
-  // ↑↓ / Enter / Esc keyboard navigation. Esc/← goes back to the parcours
-  // list (home page).
-  const { selectedIdx, isClient } = useListKeyboardNav(
-    chapters,
-    (c) => `/parcours/${parcoursSlug}/chapters/${c.slug}`,
-    '/',
-  );
-
   // dnd-kit sensors — same defaults as the old SortableList (5 px
   // activation distance so a click on a button inside the row doesn't
   // accidentally start a drag).
@@ -293,6 +285,92 @@ export function ChapterList({
   const [optimisticChapters, setOptimisticChapters] = useState<ChapterRow[] | null>(null);
   const expectedOrderRef = useRef<string[] | null>(null);
   const effectiveChapters = optimisticChapters ?? chapters;
+
+  // Flat list of keyboard-navigable rows : chapters first, with their
+  // blocks interleaved RIGHT AFTER the chapter when expanded. The
+  // selectedIdx returned by useListKeyboardNav points into this
+  // virtual list — that lets the editor walk into a chapter's blocks
+  // with ↑/↓ without leaving the chapters page.
+  type NavItem =
+    | { kind: 'chapter'; chapter: ChapterRow }
+    | {
+        kind: 'block';
+        chapter: ChapterRow;
+        block: NonNullable<ChapterRow['blocksPreview']>[number];
+      };
+  const navItems = useMemo<NavItem[]>(() => {
+    const out: NavItem[] = [];
+    for (const c of effectiveChapters) {
+      out.push({ kind: 'chapter', chapter: c });
+      if (expandedChapterIds.has(c.id)) {
+        for (const b of c.blocksPreview ?? []) out.push({ kind: 'block', chapter: c, block: b });
+      }
+    }
+    return out;
+  }, [effectiveChapters, expandedChapterIds]);
+
+  // ↑↓ / →← keyboard navigation. → on a chapter navigates to its page,
+  // → on a block to its block editor — same destinations as Enter on
+  // the corresponding row (see custom keydown below) but → also works
+  // when the user wants to "drill in" via the right arrow regardless
+  // of expand state. ← goes back to the parcours list (home page).
+  const { selectedIdx, isClient } = useListKeyboardNav<NavItem>(
+    navItems,
+    (item) =>
+      item.kind === 'chapter'
+        ? `/parcours/${parcoursSlug}/chapters/${item.chapter.slug}`
+        : `/parcours/${parcoursSlug}/chapters/${item.chapter.slug}/blocks/${item.block.id}`,
+    '/',
+  );
+
+  // O(1) lookup of a row's index in `navItems` from its id (chapter
+  // or block). Rendered rows use this to decide whether the keyboard
+  // cursor lands on them, and to apply the selection highlight.
+  const navIdxByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    navItems.forEach((item, i) => {
+      m.set(item.kind === 'chapter' ? `c:${item.chapter.id}` : `b:${item.block.id}`, i);
+    });
+    return m;
+  }, [navItems]);
+
+  // Enter dispatcher. Smart action :
+  //   - on a collapsed chapter → toggle expand
+  //   - on an expanded chapter → open inline edit form
+  //   - on a block → navigate to its block editor
+  // Reserved for non-typing targets (the existing inline edit form
+  // already binds Enter on its inputs to commitEdit — see handleKey
+  // in the render loop). Disabled while one chapter is in edit mode
+  // so Enter inside the form doesn't accidentally fire here too.
+  useEffect(() => {
+    function isTypingTarget(el: EventTarget | null): boolean {
+      if (!(el instanceof HTMLElement)) return false;
+      if (el.isContentEditable) return true;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Enter') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (editingId !== null) return;
+      const item = navItems[selectedIdx];
+      if (!item) return;
+      e.preventDefault();
+      if (item.kind === 'chapter') {
+        if (expandedChapterIds.has(item.chapter.id)) {
+          startEdit(item.chapter);
+        } else {
+          toggleExpand(item.chapter.id);
+        }
+      } else {
+        router.push(`/parcours/${parcoursSlug}/chapters/${item.chapter.slug}/blocks/${item.block.id}`);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navItems, selectedIdx, expandedChapterIds, editingId, parcoursSlug]);
 
   // Currently-dragging chapter id — drives the DragOverlay below so a
   // ghost of the row follows the cursor even when crossing section
@@ -652,10 +730,22 @@ export function ChapterList({
                         cancelEdit();
                       }
                     }
+                    const chapterNavIdx = navIdxByKey.get(`c:${c.id}`);
+                    const isSelectedRow = isClient && chapterNavIdx !== undefined && selectedIdx === chapterNavIdx;
                     return (
                       <SortableChapterRow key={c.id} id={c.id} className="border-border border-b last:border-b-0">
                         {(dragHandle) => (
-                          <div className="rounded px-2 py-3 transition-colors">
+                          <div
+                            className={cn(
+                              'rounded px-2 py-3 transition-colors',
+                              // Whole-row hover + keyboard-selection background.
+                              // Light brand-primary tint so the highlighted row
+                              // pops without overpowering the chip / badge
+                              // colors already present in the row.
+                              'hover:bg-brand-primary-50/40',
+                              isSelectedRow && 'bg-brand-primary-50',
+                            )}
+                          >
                             <div className="flex items-center gap-2">
                               {dragHandle}
                               {isEditing ? (
@@ -746,14 +836,27 @@ export function ChapterList({
                                         pour "modifier les paramètres". */}
                                     <Pencil className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Link
-                                    href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
-                                    className="flex flex-1 items-center gap-3 hover:underline"
+                                  {/* Click on the slug zone opens the inline edit
+                                      form (chosen over a third navigation link in
+                                      the row, which prêtait à confusion : the
+                                      title is already a Link for that). Hovering
+                                      anywhere on the row turns the background
+                                      violet — see the outer div's `hover:bg-…`.
+                                      The slug itself has its own underline-on-
+                                      hover to signal the affordance. */}
+                                  <button
+                                    type="button"
+                                    onClick={() => startEdit(c)}
+                                    className="flex flex-1 items-center gap-3 text-left"
+                                    title="Cliquer pour éditer les paramètres du chapitre"
+                                    disabled={isPending}
                                   >
-                                    <code className="text-muted-foreground text-xs">({c.slug})</code>
+                                    <code className="text-muted-foreground hover:text-foreground text-xs hover:underline">
+                                      ({c.slug})
+                                    </code>
                                     <DiffBadge diff={c.diff} />
                                     <span className="ml-auto" />
-                                  </Link>
+                                  </button>
                                   {/* "Sans tag" chip pinned to the right, OUTSIDE
                                       the Link so it doesn't trigger navigation
                                       (clicking the chip would otherwise feel
@@ -951,6 +1054,19 @@ export function ChapterList({
                                 blocks={c.blocksPreview ?? []}
                                 chapterSlug={c.slug}
                                 parcoursSlug={parcoursSlug}
+                                selectedBlockId={(() => {
+                                  // Translate the global `selectedIdx` into the
+                                  // block id this preview should highlight.
+                                  // Walks `navItems` once via the lookup map
+                                  // — we're inside a render anyway, no
+                                  // additional cost.
+                                  if (!isClient) return null;
+                                  const item = navItems[selectedIdx];
+                                  if (item?.kind === 'block' && item.chapter.id === c.id) {
+                                    return item.block.id;
+                                  }
+                                  return null;
+                                })()}
                               />
                             )}
                           </div>
@@ -1149,6 +1265,7 @@ function ChapterBlocksPreview({
   blocks,
   chapterSlug,
   parcoursSlug,
+  selectedBlockId,
 }: {
   blocks: Array<{
     id: string;
@@ -1159,6 +1276,11 @@ function ChapterBlocksPreview({
   }>;
   chapterSlug: string;
   parcoursSlug: string;
+  /** Id of the block currently highlighted by the keyboard cursor (the
+   *  caller in ChapterList knows the global selectedIdx, this component
+   *  only needs to render the highlight). Null when no block of this
+   *  chapter is selected. */
+  selectedBlockId: string | null;
 }) {
   if (blocks.length === 0) {
     return (
@@ -1174,10 +1296,18 @@ function ChapterBlocksPreview({
       </p>
       {blocks.map((b) => {
         const typeLabel = (BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type;
+        const isSelectedBlockRow = selectedBlockId === b.id;
         return (
           <div
             key={b.id}
-            className="border-border/40 flex flex-wrap items-center gap-2 rounded border bg-white px-2 py-1.5 text-xs"
+            className={cn(
+              'flex flex-wrap items-center gap-2 rounded border bg-white px-2 py-1.5 text-xs transition-colors',
+              // Same hover / keyboard-selection treatment as the parent
+              // chapter row : light brand tint on hover, slightly more
+              // opaque when the keyboard cursor lands here.
+              'hover:bg-brand-primary-50/40',
+              isSelectedBlockRow ? 'border-brand-primary-200 bg-brand-primary-50' : 'border-border/40',
+            )}
           >
             <span className="text-muted-foreground w-5 shrink-0 text-right text-[10px]">{b.order}</span>
             <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
