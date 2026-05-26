@@ -620,10 +620,6 @@ export function ChapterList({
                   chevron-down icon signals "déplier / voir plus" — when
                   clicked it expands the inline edit form (title, slug,
                   section, card image, tags, masquer de la navigation…).
-                  We previously used a Pencil icon but it competed with
-                  the "enter chapter" ChevronRight at the far right and
-                  felt like a destructive rename — ChevronDown reads as
-                  "expand", which is what actually happens.
 
                   Two Link nodes pointing to the same destination is a bit
                   redundant but is the cleanest HTML-valid way to interleave

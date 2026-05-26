@@ -16,12 +16,7 @@ import type { PayloadEditorProps } from './editor-types';
 
 type FormPayload = FormBlock['payload'];
 
-export function FormEditor({
-  payload,
-  onChange,
-  variables,
-  navbarVariants,
-}: PayloadEditorProps<FormPayload>) {
+export function FormEditor({ payload, onChange, variables, navbarVariants }: PayloadEditorProps<FormPayload>) {
   const fields = payload.fields ?? [];
 
   function updateHeader(patch: Partial<FormPayload>) {
@@ -43,9 +38,7 @@ export function FormEditor({
             type: firstVar.type,
             required: true,
             options:
-              firstVar.type === 'enum'
-                ? firstVar.options.map((o) => ({ value: o.value, label: o.label }))
-                : undefined,
+              firstVar.type === 'enum' ? firstVar.options.map((o) => ({ value: o.value, label: o.label })) : undefined,
           }
         : {
             key: '',
@@ -90,10 +83,7 @@ export function FormEditor({
       key: v.key,
       label: fields[idx].label || v.label,
       type: v.type,
-      options:
-        v.type === 'enum'
-          ? v.options.map((o) => ({ value: o.value, label: o.label }))
-          : undefined,
+      options: v.type === 'enum' ? v.options.map((o) => ({ value: o.value, label: o.label })) : undefined,
     });
   }
 
@@ -110,21 +100,17 @@ export function FormEditor({
   }
 
   return (
-    <ScopeRoot scopeId="form-fields" className="space-y-4 rounded-md p-1 -m-1">
-      {/* --- Navbar (slot above the form card) --- */}
+    <ScopeRoot scopeId="form-fields" className="-m-1 space-y-4 rounded-md p-1">
       <Section title="Navbar pilote">
         <Field label="Variante" path="navbar">
           <NavbarVariantSelect
             value={payload.navbar?.variant}
-            onChange={(key) =>
-              updateHeader({ navbar: key ? { variant: key } : undefined })
-            }
+            onChange={(key) => updateHeader({ navbar: key ? { variant: key } : undefined })}
             variants={navbarVariants}
           />
         </Field>
       </Section>
 
-      {/* --- Header (card chrome) --- */}
       <Section title="En-tête">
         <Field label="Titre" path="title">
           <Input
@@ -142,14 +128,10 @@ export function FormEditor({
           />
         </Field>
         <Field label="Icône" path="icon">
-          <IconPicker
-            value={payload.icon ?? ''}
-            onChange={(icon) => updateHeader({ icon })}
-          />
+          <IconPicker value={payload.icon ?? ''} onChange={(icon) => updateHeader({ icon })} />
         </Field>
       </Section>
 
-      {/* --- Fields --- */}
       <Section
         title={`Questions (${fields.length})`}
         action={
@@ -159,7 +141,7 @@ export function FormEditor({
         }
       >
         {fields.length === 0 && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Aucune question. Clique sur « Ajouter » pour brancher une variable existante.
           </p>
         )}
@@ -168,21 +150,13 @@ export function FormEditor({
             const variable = variables.find((v) => v.key === f.key);
             const typeMismatch = variable && variable.type !== f.type;
             return (
-              <div
-                key={idx}
-                className="space-y-2 rounded-md border border-border bg-white p-3"
-              >
+              <div key={idx} className="border-border space-y-2 rounded-md border bg-white p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
                     Question #{idx + 1}
                   </span>
                   <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => moveField(idx, -1)}
-                      disabled={idx === 0}
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => moveField(idx, -1)} disabled={idx === 0}>
                       <ArrowUp className="h-3.5 w-3.5" />
                     </Button>
                     <Button
@@ -193,11 +167,7 @@ export function FormEditor({
                     >
                       <ArrowDown className="h-3.5 w-3.5" />
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeField(idx)}
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => removeField(idx)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -210,12 +180,12 @@ export function FormEditor({
                     !variable
                       ? "⚠︎ Cette clé n'existe pas dans les variables du parcours."
                       : typeMismatch
-                      ? `⚠︎ Type déclaré (${f.type}) différent de la variable (${variable.type}).`
-                      : undefined
+                        ? `⚠︎ Type déclaré (${f.type}) différent de la variable (${variable.type}).`
+                        : undefined
                   }
                 >
                   <select
-                    className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+                    className="border-border h-9 w-full rounded-md border bg-white px-3 text-sm"
                     value={f.key}
                     onChange={(e) => pickVariable(idx, e.target.value)}
                   >
@@ -237,31 +207,22 @@ export function FormEditor({
                 </Field>
 
                 <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <label className="text-muted-foreground flex items-center gap-1.5 text-xs">
                     <input
                       type="checkbox"
                       checked={f.required ?? true}
-                      onChange={(e) =>
-                        updateField(idx, { required: e.target.checked })
-                      }
+                      onChange={(e) => updateField(idx, { required: e.target.checked })}
                     />
                     Obligatoire
                   </label>
-                  <span className="text-[10px] uppercase text-muted-foreground">
-                    Type : {f.type}
-                  </span>
+                  <span className="text-muted-foreground text-[10px] uppercase">Type : {f.type}</span>
                 </div>
 
                 {(f.type === 'string' || f.type === 'number') && (
-                  <Field
-                    label="Placeholder (facultatif)"
-                    path={`fields[${idx}].placeholder`}
-                  >
+                  <Field label="Placeholder (facultatif)" path={`fields[${idx}].placeholder`}>
                     <Input
                       value={f.placeholder ?? ''}
-                      onChange={(e) =>
-                        updateField(idx, { placeholder: e.target.value })
-                      }
+                      onChange={(e) => updateField(idx, { placeholder: e.target.value })}
                     />
                   </Field>
                 )}
@@ -271,7 +232,6 @@ export function FormEditor({
         </div>
       </Section>
 
-      {/* --- Footer (CTA) --- */}
       <Section title="Bouton">
         <Field label="Libellé du bouton" path="nextButtonText">
           <Input

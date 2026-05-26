@@ -157,7 +157,6 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
 
   return (
     <ScopeRoot scopeId="photo-carousel" className="-m-1 space-y-3 rounded-md p-1">
-      {/* --- Style global --- */}
       <Section title="Style du carrousel" accentColor="slate">
         <Field label="Navbar pilote" path="navbar">
           <NavbarVariantSelect
@@ -210,7 +209,6 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
         </Field>
       </Section>
 
-      {/* --- Photos --- */}
       <Section
         title={`Photos (${photos.length})`}
         accentColor="rose"

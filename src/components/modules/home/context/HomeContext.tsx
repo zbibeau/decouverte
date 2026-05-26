@@ -28,7 +28,6 @@ import {
 } from '../utils/HubspotMapping';
 import { getPreviewParams } from '../utils/previewMode';
 
-//Mock return to be sure HMR works
 /**
  * Default slug served when the route doesn't carry one (e.g. the root
  * `/` URL on the legacy demo deployment). New deployments serve

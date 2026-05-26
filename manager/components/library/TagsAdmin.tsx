@@ -127,7 +127,6 @@ export function TagsAdmin() {
 
   return (
     <div className="space-y-4">
-      {/* === Create form === */}
       <div className="border-border bg-muted/20 rounded-md border p-3">
         <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">Nouveau tag</p>
         <div className="flex flex-wrap items-center gap-2">
@@ -153,7 +152,6 @@ export function TagsAdmin() {
         </div>
       </div>
 
-      {/* === List === */}
       {loading ? (
         <div className="text-muted-foreground flex items-center gap-2 px-3 py-6 text-sm">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />

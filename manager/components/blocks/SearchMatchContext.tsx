@@ -64,10 +64,3 @@ export function useFieldSearchMatchSnippet(path?: string): { isMatch: boolean; s
   if (!ctx.paths.has(path)) return { isMatch: false, query: ctx.query };
   return { isMatch: true, snippet: ctx.snippets.get(path), query: ctx.query };
 }
-
-/** Returns the current search query (for the highlight `<mark>` in the
- *  label/hint of a matched field) and the full match set (so a parent
- *  layer can scroll to the first match). */
-export function useSearchMatchContext(): SearchMatchValue {
-  return useContext(SearchMatchContext);
-}

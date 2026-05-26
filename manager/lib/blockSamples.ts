@@ -30,7 +30,7 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
 
   video: {
     description: 'Lecteur Vimeo plein-écran, avec navbar optionnelle (appointment / contact).',
-    whenToUse: 'Vidéo explicative au début ou au milieu d\'un chapitre.',
+    whenToUse: "Vidéo explicative au début ou au milieu d'un chapitre.",
     payload: {
       vimeoSrc: 'vimeo/907882115?hash=2d4027711d',
       navbar: { variant: 'appointment' },
@@ -41,14 +41,14 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
     description: 'Paragraphe libre, HTML autorisé (gras, italique, liens, sauts de ligne).',
     whenToUse: 'Texte de transition entre deux sections.',
     payload: {
-      html: 'Vous appelez avec le <strong>Click-to-Call</strong>, d\'un simple clic en étant assuré de ne jamais dévoiler votre numéro personnel. Votre patient est informé que c\'est son médecin qui l\'appelle.',
+      html: "Vous appelez avec le <strong>Click-to-Call</strong>, d'un simple clic en étant assuré de ne jamais dévoiler votre numéro personnel. Votre patient est informé que c'est son médecin qui l'appelle.",
       variant: 'default',
     },
   },
 
   keyPointsCard: {
     description: 'Carte blanche avec icône + titre + paragraphe + checklist (+ bloc exception en option).',
-    whenToUse: 'Lister les points-clés d\'une fonctionnalité, ou expliquer un usage avec des items à puces.',
+    whenToUse: "Lister les points-clés d'une fonctionnalité, ou expliquer un usage avec des items à puces.",
     payload: {
       main: {
         icon: 'team-fill',
@@ -61,7 +61,7 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
         title: 'Faites des exceptions pour certains patients',
         items: [
           { text: 'pour un patient polypathologique, ouvrez-lui un acte de 30 min' },
-          { text: 'en cas d\'abus, retirez l\'accès à la consultation d\'urgence' },
+          { text: "en cas d'abus, retirez l'accès à la consultation d'urgence" },
           { text: 'pour un patient indésirable, bloquez-lui la prise de rdv' },
         ],
       },
@@ -69,7 +69,8 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
   },
 
   faqCard: {
-    description: 'Accordéon de questions/réponses pliables. Chaque question peut contenir du texte, listes, audio, callouts.',
+    description:
+      'Accordéon de questions/réponses pliables. Chaque question peut contenir du texte, listes, audio, callouts.',
     whenToUse: 'Anticiper les questions fréquentes en fin de section.',
     payload: {
       questions: [
@@ -92,9 +93,7 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
         },
         {
           title: 'Et pour les patients qui appellent depuis un fixe ?',
-          blocks: [
-            { kind: 'text', html: 'Ils pourront aussi prendre RDV avec Alice.' },
-          ],
+          blocks: [{ kind: 'text', html: 'Ils pourront aussi prendre RDV avec Alice.' }],
         },
       ],
     },
@@ -113,7 +112,7 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
               title: 'Pendant vos heures de présence',
               items: [
                 { text: 'prise de message avec retranscription dans votre interface' },
-                { text: 'transfert d\'appel en cas d\'urgence ressentie' },
+                { text: "transfert d'appel en cas d'urgence ressentie" },
               ],
             },
           },
@@ -124,7 +123,7 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
 
   form: {
     description: 'Formulaire qui collecte des variables (boolean / enum / texte) pour brancher le parcours.',
-    whenToUse: 'Au début d\'un chapitre pour qualifier l\'utilisateur (médecin ? cabinet de groupe ?).',
+    whenToUse: "Au début d'un chapitre pour qualifier l'utilisateur (médecin ? cabinet de groupe ?).",
     payload: {
       title: 'Pour une démo personnalisée',
       description: 'Merci de répondre à ces quelques questions :',
@@ -139,7 +138,7 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
 
   conditional: {
     description: "Affiche un sous-bloc selon la valeur d'une variable du parcours (then / else).",
-    whenToUse: 'Brancher l\'expérience selon une réponse précédente (ex. médecin seul vs en groupe).',
+    whenToUse: "Brancher l'expérience selon une réponse précédente (ex. médecin seul vs en groupe).",
     payload: {
       condition: { variable: 'isInGroup', op: '=', value: true },
       then: [
@@ -166,37 +165,43 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
   },
 
   photoCarousel: {
-    description: 'Carrousel de photos plein-largeur, immersif. Flèches gauche/droite, légende en overlay, barre de progression.',
-    whenToUse: 'Présenter visuellement un lieu, des étapes, des avant/après, une galerie de réalisations. Une seule photo visible à la fois, l\'utilisateur fait défiler.',
+    description:
+      'Carrousel de photos plein-largeur, immersif. Flèches gauche/droite, légende en overlay, barre de progression.',
+    whenToUse:
+      "Présenter visuellement un lieu, des étapes, des avant/après, une galerie de réalisations. Une seule photo visible à la fois, l'utilisateur fait défiler.",
     payload: {
       aspectRatio: '16/9',
       autoplayMs: 0,
       photos: [
         {
           url: 'https://images.unsplash.com/photo-1631815588090-d4bfec5b1ccb?w=1600',
-          title: 'La salle d\'attente refaite en 2024',
-          description: 'Travaux réalisés en mars 2024.\nMobilier en chêne massif, éclairage LED tamisé, plantes vertes.',
-          alt: 'Salle d\'attente claire et moderne avec fauteuils en bois',
+          title: "La salle d'attente refaite en 2024",
+          description:
+            'Travaux réalisés en mars 2024.\nMobilier en chêne massif, éclairage LED tamisé, plantes vertes.',
+          alt: "Salle d'attente claire et moderne avec fauteuils en bois",
         },
         {
           url: 'https://images.unsplash.com/photo-1666214280391-8ff5bd3c0bf0?w=1600',
           title: 'Le cabinet de consultation principal',
-          description: 'Bureau orienté vers la fenêtre pour une lumière naturelle optimale. Table d\'examen électrique et matériel récent.',
-          alt: 'Cabinet de consultation lumineux avec bureau et table d\'examen',
+          description:
+            "Bureau orienté vers la fenêtre pour une lumière naturelle optimale. Table d'examen électrique et matériel récent.",
+          alt: "Cabinet de consultation lumineux avec bureau et table d'examen",
         },
         {
           url: 'https://images.unsplash.com/photo-1666214280557-f1b5022eb634?w=1600',
-          title: 'L\'espace d\'accueil rénové',
-          description: 'Comptoir d\'accueil revisité, espace ouvert pour fluidifier les flux patients.',
-          alt: 'Comptoir d\'accueil moderne avec plantes vertes',
+          title: "L'espace d'accueil rénové",
+          description: "Comptoir d'accueil revisité, espace ouvert pour fluidifier les flux patients.",
+          alt: "Comptoir d'accueil moderne avec plantes vertes",
         },
       ],
     },
   },
 
   toolContentSection: {
-    description: 'Carte structurée : titre + sous-titre + vidéo (optionnelle) + bloc « avantages » avec checklist + paragraphe + sous-blocs libres.',
-    whenToUse: 'Présenter un outil avec un layout récurrent (vidéo + bénéfices). C\'est ce qui produit la carte « Les avantages » avec checkmarks verts. Tu peux empiler d\'autres blocs (texte, key points, FAQ…) en-dessous via la section « Sous-blocs additionnels ».',
+    description:
+      'Carte structurée : titre + sous-titre + vidéo (optionnelle) + bloc « avantages » avec checklist + paragraphe + sous-blocs libres.',
+    whenToUse:
+      "Présenter un outil avec un layout récurrent (vidéo + bénéfices). C'est ce qui produit la carte « Les avantages » avec checkmarks verts. Tu peux empiler d'autres blocs (texte, key points, FAQ…) en-dessous via la section « Sous-blocs additionnels ».",
     payload: {
       title: 'Le click to call',
       subtitle: 'La fin des appels masqués',
@@ -208,12 +213,12 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
         'Télétravailler, pour vous ou votre secrétaire',
       ],
       advantageText:
-        'Vous appelez avec le Click-to-Call, d\'un simple clic en étant assuré de ne jamais dévoiler votre numéro personnel. Votre patient est informé que c\'est son médecin qui l\'appelle.',
+        "Vous appelez avec le Click-to-Call, d'un simple clic en étant assuré de ne jamais dévoiler votre numéro personnel. Votre patient est informé que c'est son médecin qui l'appelle.",
       children: [
         {
           type: 'text',
           payload: {
-            html: 'Tu peux ajouter ici n\'importe quel bloc supplémentaire (texte libre, key points, FAQ, etc.) via la section « Sous-blocs additionnels » de l\'éditeur.',
+            html: "Tu peux ajouter ici n'importe quel bloc supplémentaire (texte libre, key points, FAQ, etc.) via la section « Sous-blocs additionnels » de l'éditeur.",
             variant: 'default',
           },
         },
@@ -221,8 +226,3 @@ export const SAMPLE_PAYLOADS: Record<ContentBlock['type'], BlockSample> = {
     },
   },
 };
-
-/** Defensive helper used by the library page — always returns a payload. */
-export function getSamplePayload(type: ContentBlock['type']): Record<string, unknown> {
-  return JSON.parse(JSON.stringify(SAMPLE_PAYLOADS[type].payload));
-}

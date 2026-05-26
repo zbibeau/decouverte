@@ -55,8 +55,6 @@ export const ICON_KEYS = [
   'user-search',
 ] as const;
 
-export type IconKey = (typeof ICON_KEYS)[number];
-
 /** URL of the icon SVG hosted by the Solid app. */
 export function iconUrl(key: string, clientUrl = 'http://localhost:3100'): string {
   return `${clientUrl}/icons/${key}.svg`;

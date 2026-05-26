@@ -47,7 +47,6 @@ export function ToolContentSectionEditor({
 
   return (
     <div className="space-y-3">
-      {/* --- Navbar pilote --- */}
       <Section title="Navbar pilote" accentColor="slate">
         <Field label="Variante" path="navbar">
           <NavbarVariantSelect
@@ -63,7 +62,6 @@ export function ToolContentSectionEditor({
         </Field>
       </Section>
 
-      {/* --- Ancre HTML facultative --- */}
       {/* Le champ `name` (ex « label nav ») n'est plus exposé : le renderer
           Solid ne le lisait jamais (legacy d'une mini-nav latérale interne
           aujourd'hui remplacée par la sidebar gauche + les navbars custom).
@@ -83,7 +81,6 @@ export function ToolContentSectionEditor({
         </Field>
       </Section>
 
-      {/* --- Titre et sous-titre (rose) --- */}
       <Section title="Titre & sous-titre" accentColor="rose">
         <Field label="Titre" path="title">
           <Input value={payload.title ?? ''} onChange={(e) => onChange({ ...payload, title: e.target.value })} />
@@ -93,7 +90,6 @@ export function ToolContentSectionEditor({
         </Field>
       </Section>
 
-      {/* --- Vidéo (vert) --- */}
       <Section title="Vidéo" accentColor="green">
         <Field label="Mode" path="video">
           <select
@@ -136,7 +132,6 @@ export function ToolContentSectionEditor({
         )}
       </Section>
 
-      {/* --- Bloc avantages (ambre) --- */}
       <Section title="Bloc avantages" accentColor="amber">
         <Field label="Titre du bloc avantages" path="advantageTitle">
           <Input
@@ -175,7 +170,6 @@ export function ToolContentSectionEditor({
         </Field>
       </Section>
 
-      {/* --- Sous-blocs additionnels (violet) --- */}
       <Section title="Sous-blocs additionnels" accentColor="purple">
         <Field
           label=""
