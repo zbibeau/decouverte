@@ -503,6 +503,19 @@ export function ChapterList({
   // re-typing (and accidentally creating a duplicate).
   const existingSections = groupedChapters.filter((g) => g.sectionLabel != null).map((g) => g.sectionLabel as string);
 
+  // Toolbar state : "Tout déplier" → "Tout replier" switch derived
+  // from how many chapters are currently expanded. allExpanded === true
+  // when every chapter id sits in `expandedChapterIds` — at that point
+  // the action becomes "collapse all". Anything less, we offer "expand
+  // all" so a single click reaches a uniform open state.
+  const allExpanded = effectiveChapters.length > 0 && expandedChapterIds.size === effectiveChapters.length;
+  function expandAll() {
+    setExpandedChapterIds(new Set(effectiveChapters.map((c) => c.id)));
+  }
+  function collapseAll() {
+    setExpandedChapterIds(new Set());
+  }
+
   return (
     <div className="space-y-3">
       {groupedChapters.length > 1 && (
@@ -518,6 +531,41 @@ export function ChapterList({
               <span className="text-muted-foreground">· {g.items.length}</span>
             </span>
           ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 text-[11px]"
+            onClick={allExpanded ? collapseAll : expandAll}
+            disabled={effectiveChapters.length === 0}
+            title={
+              allExpanded
+                ? 'Refermer tous les aperçus de blocs'
+                : 'Ouvrir tous les chapitres pour voir leurs blocs en place'
+            }
+          >
+            <ChevronDown className={cn('mr-1 h-3.5 w-3.5 transition-transform', allExpanded ? '' : '-rotate-90')} />
+            {allExpanded ? 'Tout replier' : 'Tout déplier'}
+          </Button>
+        </div>
+      )}
+      {groupedChapters.length <= 1 && effectiveChapters.length > 0 && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-[11px]"
+            onClick={allExpanded ? collapseAll : expandAll}
+            title={
+              allExpanded
+                ? 'Refermer tous les aperçus de blocs'
+                : 'Ouvrir tous les chapitres pour voir leurs blocs en place'
+            }
+          >
+            <ChevronDown className={cn('mr-1 h-3.5 w-3.5 transition-transform', allExpanded ? '' : '-rotate-90')} />
+            {allExpanded ? 'Tout replier' : 'Tout déplier'}
+          </Button>
         </div>
       )}
       {/* Single DndContext spanning ALL sections so the user can drag
