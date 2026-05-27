@@ -1308,13 +1308,19 @@ function ChapterBlocksPreview({
         const typeLabel = (BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type;
         const isSelectedBlockRow = selectedBlockId === b.id;
         return (
-          <div
+          // The whole row is the block's edit link — `<Link>` gives us
+          // cmd-click-to-open-in-new-tab and right-click context menu
+          // for free, and the keyboard nav already handles Enter / →
+          // on the parent (see ChapterList). The "Éditer →" suffix is
+          // kept as a non-link visual cue.
+          <Link
             key={b.id}
+            href={`/parcours/${parcoursSlug}/chapters/${chapterSlug}/blocks/${b.id}`}
+            title="Ouvrir l'éditeur du bloc"
             className={cn(
               'flex flex-wrap items-center gap-2 rounded border bg-white px-2 py-1.5 text-xs transition-colors',
-              // Same hover / keyboard-selection treatment as the parent
-              // chapter row : light brand tint on hover, slightly more
-              // opaque when the keyboard cursor lands here.
+              // Hover + keyboard-selection treatment, matching the
+              // parent chapter row.
               'hover:bg-brand-primary-50/40',
               isSelectedBlockRow ? 'border-brand-primary-200 bg-brand-primary-50' : 'border-border/40',
             )}
@@ -1323,11 +1329,6 @@ function ChapterBlocksPreview({
             <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
               {typeLabel}
             </span>
-            {/* Title takes the remaining space (flex-1 + min-w-0 for
-                truncate), tags + chip "Sans tag" sit right-aligned just
-                before "Éditer →". A `mr-3` on the tag/chip block keeps a
-                visible gap from the link so the editor doesn't aim at
-                the chip when reaching for the navigation. */}
             <span className="min-w-0 flex-1 truncate font-medium">{b.summary || `Bloc ${b.type}`}</span>
             {b.tags.length === 0 ? (
               <span
@@ -1356,14 +1357,8 @@ function ChapterBlocksPreview({
                 })}
               </span>
             )}
-            <Link
-              href={`/parcours/${parcoursSlug}/chapters/${chapterSlug}/blocks/${b.id}`}
-              className="text-muted-foreground hover:text-foreground shrink-0 text-[10px] hover:underline"
-              title="Ouvrir l'éditeur du bloc"
-            >
-              Éditer →
-            </Link>
-          </div>
+            <span className="text-muted-foreground shrink-0 text-[10px]">Éditer →</span>
+          </Link>
         );
       })}
     </div>
