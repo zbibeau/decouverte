@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  EyeOff,
   GripVertical,
   Pencil,
   Trash2,
@@ -824,6 +825,22 @@ export function ChapterList({
                                       />
                                     )}
                                     <span className="font-medium">{c.title}</span>
+                                    {/* hidden_from_nav marker. The chapter still
+                                        exists and is reachable by direct URL /
+                                        programmatic navigation, but doesn't
+                                        appear in the sidebar nor the section
+                                        panorama. Surfaces it inline so the editor
+                                        knows at a glance which rows are opt-out
+                                        without having to open each one. */}
+                                    {c.hiddenFromNav && (
+                                      <span
+                                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+                                        title="Ce chapitre est masqué de la sidebar et du panorama de section. Reste accessible par URL directe."
+                                      >
+                                        <EyeOff className="h-3 w-3" />
+                                        Masqué
+                                      </span>
+                                    )}
                                   </Link>
                                   <Button
                                     variant="ghost"

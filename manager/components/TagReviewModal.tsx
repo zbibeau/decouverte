@@ -2,7 +2,7 @@
 
 import { Check, ChevronRight, Hash, Layers, SkipForward, X } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { TagsField } from '@/components/blocks/TagsField';
 import { Button } from '@/components/ui/Button';
@@ -119,6 +119,17 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug }: Pr
 
   const allDone = counts.pending === 0;
 
+  // Auto-focus the Publier button as soon as every row is settled,
+  // so a single Enter / Space confirms publication. Triggered on the
+  // `allDone` transition, NOT every render — otherwise the button
+  // would re-steal focus while the editor is tab-ing through.
+  const publishBtnRef = useRef<HTMLButtonElement | null>(null);
+  const allDoneRef = useRef(allDone);
+  useEffect(() => {
+    if (allDone && !allDoneRef.current) publishBtnRef.current?.focus();
+    allDoneRef.current = allDone;
+  }, [allDone]);
+
   return (
     <div
       role="dialog"
@@ -206,14 +217,27 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug }: Pr
             {counts.skipped > 0 && <span className="mr-3">↷ {counts.skipped} ignoré(s)</span>}
             {counts.pending > 0 && <span className="font-medium text-amber-700">⚠ {counts.pending} à revoir</span>}
           </div>
-          <Button variant="ghost" size="sm" onClick={validateAllTagged} title="Valider en bloc les lignes déjà taggées">
-            Tout valider (taggés)
-          </Button>
-          <Button variant="outline" size="sm" onClick={skipAll} title="Ignorer toutes les lignes restantes">
-            <SkipForward className="mr-1.5 h-3.5 w-3.5" />
-            Tout ignorer
-          </Button>
-          <Button onClick={onPublish} disabled={!allDone} size="sm">
+          {/* Bulk actions hidden once there's nothing left to action.
+              Keeping them would offer no behaviour change (Publier is
+              already enabled) and visually crowd the footer next to
+              the now-primary "Publier" button. */}
+          {!allDone && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={validateAllTagged}
+                title="Valider en bloc les lignes déjà taggées"
+              >
+                Tout valider (taggés)
+              </Button>
+              <Button variant="outline" size="sm" onClick={skipAll} title="Ignorer toutes les lignes restantes">
+                <SkipForward className="mr-1.5 h-3.5 w-3.5" />
+                Tout ignorer
+              </Button>
+            </>
+          )}
+          <Button ref={publishBtnRef} onClick={onPublish} disabled={!allDone} size="sm">
             Publier
           </Button>
         </div>
