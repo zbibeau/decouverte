@@ -808,11 +808,40 @@ export function ChapterList({
                   share the same href + `hover:underline` so the row reads
                   visually as a single clickable area.
                 */}
+                                  {/* Order number sits OUTSIDE the navigation
+                                      link now — it's just a positional cue,
+                                      not a navigation target. Pulling it out
+                                      also lets the Pencil edit button slot in
+                                      right before the title rather than after,
+                                      which the editor finds more natural (the
+                                      eye reads ✎ as "this is editable" before
+                                      reading the label). */}
+                                  <span className="text-muted-foreground shrink-0 font-mono text-xs">{c.order}.</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Éditer les paramètres du chapitre (titre, slug, section, carte, tags…)"
+                                    disabled={isPending}
+                                    onClick={() => startEdit(c)}
+                                  >
+                                    {/* Pencil plutôt que ChevronDown : l'ancienne
+                                        icône avait la même forme que la flèche
+                                        d'expand inline et créait de l'ambiguïté
+                                        (« déplier » vs « éditer »). Le crayon
+                                        reste l'affordance la plus universelle
+                                        pour "modifier les paramètres". */}
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
                                   <Link
                                     href={`/parcours/${parcoursSlug}/chapters/${c.slug}`}
-                                    className="flex items-center gap-3 hover:underline"
+                                    // No `hover:underline` here : it used to
+                                    // decorate the thumbnail / Masqué badge /
+                                    // chapter title together, which felt noisy
+                                    // and made the badge look clickable for
+                                    // navigation. The whole-row violet hover
+                                    // already conveys "this is interactive".
+                                    className="flex items-center gap-3"
                                   >
-                                    <span className="text-muted-foreground font-mono text-xs">{c.order}.</span>
                                     {c.cardImage && (
                                       // Small thumbnail of the chapter card image — gives the
                                       // author a visual marker to spot a chapter at a glance
@@ -842,21 +871,6 @@ export function ChapterList({
                                       </span>
                                     )}
                                   </Link>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    title="Éditer les paramètres du chapitre (titre, slug, section, carte, tags…)"
-                                    disabled={isPending}
-                                    onClick={() => startEdit(c)}
-                                  >
-                                    {/* Pencil plutôt que ChevronDown : l'ancienne
-                                        icône avait la même forme que la flèche
-                                        d'expand inline et créait de l'ambiguïté
-                                        (« déplier » vs « éditer »). Le crayon
-                                        reste l'affordance la plus universelle
-                                        pour "modifier les paramètres". */}
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
                                   {/* Click on the slug zone fires the SAME smart
                                       action as Enter / → on a selected chapter
                                       row : collapsed → expand, expanded → open
