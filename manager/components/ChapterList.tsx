@@ -332,14 +332,20 @@ export function ChapterList({
   // Smart action dispatcher : produces the right behaviour for a given
   // NavItem. Reused by the keyboard handler (Enter / →) AND the slug
   // click handler so the three affordances are always in sync.
-  //   - collapsed chapter   → toggle expand
-  //   - expanded chapter    → open inline edit form
+  //   - collapsed chapter   → toggle expand (reveal blocks preview)
+  //   - expanded chapter    → navigate into the chapter page (where the
+  //                           blocks are actually edited). The inline
+  //                           preview is just a peek ; once the editor
+  //                           has it open and confirms intent, the
+  //                           natural next step is to dive in. The
+  //                           pencil ✎ next to the title remains the
+  //                           explicit "edit metadata" affordance.
   //   - block (any state)   → navigate to its block editor
   const dispatchSmartAction = useCallback(
     (item: NavItem) => {
       if (item.kind === 'chapter') {
         if (expandedChapterIds.has(item.chapter.id)) {
-          startEdit(item.chapter);
+          router.push(`/parcours/${parcoursSlug}/chapters/${item.chapter.slug}`);
         } else {
           toggleExpand(item.chapter.id);
         }
@@ -887,7 +893,7 @@ export function ChapterList({
                                     className="flex flex-1 items-center gap-3 text-left"
                                     title={
                                       expandedChapterIds.has(c.id)
-                                        ? 'Éditer les paramètres du chapitre'
+                                        ? 'Entrer dans le chapitre pour éditer ses blocs'
                                         : 'Déplier ce chapitre pour voir ses blocs'
                                     }
                                     disabled={isPending}
