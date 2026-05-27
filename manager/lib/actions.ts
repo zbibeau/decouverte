@@ -48,11 +48,17 @@ const getParcoursVersionInfo = cache(
     draftVersionId: string | null;
     draftVersionNumber: number | null;
     publishedVersionNumber: number | null;
+    /** `navbar_variants` JSON column piggy-backed on the parcours
+     *  select. Exposed here so `getNavbarVariants` reads from the
+     *  cached result instead of issuing its own roundtrip — saves
+     *  one query on every page that pulls navbar variants
+     *  (chapters list, block list, library, etc.). */
+    navbarVariants: NavbarVariant[];
   }> => {
     const supabase = await createClient();
     const { data: parcours } = await supabase
       .from('parcours')
-      .select('id, published_version_id')
+      .select('id, published_version_id, navbar_variants')
       .eq('slug', parcoursSlug)
       .maybeSingle();
     if (!parcours?.id) {
@@ -62,34 +68,61 @@ const getParcoursVersionInfo = cache(
         draftVersionId: null,
         draftVersionNumber: null,
         publishedVersionNumber: null,
+        navbarVariants: [],
       };
     }
-    const { data: draft } = await supabase
-      .from('parcours_version')
-      .select('id, version_number')
-      .eq('parcours_id', parcours.id)
-      .eq('status', 'draft')
-      .order('version_number', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    let publishedVersionNumber: number | null = null;
-    if (parcours.published_version_id) {
-      const { data: pub } = await supabase
+    // Draft + published version_number fetched in parallel — they are
+    // independent queries that previously ran sequentially.
+    const [draftRes, pubRes] = await Promise.all([
+      supabase
         .from('parcours_version')
-        .select('version_number')
-        .eq('id', parcours.published_version_id)
-        .maybeSingle();
-      publishedVersionNumber = pub?.version_number ?? null;
-    }
+        .select('id, version_number')
+        .eq('parcours_id', parcours.id)
+        .eq('status', 'draft')
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      parcours.published_version_id
+        ? supabase
+            .from('parcours_version')
+            .select('version_number')
+            .eq('id', parcours.published_version_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const rawNavbarVariants = (parcours as { navbar_variants?: unknown }).navbar_variants;
     return {
       parcoursId: parcours.id,
       publishedVersionId: parcours.published_version_id ?? null,
-      draftVersionId: draft?.id ?? null,
-      draftVersionNumber: draft?.version_number ?? null,
-      publishedVersionNumber,
+      draftVersionId: draftRes.data?.id ?? null,
+      draftVersionNumber: draftRes.data?.version_number ?? null,
+      publishedVersionNumber: (pubRes.data as { version_number?: number } | null)?.version_number ?? null,
+      navbarVariants: Array.isArray(rawNavbarVariants) ? (rawNavbarVariants as NavbarVariant[]) : [],
     };
   },
 );
+
+/**
+ * Public, lightweight accessor : returns the parcours id + the active
+ * editing version id (draft or published) in one call. Used by page
+ * server components that need both, so they can `Promise.all` other
+ * queries without first awaiting a dedicated `parcours.select('id')`
+ * roundtrip — and so that they hit the `React.cache` shared with
+ * the layout's other consumers.
+ *
+ * `'use server'` files only allow async function exports, so this is
+ * a thin wrapper around the cached `getParcoursVersionInfo`.
+ */
+export async function resolveParcoursIds(parcoursSlug: string): Promise<{
+  parcoursId: string | null;
+  versionId: string | null;
+}> {
+  const info = await getParcoursVersionInfo(parcoursSlug);
+  return {
+    parcoursId: info.parcoursId,
+    versionId: info.draftVersionId ?? info.publishedVersionId,
+  };
+}
 
 /**
  * Return the id of the version the manager is currently editing. Prefers the
@@ -2190,10 +2223,15 @@ export interface NavbarVariant {
  * any server action / page loader.
  */
 export async function getNavbarVariants(parcoursSlug: string): Promise<NavbarVariant[]> {
-  const supabase = await createClient();
-  const { data } = await supabase.from('parcours').select('navbar_variants').eq('slug', parcoursSlug).maybeSingle();
-  const raw = (data as { navbar_variants?: unknown } | null)?.navbar_variants;
-  return Array.isArray(raw) ? (raw as NavbarVariant[]) : [];
+  // Reads from `getParcoursVersionInfo` which is `React.cache`-d AND
+  // now selects `navbar_variants` along with the rest of the parcours
+  // row. On pages where `getParcoursVersionInfo` has already been
+  // resolved (anything under `parcours/[slug]/` — the layout calls
+  // it via DraftStatusBar), this is a zero-roundtrip lookup. On the
+  // standalone `/parcours/[slug]/navbars` page, it's still a single
+  // query (the cached version info), down from a dedicated SELECT.
+  const info = await getParcoursVersionInfo(parcoursSlug);
+  return info.navbarVariants;
 }
 
 function normalizeVariantKey(input: string): string {

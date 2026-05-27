@@ -12,8 +12,8 @@ import { VariableHeader } from '@/components/variables/VariableHeader';
 import {
   createVariable,
   deleteVariable,
-  getEditingVersionId,
   renameVariable,
+  resolveParcoursIds,
   updateVariableHubspotMapping,
   updateVariableOptions,
 } from '@/lib/actions';
@@ -47,13 +47,32 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
   const slug = decodeURIComponent(raw.slug);
   const supabase = await createClient();
 
-  const { data: parcours } = await supabase.from('parcours').select('id').eq('slug', slug).maybeSingle();
+  // Resolve parcoursId + active versionId in ONE call (cached via
+  // React.cache in `getParcoursVersionInfo`). Drops the previous
+  // `select parcours.id` query AND the sequential `await
+  // getEditingVersionId(slug)` further down — both are now folded
+  // into a single shared lookup.
+  const { parcoursId, versionId } = await resolveParcoursIds(slug);
 
-  const { data: variables } = await supabase
-    .from('variable')
-    .select('id, key, label, type, options, hubspot_mapping')
-    .eq('parcours_id', parcours?.id)
-    .order('key', { ascending: true });
+  // Variables + per-version blocks fetched in parallel (independent
+  // queries that previously ran sequentially). Halves the wall time
+  // of this page on large parcours.
+  const [variablesRes, blocksRes] = await Promise.all([
+    parcoursId
+      ? supabase
+          .from('variable')
+          .select('id, key, label, type, options, hubspot_mapping')
+          .eq('parcours_id', parcoursId)
+          .order('key', { ascending: true })
+      : Promise.resolve({ data: null }),
+    versionId
+      ? supabase
+          .from('block')
+          .select('id, type, payload, chapter:chapter_id (slug)')
+          .eq('chapter.version_id', versionId)
+      : Promise.resolve({ data: null }),
+  ]);
+  const variables = variablesRes.data;
 
   // Aggregate variable-usage counts across the parcours's active version
   // (draft if any, else published). For each block we walk into nested
@@ -63,12 +82,8 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
   // to each variable header in the list below.
   const usage = new Map<string, { count: number; sampleChapterSlug: string | null }>();
   {
-    const versionId = await getEditingVersionId(slug);
     if (versionId) {
-      const { data: blocks } = await supabase
-        .from('block')
-        .select('id, type, payload, chapter:chapter_id (slug)')
-        .eq('chapter.version_id', versionId);
+      const blocks = blocksRes.data;
       for (const row of blocks ?? []) {
         const block: ContentBlock = {
           type: row.type,
