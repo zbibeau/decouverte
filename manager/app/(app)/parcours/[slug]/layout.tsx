@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { DraftStatusBar } from '@/components/DraftStatusBar';
 import { ParcoursTabs } from '@/components/ParcoursTabs';
@@ -110,7 +111,24 @@ export default async function ParcoursLayout({
             chapter cards (z-10) and below the global CommandPalette
             (z-50). */}
         <div className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 -mx-4 px-4 py-2 backdrop-blur">
-          <DraftStatusBar parcoursSlug={slug} />
+          {/* DraftStatusBar is an async Server Component that hits
+              multiple Supabase queries (draft diffs, deleted count,
+              tag review summary). Wrapping it in Suspense lets the
+              REST of the page (chapter list, block editor) stream
+              independently — the editor sees the layout + page in
+              ~100ms instead of waiting 500-2000ms for the bar to
+              finish its queries. The fallback is a slim placeholder
+              that preserves the bar's vertical space so the page
+              doesn't reflow when the bar resolves. */}
+          <Suspense
+            fallback={
+              <div className="text-muted-foreground rounded-md border border-dashed px-4 py-2 text-xs">
+                Chargement du statut…
+              </div>
+            }
+          >
+            <DraftStatusBar parcoursSlug={slug} />
+          </Suspense>
         </div>
         {children}
       </div>

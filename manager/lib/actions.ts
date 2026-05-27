@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
 
 import { BLANK_PAYLOADS } from '@/lib/blockDefaults';
 import { extractBlockSearchTextWeighted, harvestNestedTagIds } from '@/lib/blockSearch';
@@ -24,54 +25,71 @@ async function getPublishedVersionId(parcoursSlug: string): Promise<string | nul
   return data?.published_version_id ?? null;
 }
 
-/** Fetch parcours id + published_version_id + current draft (if any) in one shot. */
-async function getParcoursVersionInfo(parcoursSlug: string): Promise<{
-  parcoursId: string | null;
-  publishedVersionId: string | null;
-  draftVersionId: string | null;
-  draftVersionNumber: number | null;
-  publishedVersionNumber: number | null;
-}> {
-  const supabase = await createClient();
-  const { data: parcours } = await supabase
-    .from('parcours')
-    .select('id, published_version_id')
-    .eq('slug', parcoursSlug)
-    .maybeSingle();
-  if (!parcours?.id) {
-    return {
-      parcoursId: null,
-      publishedVersionId: null,
-      draftVersionId: null,
-      draftVersionNumber: null,
-      publishedVersionNumber: null,
-    };
-  }
-  const { data: draft } = await supabase
-    .from('parcours_version')
-    .select('id, version_number')
-    .eq('parcours_id', parcours.id)
-    .eq('status', 'draft')
-    .order('version_number', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  let publishedVersionNumber: number | null = null;
-  if (parcours.published_version_id) {
-    const { data: pub } = await supabase
-      .from('parcours_version')
-      .select('version_number')
-      .eq('id', parcours.published_version_id)
+/**
+ * Fetch parcours id + published_version_id + current draft (if any)
+ * in one shot.
+ *
+ * Wrapped in `React.cache` so multiple call sites within the SAME
+ * server-component render share the result — this is critical
+ * because `getParcoursVersionInfo` is the entry point of nearly
+ * every other action (getDraftStatus, getDraftChapterDiffs,
+ * getDraftBlockDiffs, getDraftTagReviewSummary, getEditingVersionId
+ * …) and a typical page render used to hit it 6+ times. With the
+ * cache, the underlying 3 queries fire ONCE per request even with
+ * dozens of consumers. The cache scope is per-request — distinct
+ * requests still see fresh data.
+ */
+const getParcoursVersionInfo = cache(
+  async (
+    parcoursSlug: string,
+  ): Promise<{
+    parcoursId: string | null;
+    publishedVersionId: string | null;
+    draftVersionId: string | null;
+    draftVersionNumber: number | null;
+    publishedVersionNumber: number | null;
+  }> => {
+    const supabase = await createClient();
+    const { data: parcours } = await supabase
+      .from('parcours')
+      .select('id, published_version_id')
+      .eq('slug', parcoursSlug)
       .maybeSingle();
-    publishedVersionNumber = pub?.version_number ?? null;
-  }
-  return {
-    parcoursId: parcours.id,
-    publishedVersionId: parcours.published_version_id ?? null,
-    draftVersionId: draft?.id ?? null,
-    draftVersionNumber: draft?.version_number ?? null,
-    publishedVersionNumber,
-  };
-}
+    if (!parcours?.id) {
+      return {
+        parcoursId: null,
+        publishedVersionId: null,
+        draftVersionId: null,
+        draftVersionNumber: null,
+        publishedVersionNumber: null,
+      };
+    }
+    const { data: draft } = await supabase
+      .from('parcours_version')
+      .select('id, version_number')
+      .eq('parcours_id', parcours.id)
+      .eq('status', 'draft')
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    let publishedVersionNumber: number | null = null;
+    if (parcours.published_version_id) {
+      const { data: pub } = await supabase
+        .from('parcours_version')
+        .select('version_number')
+        .eq('id', parcours.published_version_id)
+        .maybeSingle();
+      publishedVersionNumber = pub?.version_number ?? null;
+    }
+    return {
+      parcoursId: parcours.id,
+      publishedVersionId: parcours.published_version_id ?? null,
+      draftVersionId: draft?.id ?? null,
+      draftVersionNumber: draft?.version_number ?? null,
+      publishedVersionNumber,
+    };
+  },
+);
 
 /**
  * Return the id of the version the manager is currently editing. Prefers the
@@ -469,27 +487,70 @@ export async function getDraftTagReviewSummary(parcoursSlug: string): Promise<Dr
     }
   }
 
-  // 4. Block rows : we need per-block diff status. `getDraftBlockDiffs`
-  //    is per-chapter, so we call it once per reviewable chapter (the
-  //    chapters that are themselves new/modified — block edits land
-  //    there or in pristine chapters whose blocks happen to differ).
-  //    Edge case : a pristine chapter whose block payload differs
-  //    from published. Cheap to cover : fetch ALL draft blocks and
-  //    check each against `getDraftBlockDiffs`. The function caches
-  //    nothing but is small.
+  // 4. Block rows : per-block diff status, computed in BATCH.
+  //    Previous implementation called `getDraftBlockDiffs` in a
+  //    sequential loop — 7 queries × N chapters = a multi-second wall
+  //    on parcours with even a modest draft. We now mirror the
+  //    pattern of `getDraftChapterDiffs` : fetch every draft block,
+  //    every published block of the matching published chapters in
+  //    one shot, and compute the diff in memory by keying published
+  //    blocks on `chapter_slug::order`.
   const allDraftChapterIds = draftChapters.map((c) => c.id as string);
   const blockReview: DraftTagReviewBlock[] = [];
   if (allDraftChapterIds.length > 0) {
     const { data: draftBlocks } = await supabase
       .from('block')
-      .select('id, type, payload, chapter_id')
+      .select('id, type, payload, chapter_id, "order"')
       .in('chapter_id', allDraftChapterIds)
       .is('parent_block_id', null);
 
-    // Per-block diff status — batch by chapter to amortise the calls.
-    const diffsByChapter = new Map<string, Map<string, 'new' | 'modified' | 'pristine'>>();
-    for (const chapterId of allDraftChapterIds) {
-      diffsByChapter.set(chapterId, await getDraftBlockDiffs(parcoursSlug, chapterId));
+    // Published-side lookup, only when a published version exists. We
+    // pair each published chapter to its draft twin by `slug` (the
+    // stable identifier across versions) and key published blocks by
+    // `${slug}::${order}` so the diff is robust to id changes.
+    const pubBlockByKey = new Map<string, { type: string; payload: unknown }>();
+    if (info.publishedVersionId) {
+      const draftSlugs = draftChapters.map((c) => c.slug as string);
+      const { data: pubChapters } = await supabase
+        .from('chapter')
+        .select('id, slug')
+        .eq('version_id', info.publishedVersionId)
+        .in('slug', draftSlugs);
+      const pubChapterIds = (pubChapters ?? []).map((c) => c.id as string);
+      const pubChapterIdToSlug = new Map<string, string>();
+      for (const c of pubChapters ?? []) pubChapterIdToSlug.set(c.id as string, c.slug as string);
+      if (pubChapterIds.length > 0) {
+        const { data: pubBlocks } = await supabase
+          .from('block')
+          .select('chapter_id, type, payload, "order"')
+          .in('chapter_id', pubChapterIds)
+          .is('parent_block_id', null);
+        for (const pb of pubBlocks ?? []) {
+          const slug = pubChapterIdToSlug.get(pb.chapter_id as string);
+          if (!slug) continue;
+          pubBlockByKey.set(`${slug}::${pb.order}`, { type: pb.type as string, payload: pb.payload });
+        }
+      }
+    }
+
+    // Compute per-block diff status in memory. `new` when no published
+    // twin exists at the (slug, order) coordinate ; `modified` when
+    // type or payload differs ; `pristine` otherwise. Comparison logic
+    // mirrors `getDraftBlockDiffs` so the badge / counter shown
+    // elsewhere stays consistent.
+    function blockDiffStatus(b: {
+      type: unknown;
+      payload: unknown;
+      order: unknown;
+      chapter_id: unknown;
+    }): 'new' | 'modified' | 'pristine' {
+      const meta = chapterIdToMeta.get(b.chapter_id as string);
+      if (!meta) return 'pristine';
+      const pb = pubBlockByKey.get(`${meta.slug}::${b.order}`);
+      if (!pb) return 'new';
+      if (pb.type !== b.type) return 'modified';
+      if (JSON.stringify(pb.payload) !== JSON.stringify(b.payload)) return 'modified';
+      return 'pristine';
     }
 
     // Block tags : top-level via block_tag + nested via payload.tagIds.
@@ -536,7 +597,7 @@ export async function getDraftTagReviewSummary(parcoursSlug: string): Promise<Dr
     }
 
     for (const b of draftBlocks ?? []) {
-      const status = diffsByChapter.get(b.chapter_id as string)?.get(b.id as string);
+      const status = blockDiffStatus(b);
       if (status !== 'new' && status !== 'modified') continue;
       const meta = chapterIdToMeta.get(b.chapter_id as string);
       if (!meta) continue;
