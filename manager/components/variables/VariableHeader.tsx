@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useUnsavedChangesWarning } from '@/lib/useUnsavedChangesWarning';
 
 interface Props {
   variableId: string;
@@ -32,6 +33,10 @@ export function VariableHeader({ variableId, initialKey, initialLabel, type, enu
   const [keyInput, setKeyInput] = useState(initialKey);
   const [labelInput, setLabelInput] = useState(initialLabel);
   const [isPending, startTransition] = useTransition();
+
+  // Warn on tab-close / refresh while the rename form is open AND a field
+  // actually changed (no false positive on merely opening the editor).
+  useUnsavedChangesWarning(editing && (keyInput.trim() !== initialKey || labelInput.trim() !== initialLabel));
 
   function startEdit() {
     setKeyInput(initialKey);
@@ -84,7 +89,7 @@ export function VariableHeader({ variableId, initialKey, initialLabel, type, enu
         </span>
         {type === 'enum' && enumPreview && <span className="text-muted-foreground ml-2 text-xs">{enumPreview}</span>}
         <Button variant="ghost" size="sm" onClick={startEdit} title="Renommer (clé + label)">
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil className="size-3.5" />
         </Button>
       </>
     );
@@ -108,10 +113,10 @@ export function VariableHeader({ variableId, initialKey, initialLabel, type, enu
         {type}
       </span>
       <Button variant="ghost" size="sm" onClick={commit} disabled={isPending} title="Enregistrer">
-        <Check className="h-3.5 w-3.5 text-emerald-600" />
+        <Check className="size-3.5 text-emerald-600" />
       </Button>
       <Button variant="ghost" size="sm" onClick={cancel} disabled={isPending} title="Annuler">
-        <X className="h-3.5 w-3.5" />
+        <X className="size-3.5" />
       </Button>
     </>
   );

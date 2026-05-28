@@ -29,6 +29,7 @@ import { loadBlockTags } from '@/lib/tags';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { FIELD_RAIL_COLORS } from '@/lib/fieldRailColors';
 import { useBackArrowToParent } from '@/lib/useListKeyboardNav';
+import { useUnsavedChangesWarning } from '@/lib/useUnsavedChangesWarning';
 import { extractUsedVariableKeys } from '@/lib/usedVariables';
 
 interface Props {
@@ -445,6 +446,10 @@ export function BlockEditor(props: Props) {
   }
 
   const isDirty = status === 'dirty' || status === 'pending' || status === 'error';
+  // Warn on tab-close / refresh while there are unsaved block edits — the
+  // autosave is debounced, so a quick close can race it and lose the last
+  // keystrokes. (In-app navigation is already guarded separately.)
+  useUnsavedChangesWarning(isDirty);
 
   // ---- Click-to-edit from the preview iframe -----------------------------
   // When the user clicks a block in the preview, we want to switch the
