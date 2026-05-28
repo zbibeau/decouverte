@@ -10,6 +10,7 @@ import { useI18n } from '../../../../lang/useI18n';
 import { Button } from '../../../atoms/Button';
 import { Icon } from '../../../atoms/Icon';
 import { Title } from '../../../primitives/Title';
+import { isPreviewMode } from '../utils/previewMode';
 
 const MIN_WINDOW_HEIGHT = 600;
 const MIN_WINDOW_WIDTH = 600;
@@ -32,6 +33,21 @@ export const MobileModal = () => {
 
   createEffect(() => {
     if (isModalClosedByUser()) {
+      return;
+    }
+
+    // Preview iframe (manager) : the viewport is intentionally narrow
+    // (~560px) because it's a scaled-down DESKTOP preview, not a real
+    // mobile device. The width-based trigger below would always fire
+    // here — showing the "use a computer" modal as a false positive,
+    // AND producing a visible content↔modal scroll jump on every load
+    // (the modal mounts after `createWindowSize` measures post-hydration,
+    // and preview mode bypasses the localStorage opt-out so it never
+    // stays dismissed). Never show the modal in preview.
+    if (isPreviewMode()) {
+      if (isModalDisplayed()) {
+        setIsModalDisplayed(false);
+      }
       return;
     }
 
