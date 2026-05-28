@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { AddActionsProvider } from '@/components/blocks/AddActionsContext';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ConfirmDialogProvider } from '@/components/ConfirmDialog';
+import { ScrollResetOnNavigate } from '@/components/ScrollResetOnNavigate';
 import { Sidebar } from '@/components/Sidebar';
 import { createClient } from '@/lib/supabase/server';
 
@@ -60,6 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <ConfirmDialogProvider>
       <AddActionsProvider>
         <div className="flex min-h-screen">
+          <ScrollResetOnNavigate />
           <Sidebar email={user.email ?? ''} parcours={parcoursItems} />
           <main className="flex-1 overflow-y-auto">{children}</main>
           <CommandPalette />
