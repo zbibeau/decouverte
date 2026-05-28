@@ -412,6 +412,13 @@ export function ChapterEditor(props: Props) {
           </p>
         </div>
 
+        {/* CTA de création en tête de zone (cohérent avec « Ajouter un
+            chapitre » / « Créer une variable ») : bouton pleine largeur qui
+            déplie le sélecteur de types de blocs. */}
+        <ExpandableCreatePanel label="Ajouter un bloc">
+          <AddBlockForm insertSampleAction={handleInsertSample} />
+        </ExpandableCreatePanel>
+
         {/* Banner shown only when ?q=<query> is in the URL (i.e. the
             user landed here from a ⌘K search). Surfaces the original
             query + match count + a clear button. */}
@@ -594,10 +601,6 @@ export function ChapterEditor(props: Props) {
             )}
           </CardContent>
         </Card>
-
-        <ExpandableCreatePanel label="Ajouter un bloc">
-          <AddBlockForm insertSampleAction={handleInsertSample} />
-        </ExpandableCreatePanel>
       </div>
 
       <div className="hidden lg:block">

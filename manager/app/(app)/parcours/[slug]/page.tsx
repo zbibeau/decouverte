@@ -204,6 +204,12 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
 
   return (
     <div className="space-y-6">
+      {/* CTA de création en tête de liste (cohérent avec Variables / Blocs) :
+          bouton pleine largeur qui déplie le formulaire d'ajout de chapitre. */}
+      <ExpandableCreatePanel label="Ajouter un chapitre">
+        <CreateChapterForm createAction={createChapterAction} existingSlugs={(chapters ?? []).map((c) => c.slug)} />
+      </ExpandableCreatePanel>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -251,10 +257,6 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
           />
         </CardContent>
       </Card>
-
-      <ExpandableCreatePanel label="Ajouter un chapitre">
-        <CreateChapterForm createAction={createChapterAction} existingSlugs={(chapters ?? []).map((c) => c.slug)} />
-      </ExpandableCreatePanel>
     </div>
   );
 }
