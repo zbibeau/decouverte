@@ -45,6 +45,7 @@ import { Input } from '@/components/ui/Input';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
+import { useUnsavedChangesWarning } from '@/lib/useUnsavedChangesWarning';
 import { uploadImageDirect } from '@/lib/uploadImageClient';
 import { cn } from '@/lib/utils';
 
@@ -286,6 +287,35 @@ export function ChapterList({
   const [optimisticChapters, setOptimisticChapters] = useState<ChapterRow[] | null>(null);
   const expectedOrderRef = useRef<string[] | null>(null);
   const effectiveChapters = optimisticChapters ?? chapters;
+
+  // Warn before tab-close / refresh when the inline chapter edit form has
+  // genuinely unsaved changes (compared field-by-field to the original, so
+  // merely opening the form doesn't trigger the prompt).
+  const editIsDirty = useMemo(() => {
+    if (editingId === null) return false;
+    const orig = effectiveChapters.find((c) => c.id === editingId);
+    if (!orig) return false;
+    return (
+      editTitle !== orig.title ||
+      editSlug !== orig.slug ||
+      editSectionLabel !== (orig.sectionLabel ?? '') ||
+      editSectionOrder !== (orig.sectionOrder == null ? '' : String(orig.sectionOrder)) ||
+      editCardImage !== (orig.cardImage ?? '') ||
+      editCardShortTitle !== (orig.cardShortTitle ?? '') ||
+      editHiddenFromNav !== (orig.hiddenFromNav ?? false)
+    );
+  }, [
+    editingId,
+    effectiveChapters,
+    editTitle,
+    editSlug,
+    editSectionLabel,
+    editSectionOrder,
+    editCardImage,
+    editCardShortTitle,
+    editHiddenFromNav,
+  ]);
+  useUnsavedChangesWarning(editIsDirty);
 
   // Flat list of keyboard-navigable rows : chapters first, with their
   // blocks interleaved RIGHT AFTER the chapter when expanded. The
@@ -902,25 +932,27 @@ export function ChapterList({
                                       ({c.slug})
                                     </code>
                                     <DiffBadge diff={c.diff} />
-                                    <span className="ml-auto" />
+                                    {/* "Sans tag" chip ramené À L'INTÉRIEUR du
+                                        bouton smart-action : sur un chapitre
+                                        plié l'utilisateur s'attend à ce que
+                                        toute la zone slug + chip réagisse
+                                        comme Entrée (déplier). Avant, le chip
+                                        vivait hors du bouton donc un clic
+                                        dessus était inerte. `ml-auto` le
+                                        renvoie tout à droite, `mr-3` préserve
+                                        l'écart visuel avec le chevron qui
+                                        suit (gap-2 du parent flex + 12 px
+                                        ≈ même rendu qu'avant). */}
+                                    {(c.untaggedBlockCount ?? 0) > 0 && (
+                                      <span
+                                        className="ml-auto mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                                        title={`${c.untaggedBlockCount} bloc(s) de ce chapitre n'ont pas encore de tag de maintenance`}
+                                      >
+                                        <span aria-hidden="true">🏷</span>
+                                        <span>{c.untaggedBlockCount} sans tag</span>
+                                      </span>
+                                    )}
                                   </button>
-                                  {/* "Sans tag" chip pinned to the right, OUTSIDE
-                                      the Link so it doesn't trigger navigation
-                                      (clicking the chip would otherwise feel
-                                      like a filter, not a navigation). The mr-3
-                                      keeps it visually separated from the
-                                      expand chevron so the editor doesn't
-                                      target the chip when aiming for the
-                                      expand affordance. */}
-                                  {(c.untaggedBlockCount ?? 0) > 0 && (
-                                    <span
-                                      className="mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
-                                      title={`${c.untaggedBlockCount} bloc(s) de ce chapitre n'ont pas encore de tag de maintenance`}
-                                    >
-                                      <span aria-hidden="true">🏷</span>
-                                      <span>{c.untaggedBlockCount} sans tag</span>
-                                    </span>
-                                  )}
                                   {/* Toggle inline expand. The > arrow used to
                                       navigate to the chapter edit page (which is
                                       what the chapter title link still does), but

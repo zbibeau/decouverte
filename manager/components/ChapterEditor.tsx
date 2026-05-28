@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { extractBlockSearchTextWeighted, extractSnippet } from '@/lib/blockSearch';
+import { FamilyIcon } from '@/lib/familyIcons';
 import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
 import { summarizeBlock } from '@/lib/blockSummary';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
@@ -280,11 +281,26 @@ export function ChapterEditor(props: Props) {
 
   // Auto-scroll the list ONLY when the change came from a click. Preview
   // scrolls just update the highlight without grabbing focus.
+  //
+  // The FIRST run (initial mount) is skipped on purpose : arriving on the
+  // page should land at the top (that's `ScrollResetOnNavigate`'s job),
+  // not auto-scroll to whichever block is selected by default. Because
+  // ChapterEditor mounts AFTER the layout-level scroll reset has already
+  // run, an unguarded `scrollIntoView` here would override it and leave
+  // the editor "a bit too low / too far right" on every navigation. We
+  // only want this scroll on genuine in-session selection changes.
+  const didInitialAutoScrollRef = useRef(false);
   useEffect(() => {
+    if (!didInitialAutoScrollRef.current) {
+      didInitialAutoScrollRef.current = true;
+      return;
+    }
     if (!selectedBlockId || !listRef.current) return;
     if (lastSourceRef.current === 'preview') return;
     const row = listRef.current.querySelector<HTMLElement>(`[data-row-id="${selectedBlockId}"]`);
-    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // `inline: 'nearest'` keeps the horizontal axis put — only the
+    // vertical position is adjusted to reveal the row.
+    row?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   }, [selectedBlockId]);
 
   // When the user lands here from a ⌘K search, scroll the first
@@ -372,8 +388,16 @@ export function ChapterEditor(props: Props) {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr,560px]">
-      <div className="space-y-6">
+    // `minmax(0,1fr)` rather than `1fr` for the left track : a bare `1fr`
+    // grid track has an implicit `min-width: auto`, so it refuses to
+    // shrink below its content's min-content width — a long block summary
+    // or the "Ajouter un bloc" row then forces the whole grid wider than
+    // the viewport, producing a horizontal scrollbar (the editor arrived
+    // scrolled "a bit too far right"). `minmax(0,1fr)` lets the track
+    // shrink to 0 and the block rows (which already `truncate`) handle
+    // the overflow gracefully.
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),560px]">
+      <div className="min-w-0 space-y-6">
         <div>
           <Link href={`/parcours/${props.parcoursSlug}`}>
             <Button variant="outline" size="sm" className="gap-1.5">
@@ -402,7 +426,10 @@ export function ChapterEditor(props: Props) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Blocs</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <FamilyIcon family="block" className="h-4 w-4" />
+              Blocs
+            </CardTitle>
             <p className="text-muted-foreground text-xs">
               {props.blocks.length} bloc(s). Clique sur un bloc pour le centrer dans la preview, sur le crayon pour
               l&apos;éditer.
