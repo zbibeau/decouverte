@@ -14,6 +14,13 @@ import { SectionNextButton } from '../components/SectionNextButton';
 import { useHome } from '../context/HomeContext';
 import { HOME_STEPS, HOME_STEPS_KEYS } from '../utils/HomeSteps';
 import { HOME_SECTION_PROPS } from '../utils/HomeUtils';
+import {
+  CONSENT_ENABLED,
+  CONSENT_LINK_TEXT,
+  CONSENT_NOTICE,
+  CONSENT_STORAGE_KEY,
+  PRIVACY_POLICY_URL,
+} from '../utils/privacyConsent';
 
 // ============================================================
 // Data-driven form block
@@ -63,7 +70,18 @@ export const RenderFormBlock: Component<{
   navbar?: import('solid-js').JSX.Element;
 }> = (props) => {
   const [mounted, setMounted] = createSignal(false);
-  onMount(() => setMounted(true));
+  // RGPD consent (cf. ../utils/privacyConsent). Mémorisé en localStorage
+  // pour ne pas re-demander à un visiteur qui revient / enchaîne plusieurs
+  // formulaires.
+  const [consent, setConsent] = createSignal(false);
+  onMount(() => {
+    setMounted(true);
+    try {
+      if (localStorage.getItem(CONSENT_STORAGE_KEY) === 'true') setConsent(true);
+    } catch {
+      /* localStorage indisponible */
+    }
+  });
 
   const { data: existingData, setData, chapters: homeChapters, currentStep: homeCurrentStep } = useHome();
 
@@ -173,6 +191,35 @@ export const RenderFormBlock: Component<{
                 </div>
               </Card>
 
+              {/* Consentement RGPD — requis avant de soumettre (= collecter
+                  les données). Texte + lien configurés dans
+                  ../utils/privacyConsent (placeholders À REMPLACER). */}
+              <Show when={CONSENT_ENABLED}>
+                <label class="flex items-start gap-2 px-1 text-xs text-dark-700">
+                  <input
+                    type="checkbox"
+                    checked={consent()}
+                    onChange={(e) => {
+                      const v = e.currentTarget.checked;
+                      setConsent(v);
+                      try {
+                        if (v) localStorage.setItem(CONSENT_STORAGE_KEY, 'true');
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    class="mt-0.5 h-4 w-4 shrink-0"
+                    aria-label="Consentement au traitement des données"
+                  />
+                  <span>
+                    {CONSENT_NOTICE}{' '}
+                    <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" class="underline">
+                      {CONSENT_LINK_TEXT}
+                    </a>
+                  </span>
+                </label>
+              </Show>
+
               <div class="flex justify-end pt-6">
                 <div>
                   <SectionNextButton
@@ -229,7 +276,7 @@ export const RenderFormBlock: Component<{
                         props.sectionProps.setCurrentStep(targetSlug);
                       }, 50);
                     }}
-                    disabled={form.invalid}
+                    disabled={form.invalid || (CONSENT_ENABLED && !consent())}
                   />
                 </div>
               </div>
