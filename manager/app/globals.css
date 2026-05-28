@@ -19,11 +19,24 @@
     inset: 0 0 auto 0;
     height: 320px;
     pointer-events: none;
-    background: radial-gradient(
-      80% 100% at 50% 0%,
-      rgba(180, 128, 255, 0.16) 0%,
-      rgba(255, 255, 255, 0) 70%
-    );
+    background: radial-gradient(80% 100% at 50% 0%, rgba(180, 128, 255, 0.16) 0%, rgba(255, 255, 255, 0) 70%);
     z-index: -1;
+  }
+}
+
+@layer components {
+  /* Command palette (⌘K) — make the result FAMILIES ("Tags", "Chapitres",
+     "Blocs", "Variables"…) read at a glance. cmdk renders no default
+     styles, so the headings looked like plain text. We give each one a
+     bold uppercase section label + a hairline separator above every
+     family but the first. Scoped to `.mfm-palette` (the Command root)
+     so it can never leak to another cmdk instance. cmdk emits the
+     heading as `[cmdk-group-heading]` and each family as `[cmdk-group]`. */
+  .mfm-palette [cmdk-group-heading] {
+    @apply text-muted-foreground px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wider;
+  }
+
+  .mfm-palette [cmdk-group]:not(:first-child) {
+    @apply border-border mt-1.5 border-t pt-1.5;
   }
 }

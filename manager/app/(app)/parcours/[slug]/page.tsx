@@ -14,6 +14,7 @@ import {
 } from '@/lib/actions';
 import { harvestNestedTagIds } from '@/lib/blockSearch';
 import { summarizeBlock } from '@/lib/blockSummary';
+import { FamilyIcon } from '@/lib/familyIcons';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ChapterListPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -204,7 +205,10 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Chapitres</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <FamilyIcon family="chapter" className="h-4 w-4" />
+            Chapitres
+          </CardTitle>
           <p className="text-muted-foreground text-xs">
             {(chapters ?? []).length} chapitre(s)
             {totalUntaggedBlocks > 0 && (

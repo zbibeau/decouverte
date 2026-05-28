@@ -1,11 +1,12 @@
 'use client';
 
-import { BookOpen, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { SignOutButton } from '@/components/SignOutButton';
+import { FamilyIcon } from '@/lib/familyIcons';
 import { pastelForString, safeThemeColor } from '@/lib/pastelColors';
 import { cn } from '@/lib/utils';
 
@@ -148,12 +149,10 @@ export function Sidebar({ email, parcours }: Props) {
                     background: safeThemeColor(p.themeColor ?? pastelForString(p.slug)),
                   }}
                 />
-                <BookOpen
-                  className={cn(
-                    'h-4 w-4',
-                    isActive ? 'text-brand-primary-700' : 'text-muted-foreground group-hover:text-brand-primary-600',
-                  )}
-                />
+                {/* Famille « Parcours » : même Book rosé que la ⌘K, repère
+                    visuel cohérent. L'état actif reste signalé par le fond
+                    bg-brand-primary-100 + la barre d'accent à gauche. */}
+                <FamilyIcon family="parcours" className="h-4 w-4" />
                 <span className="truncate">{p.name}</span>
                 {/* Orange pulse when this parcours has a draft pending
                      (= uncommitted changes vs live). Tells the author

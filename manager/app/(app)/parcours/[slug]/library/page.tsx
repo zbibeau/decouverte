@@ -5,6 +5,7 @@ import { TagsAdmin } from '@/components/library/TagsAdmin';
 import { getEditingVersionId, insertSampleBlock } from '@/lib/actions';
 import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
+import { FamilyIcon } from '@/lib/familyIcons';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -81,7 +82,10 @@ export default async function LibraryPage({ params }: { params: Promise<{ slug: 
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Bibliothèque</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <FamilyIcon family="library" className="h-4 w-4" />
+            Bibliothèque
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <LibraryTabs blocksPanel={blocksPanel} tagsPanel={tagsPanel} />

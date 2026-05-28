@@ -1,7 +1,7 @@
 'use client';
 
 import { Command } from 'cmdk';
-import { Book, FileText, Hash, Layers, Plus, Search, Tag, Variable, X } from 'lucide-react';
+import { FileText, Search, Tag, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 
@@ -13,6 +13,7 @@ import { loadPaletteData, insertSampleBlock, type PaletteData } from '@/lib/acti
 import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { extractSnippet } from '@/lib/blockSearch';
+import { FamilyIcon } from '@/lib/familyIcons';
 import { parsePathContext } from '@/lib/palette/parsePathContext';
 import { useCommandPaletteHotkeys } from '@/lib/palette/useCommandPaletteHotkeys';
 import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
@@ -279,7 +280,7 @@ export function CommandPalette() {
           const haystack = `${(keywords ?? []).join(' ')} ${value}`.toLowerCase();
           return matchesQuery(haystack, q) ? 1 : 0;
         }}
-        className="border-border w-full max-w-5xl overflow-hidden rounded-xl border bg-white shadow-2xl"
+        className="mfm-palette border-border w-full max-w-5xl overflow-hidden rounded-xl border bg-white shadow-2xl"
       >
         <div className="border-border flex items-center gap-2 border-b px-3 py-2">
           <Search className="text-muted-foreground h-4 w-4" />
@@ -353,7 +354,7 @@ export function CommandPalette() {
                     {scope.actions.map((a) => (
                       <PaletteItem
                         key={`${scope.id}-${a.id}`}
-                        icon={<Plus className="h-3.5 w-3.5 text-emerald-600" />}
+                        icon={<FamilyIcon family="add" />}
                         label={a.label}
                         hint={a.description}
                         value={`scope-${scope.id}-${a.id}`}
@@ -377,7 +378,7 @@ export function CommandPalette() {
                     {BLOCK_TYPES_ORDER.filter((t) => SAMPLE_PAYLOADS[t]).map((t) => (
                       <PaletteItem
                         key={`add-${t}`}
-                        icon={<Plus className="h-3.5 w-3.5 text-emerald-600" />}
+                        icon={<FamilyIcon family="add" />}
                         label={`+ ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}`}
                         hint="Insère dans le chapitre courant avec l'exemple"
                         value={`add-${t}`}
@@ -462,7 +463,7 @@ export function CommandPalette() {
                         return (
                           <PaletteItem
                             key={c.id}
-                            icon={<Hash className="text-primary h-3.5 w-3.5" />}
+                            icon={<FamilyIcon family="chapter" />}
                             label={c.title}
                             hint={c.slug}
                             snippet={snippet}
@@ -500,7 +501,7 @@ export function CommandPalette() {
                       return (
                         <PaletteItem
                           key={b.id}
-                          icon={<Layers className="h-3.5 w-3.5 text-violet-600" />}
+                          icon={<FamilyIcon family="block" />}
                           label={b.summary || `Bloc ${b.type}`}
                           hint={`${(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type} · ${b.chapterTitle}`}
                           snippet={snippet}
@@ -531,13 +532,18 @@ export function CommandPalette() {
                   </Command.Group>
                 )}
 
-                {/* === Variables (current parcours) === */}
-                {(data?.variables?.length ?? 0) > 0 && (
+                {/* === Variables (current parcours) ===
+                    Hidden while a tag filter is active : variables carry no
+                    maintenance tag, so they can't be scoped by one — showing
+                    the full list under an active tag filter is just noise
+                    (the user expects to see only what's tagged). Same
+                    `!selectedTagId` guard as the Tags section above. */}
+                {!selectedTagId && (data?.variables?.length ?? 0) > 0 && (
                   <Command.Group heading="Variables">
                     {data!.variables.map((v) => (
                       <PaletteItem
                         key={v.id}
-                        icon={<Variable className="h-3.5 w-3.5 text-amber-600" />}
+                        icon={<FamilyIcon family="variable" />}
                         label={v.key}
                         hint={`${v.label} · ${v.type}`}
                         value={`var-${v.id}`}
@@ -548,13 +554,18 @@ export function CommandPalette() {
                   </Command.Group>
                 )}
 
-                {/* === Parcours (always shown) === */}
-                {(data?.parcours?.length ?? 0) > 0 && (
+                {/* === Parcours ===
+                    Like Variables, hidden while a tag filter is active —
+                    parcours rows carry no maintenance tag, so they're
+                    irrelevant to a tag-scoped view (that's why two parcours
+                    were wrongly showing under the « vue agenda » filter).
+                    Shown normally otherwise, including plain text search. */}
+                {!selectedTagId && (data?.parcours?.length ?? 0) > 0 && (
                   <Command.Group heading="Parcours">
                     {data!.parcours.map((p) => (
                       <PaletteItem
                         key={p.id}
-                        icon={<Book className="h-3.5 w-3.5 text-rose-600" />}
+                        icon={<FamilyIcon family="parcours" />}
                         label={p.name}
                         hint={p.slug}
                         value={`parcours-${p.id}`}

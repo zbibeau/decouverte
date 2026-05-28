@@ -1,7 +1,8 @@
 'use client';
 
-import { Layers, Tag as TagIcon } from 'lucide-react';
 import { useState } from 'react';
+
+import { FamilyIcon } from '@/lib/familyIcons';
 
 /**
  * Client tab switcher for the library page. Renders 2 tab buttons +
@@ -20,13 +21,13 @@ export function LibraryTabs({ blocksPanel, tagsPanel }: { blocksPanel: React.Rea
         <TabButton
           active={active === 'blocks'}
           onClick={() => setActive('blocks')}
-          icon={<Layers className="h-3.5 w-3.5" />}
+          icon={<FamilyIcon family="block" />}
           label="Blocs"
         />
         <TabButton
           active={active === 'tags'}
           onClick={() => setActive('tags')}
-          icon={<TagIcon className="h-3.5 w-3.5" />}
+          icon={<FamilyIcon family="tag" />}
           label="Tags"
         />
       </div>
