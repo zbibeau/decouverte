@@ -86,8 +86,11 @@ export async function loadPublishedChapter(
  *
  * Used by the dynamic stepper to know what chapters exist for a custom
  * parcours and in which order to navigate. Reads the published version
- * by default, falls back to the parcours' draft if no `versionId` is
- * provided AND no published version exists yet.
+ * by default. When there's no published version, it falls back to the
+ * most recent draft ONLY when `allowDraftFallback` is true (the manager
+ * preview passes it). A real public visitor never sees an unpublished
+ * parcours — the function returns [] and the front shows a
+ * "pas encore disponible" state.
  */
 export interface ChapterStub {
   id: string;
@@ -117,7 +120,11 @@ export interface ChapterStub {
    *  or programmatic `setCurrentStep(...)`. */
   hiddenFromNav?: boolean;
 }
-export async function loadChapterSequence(parcoursSlug: string, versionId?: string): Promise<ChapterStub[]> {
+export async function loadChapterSequence(
+  parcoursSlug: string,
+  versionId?: string,
+  allowDraftFallback = false,
+): Promise<ChapterStub[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -132,10 +139,12 @@ export async function loadChapterSequence(parcoursSlug: string, versionId?: stri
     if (!parcours) return [];
     if (parcours.published_version_id) {
       effectiveVersionId = parcours.published_version_id;
-    } else {
-      // No published version yet — fall back to the most recent draft so
-      // that a freshly-created parcours is at least viewable while its
-      // author iterates.
+    } else if (allowDraftFallback) {
+      // No published version yet — fall back to the most recent draft.
+      // GATED on `allowDraftFallback` : only the manager preview iframe
+      // passes `true`. For a real public visitor we DON'T expose an
+      // unpublished parcours (see HomeContext, which passes the preview
+      // flag) — the `else` branch below returns [] → "pas encore disponible".
       const { data: draft } = await supabase
         .from('parcours_version')
         .select('id')
@@ -146,6 +155,9 @@ export async function loadChapterSequence(parcoursSlug: string, versionId?: stri
         .maybeSingle();
       if (!draft?.id) return [];
       effectiveVersionId = draft.id;
+    } else {
+      // No published version + not preview → gate (ne pas exposer le brouillon).
+      return [];
     }
   }
 

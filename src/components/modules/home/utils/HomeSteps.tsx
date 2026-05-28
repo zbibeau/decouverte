@@ -1,3 +1,4 @@
+import { Meta } from '@solidjs/meta';
 import { Accessor, lazy, Match, Show, Suspense, Switch } from 'solid-js';
 
 import { DEFAULT_PARCOURS_SLUG, useHome } from '../context/HomeContext';
@@ -66,67 +67,93 @@ export const HomeSteps = (props: HOME_SECTION_PROPS & { currentStep: Accessor<HO
   const isEmptyParcours = () => chaptersLoaded() && chapters().length === 0;
 
   return (
-    <Show
-      when={!isEmptyParcours()}
-      fallback={
-        <div class="m-auto max-w-md p-8 text-center">
-          <p class="mb-2 text-base font-semibold text-dark-950">Parcours vide</p>
-          <p class="text-sm text-dark-950 opacity-60">
-            Ce parcours n'a pas encore de chapitre. Ajoute-en un depuis le manager pour commencer.
-          </p>
-        </div>
-      }
-    >
+    <>
+      {/* Preview (iframe manager) + parcours indisponible : ne pas indexer. */}
+      <Show when={isPreviewMode() || isEmptyParcours()}>
+        <Meta name="robots" content="noindex" />
+      </Show>
       <Show
-        when={props.currentStep()}
-        fallback={<div class="m-auto p-8 text-center text-sm opacity-60">Chargement…</div>}
+        when={!isEmptyParcours()}
+        fallback={
+          <div class="m-auto max-w-md p-8 text-center">
+            <Show
+              when={isPreviewMode()}
+              fallback={
+                <>
+                  {/* Visiteur public : parcours sans version publiée (ou vide).
+                      Message neutre — on ne mentionne pas le manager. */}
+                  <p class="mb-2 text-base font-semibold text-dark-950">Parcours indisponible</p>
+                  <p class="text-sm text-dark-950 opacity-60">
+                    Ce parcours n'est pas encore disponible. Reviens un peu plus tard.
+                  </p>
+                </>
+              }
+            >
+              {/* Auteur en preview : message orienté édition. */}
+              <p class="mb-2 text-base font-semibold text-dark-950">Parcours vide</p>
+              <p class="text-sm text-dark-950 opacity-60">
+                Ce parcours n'a pas encore de chapitre. Ajoute-en un depuis le manager pour commencer.
+              </p>
+            </Show>
+          </div>
+        }
       >
-        <Suspense>
-          <Switch
-            fallback={
-              allowDynamicChapter(props.currentStep() as string) ? (
+        <Show
+          when={props.currentStep()}
+          fallback={<div class="m-auto p-8 text-center text-sm opacity-60">Chargement…</div>}
+        >
+          <Suspense>
+            <Switch
+              fallback={
+                allowDynamicChapter(props.currentStep() as string) ? (
+                  <ChapterFromDB
+                    {...props}
+                    parcoursSlug={slug}
+                    chapterSlug={props.currentStep() as string}
+                    versionId={versionId}
+                  />
+                ) : (
+                  <div>Not Found</div>
+                )
+              }
+            >
+              <Match when={props.currentStep() === HOME_STEPS.PRESENTATION}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="PRESENTATION" versionId={versionId} />
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.INTRO}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="INTRO" versionId={versionId} />
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.STEP_OBSERVATION}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_OBSERVATION" versionId={versionId} />
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.STEP_TOOL_1}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_TOOL_1" versionId={versionId} />
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.STEP_TOOL_2}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_TOOL_2" versionId={versionId} />
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.STEP_TOOL_3}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_TOOL_3" versionId={versionId} />
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.STEP_NEXT_PRICING}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_NEXT_PRICING" versionId={versionId} />
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.STEP_NEXT_TRANSITION}>
                 <ChapterFromDB
                   {...props}
                   parcoursSlug={slug}
-                  chapterSlug={props.currentStep() as string}
+                  chapterSlug="STEP_NEXT_TRANSITION"
                   versionId={versionId}
                 />
-              ) : (
-                <div>Not Found</div>
-              )
-            }
-          >
-            <Match when={props.currentStep() === HOME_STEPS.PRESENTATION}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="PRESENTATION" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.INTRO}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="INTRO" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.STEP_OBSERVATION}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_OBSERVATION" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.STEP_TOOL_1}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_TOOL_1" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.STEP_TOOL_2}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_TOOL_2" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.STEP_TOOL_3}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_TOOL_3" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.STEP_NEXT_PRICING}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_NEXT_PRICING" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.STEP_NEXT_TRANSITION}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="STEP_NEXT_TRANSITION" versionId={versionId} />
-            </Match>
-            <Match when={props.currentStep() === HOME_STEPS.END}>
-              <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="END" versionId={versionId} />
-            </Match>
-          </Switch>
-        </Suspense>
+              </Match>
+              <Match when={props.currentStep() === HOME_STEPS.END}>
+                <ChapterFromDB {...props} parcoursSlug={slug} chapterSlug="END" versionId={versionId} />
+              </Match>
+            </Switch>
+          </Suspense>
+        </Show>
       </Show>
-    </Show>
+    </>
   );
 };
 

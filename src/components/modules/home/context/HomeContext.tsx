@@ -176,7 +176,7 @@ export const HomeProvider = (props: { children: JSX.Element; parcoursSlug?: stri
     // to know what chapters exist and how to navigate; the default
     // parcours falls back to its hardcoded HOME_STEPS order when the DB
     // hasn't been seeded yet.
-    loadChapterSequence(parcoursSlug())
+    loadChapterSequence(parcoursSlug(), undefined, !!preview)
       .then((seq) => {
         setChapters(seq);
         setChaptersLoaded(true);
