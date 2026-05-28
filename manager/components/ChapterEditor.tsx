@@ -19,6 +19,7 @@ import { useToast } from '@/components/Toaster';
 import type { VariableMeta } from '@/components/blocks/editor-types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { extractBlockSearchTextWeighted, extractSnippet } from '@/lib/blockSearch';
 import { FamilyIcon } from '@/lib/familyIcons';
@@ -594,14 +595,9 @@ export function ChapterEditor(props: Props) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Ajouter un bloc</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AddBlockForm insertSampleAction={handleInsertSample} />
-          </CardContent>
-        </Card>
+        <ExpandableCreatePanel label="Ajouter un bloc">
+          <AddBlockForm insertSampleAction={handleInsertSample} />
+        </ExpandableCreatePanel>
       </div>
 
       <div className="hidden lg:block">

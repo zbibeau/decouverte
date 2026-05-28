@@ -4,9 +4,9 @@ import { Trash2 } from 'lucide-react';
 import { ConfirmForm } from '@/components/ConfirmForm';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
 import { Input } from '@/components/ui/Input';
 import { AddVariableForm } from '@/components/variables/AddVariableForm';
-import { CreateVariablePanel } from '@/components/variables/CreateVariablePanel';
 import { OptionsListInput } from '@/components/variables/OptionsListInput';
 import { ValueMapInput } from '@/components/variables/ValueMapInput';
 import { VariableAccordionItem } from '@/components/variables/VariableAccordionItem';
@@ -132,14 +132,14 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
           action on this page, so it sits at the very top and spans the
           width. Clicking it reveals the (otherwise hidden) creation form
           right below — no more scrolling to the bottom of the page. */}
-      <CreateVariablePanel>
+      <ExpandableCreatePanel label="Créer une variable">
         <p className="text-muted-foreground mb-4 text-xs">
           Une variable, c'est une information que tu collectes auprès du visiteur du parcours (par exemple « Statut du
           patient ») et que tu réutilises ensuite pour personnaliser le contenu (conditions, formulaires, mapping
           Hubspot…).
         </p>
         <AddVariableForm createAction={createAction} />
-      </CreateVariablePanel>
+      </ExpandableCreatePanel>
 
       <Card>
         <CardHeader>

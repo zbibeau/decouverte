@@ -1,6 +1,7 @@
 import { ChapterList } from '@/components/ChapterList';
 import { CreateChapterForm } from '@/components/CreateChapterForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
 import {
   createChapter,
   deleteChapter,
@@ -251,14 +252,9 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Ajouter un chapitre</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CreateChapterForm createAction={createChapterAction} existingSlugs={(chapters ?? []).map((c) => c.slug)} />
-        </CardContent>
-      </Card>
+      <ExpandableCreatePanel label="Ajouter un chapitre">
+        <CreateChapterForm createAction={createChapterAction} existingSlugs={(chapters ?? []).map((c) => c.slug)} />
+      </ExpandableCreatePanel>
     </div>
   );
 }
