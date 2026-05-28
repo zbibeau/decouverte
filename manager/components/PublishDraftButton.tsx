@@ -6,7 +6,12 @@ import { useState, useTransition } from 'react';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { TagReviewModal } from '@/components/TagReviewModal';
 import { useToast } from '@/components/Toaster';
-import { getDraftTagReviewSummary, type DraftTagReviewSummary } from '@/lib/actions';
+import {
+  type BrokenVariableRef,
+  type DraftTagReviewSummary,
+  getBrokenVariableRefs,
+  getDraftTagReviewSummary,
+} from '@/lib/actions';
 
 interface Props {
   /** Server action publishing the draft of the given parcours. */
@@ -56,6 +61,7 @@ export function PublishDraftButton({
   const confirm = useConfirm();
   const [isPending, startTransition] = useTransition();
   const [reviewSummary, setReviewSummary] = useState<DraftTagReviewSummary | null>(null);
+  const [brokenRefs, setBrokenRefs] = useState<BrokenVariableRef[]>([]);
   const [openingReview, setOpeningReview] = useState(false);
 
   async function runPublish() {
@@ -65,6 +71,7 @@ export function PublishDraftButton({
       try {
         await publishAction();
         setReviewSummary(null);
+        setBrokenRefs([]);
         router.refresh();
         toast.success('Brouillon publié.');
       } catch (e) {
@@ -77,9 +84,15 @@ export function PublishDraftButton({
     if (disabled || isPending || openingReview) return;
     setOpeningReview(true);
     try {
-      const summary = await getDraftTagReviewSummary(parcoursSlug);
-      if (summary.total > 0) {
-        // Tag-review path : delegate the publish trigger to the modal.
+      const [summary, refs] = await Promise.all([
+        getDraftTagReviewSummary(parcoursSlug),
+        getBrokenVariableRefs(parcoursSlug),
+      ]);
+      setBrokenRefs(refs);
+      if (summary.total > 0 || refs.length > 0) {
+        // Tag-review and/or broken-variable-ref warning path : delegate
+        // the publish trigger to the modal so the editor sees the warnings
+        // before confirming.
         setReviewSummary(summary);
         return;
       }
@@ -111,6 +124,7 @@ export function PublishDraftButton({
       {reviewSummary && (
         <TagReviewModal
           summary={reviewSummary}
+          brokenRefs={brokenRefs}
           parcoursSlug={parcoursSlug}
           onPublish={() => void runPublish()}
           onClose={() => setReviewSummary(null)}

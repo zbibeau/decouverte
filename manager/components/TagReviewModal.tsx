@@ -1,13 +1,13 @@
 'use client';
 
-import { Check, ChevronRight, Hash, Layers, SkipForward, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Hash, Layers, SkipForward, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { TagsField } from '@/components/blocks/TagsField';
 import { Button } from '@/components/ui/Button';
 import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
-import type { DraftTagReviewSummary } from '@/lib/actions';
+import type { BrokenVariableRef, DraftTagReviewSummary } from '@/lib/actions';
 
 /**
  * Pre-publish tag review modal.
@@ -52,9 +52,12 @@ interface Props {
    *  editor can pop the editor open in a new tab without losing the
    *  modal state. */
   parcoursSlug: string;
+  /** Variable keys referenced by blocks but not declared on the parcours
+   *  (pre-publish safety check). Non-blocking — surfaced as a banner. */
+  brokenRefs?: BrokenVariableRef[];
 }
 
-export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug }: Props) {
+export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brokenRefs = [] }: Props) {
   // Per-row state — keyed by a synthetic id so we don't collide
   // between block ids and chapter ids (both are UUIDs but
   // theoretically could clash if a future feature reuses ids).
@@ -163,7 +166,43 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug }: Pr
 
         {/* Rows */}
         <div className="flex-1 overflow-y-auto px-5 py-3">
-          {summary.blocks.length === 0 && summary.chapters.length === 0 && (
+          {/* Pre-publish safety check : variables référencées mais non
+              déclarées (renommées / supprimées). Avertissement NON bloquant. */}
+          {brokenRefs.length > 0 && (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-900">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {brokenRefs.length} référence{brokenRefs.length > 1 ? 's' : ''} de variable cassée
+                {brokenRefs.length > 1 ? 's' : ''}
+              </div>
+              <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+                Ces variables sont référencées par des blocs mais ne sont plus déclarées (renommées / supprimées). Côté
+                visiteur, elles tomberont sur « undefined ». Tu peux publier quand même, mais pense à corriger les blocs
+                concernés.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {brokenRefs.map((r) => (
+                  <li key={r.key} className="flex items-center gap-2 text-[11px]">
+                    <code className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900">{r.key}</code>
+                    <span className="text-muted-foreground">
+                      {r.count} bloc{r.count > 1 ? 's' : ''}
+                    </span>
+                    {r.sampleChapterSlug && (
+                      <Link
+                        href={`/parcours/${parcoursSlug}/chapters/${r.sampleChapterSlug}`}
+                        target="_blank"
+                        className="text-amber-800 underline underline-offset-2"
+                      >
+                        voir ↗
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {summary.blocks.length === 0 && summary.chapters.length === 0 && brokenRefs.length === 0 && (
             <p className="text-muted-foreground px-3 py-6 text-center text-sm italic">Aucun élément à revoir.</p>
           )}
 

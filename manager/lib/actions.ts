@@ -1,5 +1,6 @@
 'use server';
 
+import type { ContentBlock } from '@shared/content-schema';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
@@ -10,6 +11,7 @@ import { summarizeBlock } from '@/lib/blockSummary';
 import { slugifyForParcours } from '@/lib/parcoursSlug';
 import { randomPastel } from '@/lib/pastelColors';
 import { createClient } from '@/lib/supabase/server';
+import { extractUsedVariableKeys } from '@/lib/usedVariables';
 
 // ============================================================
 // Helpers
@@ -470,6 +472,64 @@ export interface DraftTagReviewSummary {
   chapters: DraftTagReviewChapter[];
   /** `blocks.length + chapters.length` — count of rows to review. */
   total: number;
+}
+
+export interface BrokenVariableRef {
+  /** Variable key referenced by a block but NOT declared on the parcours. */
+  key: string;
+  /** How many top-level blocks reference this missing key. */
+  count: number;
+  /** A chapter slug where the first broken reference lives (deep-link the fix). */
+  sampleChapterSlug: string | null;
+}
+
+/**
+ * Pre-publish safety check : find variable KEYS that blocks reference
+ * (conditions, conditional key-points… via `extractUsedVariableKeys`) but
+ * that DON'T exist as a declared variable on the parcours — typically the
+ * fallout of renaming / deleting a variable without migrating its
+ * references. For the visitor these silently evaluate to `undefined`.
+ *
+ * Reads the EDITING version (draft if any, else published) — exactly
+ * what's about to go live. Surfaced in the pre-publish review
+ * (`TagReviewModal`) as a NON-blocking warning.
+ */
+export async function getBrokenVariableRefs(parcoursSlug: string): Promise<BrokenVariableRef[]> {
+  const { parcoursId, versionId } = await resolveParcoursIds(parcoursSlug);
+  if (!parcoursId || !versionId) return [];
+  const supabase = await createClient();
+
+  const { data: vars } = await supabase.from('variable').select('key').eq('parcours_id', parcoursId);
+  const defined = new Set((vars ?? []).map((v) => v.key as string));
+
+  // Top-level blocks of the editing version + their chapter slug (same
+  // chapter-join pattern as the Variables-page usage counter).
+  const { data: blocks } = await supabase
+    .from('block')
+    .select('type, payload, chapter:chapter_id (slug)')
+    .eq('chapter.version_id', versionId);
+
+  const broken = new Map<string, { count: number; sampleChapterSlug: string | null }>();
+  for (const row of blocks ?? []) {
+    const block = { type: row.type, payload: (row.payload ?? {}) as never } as ContentBlock;
+    const refs = extractUsedVariableKeys([block]);
+    const chapterRaw = (row as unknown as { chapter: unknown }).chapter;
+    const chapterSlug = Array.isArray(chapterRaw)
+      ? ((chapterRaw as { slug: string }[])[0]?.slug ?? null)
+      : ((chapterRaw as { slug: string } | null)?.slug ?? null);
+    for (const key of refs) {
+      if (defined.has(key)) continue;
+      const cur = broken.get(key) ?? { count: 0, sampleChapterSlug: null };
+      cur.count += 1;
+      if (!cur.sampleChapterSlug) cur.sampleChapterSlug = chapterSlug;
+      broken.set(key, cur);
+    }
+  }
+  return [...broken.entries()].map(([key, v]) => ({
+    key,
+    count: v.count,
+    sampleChapterSlug: v.sampleChapterSlug,
+  }));
 }
 
 export async function getDraftTagReviewSummary(parcoursSlug: string): Promise<DraftTagReviewSummary> {
