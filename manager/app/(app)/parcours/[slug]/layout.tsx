@@ -1,10 +1,12 @@
+import { ExternalLink } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 
 import { DraftStatusBar } from '@/components/DraftStatusBar';
 import { ParcoursTabs } from '@/components/ParcoursTabs';
-import { VersionHistoryDialog } from '@/components/VersionHistoryDialog';
 import { Badge } from '@/components/ui/Badge';
+import { MfmLoader } from '@/components/ui/MfmLoader';
+import { VersionHistoryDialog } from '@/components/VersionHistoryDialog';
 import { getDraftStatus, listVersions, restoreVersionAsDraft } from '@/lib/actions';
 import { pastelForString, safeThemeColor } from '@/lib/pastelColors';
 import { createClient } from '@/lib/supabase/server';
@@ -19,6 +21,13 @@ export default async function ParcoursLayout({
   const raw = await params;
   const slug = decodeURIComponent(raw.slug);
   const supabase = await createClient();
+
+  // Public front URL for this parcours — varies with the slug. Base comes
+  // from NEXT_PUBLIC_CLIENT_URL (the SolidJS front), defaulting to the
+  // local dev server. The front resolves any parcours by its slug at
+  // /parcours/<slug>.
+  const clientUrl = process.env.NEXT_PUBLIC_CLIENT_URL ?? 'http://localhost:3100';
+  const publicUrl = `${clientUrl}/parcours/${slug}`;
 
   // Try selecting with `theme_color` ; fall back to the legacy 4-column
   // select if the column doesn't exist yet on this DB (migration 0035 not
@@ -99,6 +108,18 @@ export default async function ParcoursLayout({
           <p className="text-muted-foreground mt-0.5 text-xs">
             slug : <code>{parcours.slug}</code>
           </p>
+          {/* URL publique de ce parcours sur le front (varie selon le slug
+              + NEXT_PUBLIC_CLIENT_URL). Clic = ouvre dans un nouvel onglet. */}
+          <a
+            href={publicUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-muted-foreground hover:text-brand-primary-700 mt-0.5 inline-flex items-center gap-1 text-xs transition-colors"
+            title="Ouvrir ce parcours sur le front public (nouvel onglet)"
+          >
+            <ExternalLink className="h-3 w-3 shrink-0" />
+            <code>{publicUrl}</code>
+          </a>
           <ParcoursTabs slug={slug} />
         </div>
       </div>
@@ -122,8 +143,8 @@ export default async function ParcoursLayout({
               doesn't reflow when the bar resolves. */}
           <Suspense
             fallback={
-              <div className="text-muted-foreground rounded-md border border-dashed px-4 py-2 text-xs">
-                Chargement du statut…
+              <div className="text-muted-foreground flex items-center justify-center rounded-md border border-dashed px-4 py-2">
+                <MfmLoader size="sm" label="Chargement du statut…" />
               </div>
             }
           >
