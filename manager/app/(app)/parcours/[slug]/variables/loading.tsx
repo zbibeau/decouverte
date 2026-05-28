@@ -1,0 +1,5 @@
+import { MfmLoaderBlock } from '@/components/ui/MfmLoader';
+
+export default function Loading() {
+  return <MfmLoaderBlock label="Chargement des variables…" size="md" />;
+}

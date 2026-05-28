@@ -119,6 +119,51 @@ const config: Config = {
       backgroundImage: {
         'brand-radial': 'radial-gradient(100% 100% at 50% 0%, rgba(180, 128, 255, 0.18) 0%, rgba(255,255,255,0) 70%)',
       },
+      // ── MfmLoader animation ──────────────────────────────────────────────
+      // `mfm-spin`   : slow counter-clockwise rotation of the brand splat.
+      //                3.6 s feels « alive but not dizzying » with the
+      //                asymmetric 7-arm shape ; faster reads as a fan,
+      //                slower reads as broken. Counter-clockwise is a
+      //                deliberate choice to differentiate from generic
+      //                « loading spinner » clockwise rotation.
+      // `mfm-breath` : subtle scale pulse, layered on top of the spin so
+      //                the logo feels organic (« breathing ») rather than
+      //                purely mechanical. Tuned to a 2 s cycle so it
+      //                desyncs with the rotation and never feels like a
+      //                repeating loop.
+      // `mfm-halo`   : kept for legacy Suspense fallbacks that still want
+      //                a ring pulse — the new loader doesn't use it but
+      //                other in-page loaders might.
+      keyframes: {
+        'mfm-spin': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(-360deg)' },
+        },
+        'mfm-breath': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(0.88)' },
+        },
+        // `mfm-twinkle` runs on each individual arm of the splat with a
+        // per-arm `animationDelay`, producing a wave of light that
+        // travels around the logo. Opacity floor of 0.45 keeps every
+        // arm visible at all times — the wave reads as "highlight
+        // moving" rather than "arms appearing and disappearing".
+        'mfm-twinkle': {
+          '0%, 100%': { opacity: '0.45' },
+          '50%': { opacity: '1' },
+        },
+        'mfm-halo': {
+          '0%': { transform: 'scale(0.7)', opacity: '0' },
+          '20%': { opacity: '0.75' },
+          '100%': { transform: 'scale(1.7)', opacity: '0' },
+        },
+      },
+      animation: {
+        'mfm-spin': 'mfm-spin 3.6s linear infinite',
+        'mfm-breath': 'mfm-breath 2s ease-in-out infinite',
+        'mfm-twinkle': 'mfm-twinkle 2.4s ease-in-out infinite',
+        'mfm-halo': 'mfm-halo 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+      },
     },
   },
   plugins: [],
