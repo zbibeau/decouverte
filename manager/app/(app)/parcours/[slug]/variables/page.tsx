@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { AddVariableForm } from '@/components/variables/AddVariableForm';
+import { CreateVariablePanel } from '@/components/variables/CreateVariablePanel';
 import { OptionsListInput } from '@/components/variables/OptionsListInput';
 import { ValueMapInput } from '@/components/variables/ValueMapInput';
+import { VariableAccordionItem } from '@/components/variables/VariableAccordionItem';
 import { VariableHeader } from '@/components/variables/VariableHeader';
 import {
   createVariable,
@@ -17,6 +19,7 @@ import {
   updateVariableHubspotMapping,
   updateVariableOptions,
 } from '@/lib/actions';
+import { FamilyIcon } from '@/lib/familyIcons';
 import { createClient } from '@/lib/supabase/server';
 import { extractUsedVariableKeys } from '@/lib/usedVariables';
 
@@ -125,11 +128,27 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
 
   return (
     <div className="space-y-6">
+      {/* Full-width call-to-action : creating a variable is the primary
+          action on this page, so it sits at the very top and spans the
+          width. Clicking it reveals the (otherwise hidden) creation form
+          right below — no more scrolling to the bottom of the page. */}
+      <CreateVariablePanel>
+        <p className="text-muted-foreground mb-4 text-xs">
+          Une variable, c'est une information que tu collectes auprès du visiteur du parcours (par exemple « Statut du
+          patient ») et que tu réutilises ensuite pour personnaliser le contenu (conditions, formulaires, mapping
+          Hubspot…).
+        </p>
+        <AddVariableForm createAction={createAction} />
+      </CreateVariablePanel>
+
       <Card>
         <CardHeader>
-          <CardTitle>Variables du parcours</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <FamilyIcon family="variable" className="h-4 w-4" />
+            Variables du parcours
+          </CardTitle>
           <p className="text-muted-foreground text-xs">
-            Variables utilisables dans les blocs conditionnels + mapping Hubspot dynamique.
+            {(variables ?? []).length} variable(s) · clique sur une variable pour déplier son détail.
           </p>
         </CardHeader>
         <CardContent className="divide-border divide-y">
@@ -137,27 +156,12 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
             const u = usage.get(v.key);
             const usageCount = u?.count ?? 0;
             return (
-              <div key={v.id} className="space-y-3 py-4">
-                <div className="flex items-center gap-3">
-                  <VariableHeader
-                    variableId={v.id}
-                    initialKey={v.key}
-                    initialLabel={v.label}
-                    type={v.type}
-                    enumPreview={
-                      v.type === 'enum' ? ((v.options as VariableOption[]) ?? []).map((o) => o.value).join(', ') : ''
-                    }
-                    renameAction={async (variableId, nextKey, nextLabel) => {
-                      'use server';
-                      await renameVariable(slug, variableId, nextKey, nextLabel);
-                    }}
-                  />
-                  {/* Usage badge — shows how many blocks reference this
-                     variable across the active version. Orange when > 0
-                     to warn the author that a rename/delete will impact
-                     real content. Click target = the chapter where the
-                     first occurrence lives, to start navigating fixes. */}
-                  {usageCount > 0 ? (
+              <VariableAccordionItem
+                key={v.id}
+                name={v.key}
+                type={v.type}
+                usageSlot={
+                  usageCount > 0 ? (
                     <a
                       href={
                         u?.sampleChapterSlug ? `/parcours/${slug}/chapters/${u.sampleChapterSlug}` : `/parcours/${slug}`
@@ -178,9 +182,10 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
                     >
                       Non utilisée
                     </span>
-                  )}
+                  )
+                }
+                deleteSlot={
                   <ConfirmForm
-                    className="ml-auto"
                     message={
                       usageCount > 0
                         ? `Supprimer la variable « ${v.key} » ?\n${usageCount} bloc(s) la référencent — ils continueront de tenter de la lire et tomberont sur "undefined".\nÉdite ces blocs avant de supprimer si tu veux éviter des silent breaks.`
@@ -195,6 +200,25 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
                       <Trash2 className="text-destructive h-4 w-4" />
                     </Button>
                   </ConfirmForm>
+                }
+              >
+                {/* Detail (revealed on expand) : rename + enum options +
+                    Hubspot mapping. Server actions stay bound here in the
+                    page; the accordion only toggles visibility. */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <VariableHeader
+                    variableId={v.id}
+                    initialKey={v.key}
+                    initialLabel={v.label}
+                    type={v.type}
+                    enumPreview={
+                      v.type === 'enum' ? ((v.options as VariableOption[]) ?? []).map((o) => o.value).join(', ') : ''
+                    }
+                    renameAction={async (variableId, nextKey, nextLabel) => {
+                      'use server';
+                      await renameVariable(slug, variableId, nextKey, nextLabel);
+                    }}
+                  />
                 </div>
 
                 {/* Options editor — enum only */}
@@ -255,7 +279,7 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
                     </Button>
                   </div>
                 </form>
-              </div>
+              </VariableAccordionItem>
             );
           })}
           {(!variables || variables.length === 0) && (
@@ -266,24 +290,10 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
               <p className="text-sm font-medium">Aucune variable pour ce parcours</p>
               <p className="text-muted-foreground max-w-md text-xs">
                 Une variable est une donnée collectée auprès du visiteur (ex. « importNecessaire = oui/non ») qui pilote
-                les blocs conditionnels. Crée la première dans la carte ci-dessous.
+                les blocs conditionnels. Crée la première avec le bouton « Créer une variable » ci-dessus.
               </p>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Ajouter une variable</CardTitle>
-          <p className="text-muted-foreground text-xs">
-            Une variable, c'est une information que tu collectes auprès du visiteur du parcours (par exemple « Statut du
-            patient ») et que tu réutilises ensuite pour personnaliser le contenu (conditions, formulaires, mapping
-            Hubspot…).
-          </p>
-        </CardHeader>
-        <CardContent>
-          <AddVariableForm createAction={createAction} />
         </CardContent>
       </Card>
     </div>
