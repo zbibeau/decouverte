@@ -776,6 +776,20 @@ export const ChapterRenderer: Component<{
     requestAnimationFrame(skip);
   });
 
+  // Tell the manager which chapter the preview is currently showing. Reactive
+  // on `props.chapter.slug`, so it re-fires when the editor navigates INSIDE the
+  // preview (e.g. clicking another chapter card in a transition panorama) — the
+  // manager uses this to let its « Éditer ce bloc » pill switch the edited
+  // chapter to match what's on screen.
+  createEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('preview') !== '1') return;
+    const slug = props.chapter.slug;
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'preview:chapterChanged', chapterSlug: slug }, '*');
+    }
+  });
+
   onMount(() => {
     if (typeof window === 'undefined') return;
 
