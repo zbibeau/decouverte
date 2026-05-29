@@ -8,6 +8,10 @@ import { DiffProvider } from '@/components/blocks/DiffContext';
 import type { ChapterMeta, NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
 import { Section } from '@/components/blocks/Field';
 import { FieldHoverProvider } from '@/components/blocks/FieldHoverContext';
+import {
+  type CreateNavbarVariantFn,
+  NavbarVariantCreateProvider,
+} from '@/components/blocks/NavbarVariantCreateContext';
 import { PayloadEditor } from '@/components/blocks/PayloadEditor';
 import { SearchMatchProvider } from '@/components/blocks/SearchMatchContext';
 import { SimulatorProvider } from '@/components/blocks/SimulatorContext';
@@ -57,6 +61,9 @@ interface Props {
   variables: VariableMeta[];
   chapters?: ChapterMeta[];
   navbarVariants?: NavbarVariantMeta[];
+  /** Inline « + Nouvelle navbar… » create callback, surfaced to the navbar
+   *  picker via context. Omit to hide the inline-create option. */
+  onCreateNavbarVariant?: CreateNavbarVariantFn;
   saveAction: (payload: Record<string, unknown>) => Promise<string | void>;
   createAction?: (payload: Record<string, unknown>) => Promise<string>;
   draftStatus?: 'new' | 'modified' | 'pristine';
@@ -319,26 +326,28 @@ export function InlineBlockEditor(props: Props) {
           sourcePayload={props.sourcePayload ?? null}
         />
       )}
-      <DiffProvider
-        current={block.payload}
-        source={isCreating ? null : (props.sourcePayload ?? null)}
-        blockIsNew={props.draftStatus === 'new'}
-      >
-        <FieldHoverProvider setHoveredField={reportHoveredField}>
-          <SimulatorProvider value={simulatorContextValue}>
-            <SearchMatchProvider query={searchQuery} paths={searchMatchPaths} snippets={searchMatchSnippets}>
-              <PayloadEditor
-                block={block}
-                onChange={setBlock}
-                variables={props.variables}
-                chapters={props.chapters}
-                currentChapterSlug={props.chapterSlug}
-                navbarVariants={props.navbarVariants}
-              />
-            </SearchMatchProvider>
-          </SimulatorProvider>
-        </FieldHoverProvider>
-      </DiffProvider>
+      <NavbarVariantCreateProvider onCreate={props.onCreateNavbarVariant}>
+        <DiffProvider
+          current={block.payload}
+          source={isCreating ? null : (props.sourcePayload ?? null)}
+          blockIsNew={props.draftStatus === 'new'}
+        >
+          <FieldHoverProvider setHoveredField={reportHoveredField}>
+            <SimulatorProvider value={simulatorContextValue}>
+              <SearchMatchProvider query={searchQuery} paths={searchMatchPaths} snippets={searchMatchSnippets}>
+                <PayloadEditor
+                  block={block}
+                  onChange={setBlock}
+                  variables={props.variables}
+                  chapters={props.chapters}
+                  currentChapterSlug={props.chapterSlug}
+                  navbarVariants={props.navbarVariants}
+                />
+              </SearchMatchProvider>
+            </SimulatorProvider>
+          </FieldHoverProvider>
+        </DiffProvider>
+      </NavbarVariantCreateProvider>
 
       {/* Central "Tags de maintenance" section — shared by every block type. */}
       {!isCreating && (

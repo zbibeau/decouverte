@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { ExternalLink, Pencil, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -49,6 +49,19 @@ interface Props {
    * we know the user explicitly pointed at a block.
    */
   onBlockClicked?: (blockId: string, blockType?: string) => void;
+  /**
+   * Called when the user clicks the floating « Éditer ce bloc » CTA — opens the
+   * editor of the block currently at the top of the preview viewport. When
+   * omitted, that CTA is hidden (e.g. the single-block editor page).
+   */
+  onEditVisibleBlock?: (blockId: string) => void;
+  /** Previous / next chapter (by parcours order) for the « ← / → Chapitre »
+   *  nav pills. Omit a side when there's no adjacent chapter. */
+  prevChapter?: { slug: string; title: string };
+  nextChapter?: { slug: string; title: string };
+  /** Open a chapter for editing (the pills call this with the target slug).
+   *  When omitted, the chapter-nav pills are hidden (e.g. single-block page). */
+  onGoToChapter?: (slug: string) => void;
   /**
    * JSON path of the field currently being hovered/focused in the editor.
    * When set, the iframe gets a `preview:highlightField` postMessage so the
@@ -127,6 +140,10 @@ export function PreviewPanel({
   blockOverride,
   onVisibleBlock,
   onBlockClicked,
+  onEditVisibleBlock,
+  prevChapter,
+  nextChapter,
+  onGoToChapter,
   hoveredField,
   hoveredFieldBlockId,
   editingBlockId,
@@ -145,9 +162,7 @@ export function PreviewPanel({
   // Which version the iframe is currently displaying. Default to the draft
   // when available; the toggle (rendered below when both ids are provided)
   // lets the user flip to the published version for side-by-side comparison.
-  const [previewTarget, setPreviewTarget] = useState<'draft' | 'published'>(
-    versionId ? 'draft' : 'published',
-  );
+  const [previewTarget, setPreviewTarget] = useState<'draft' | 'published'>(versionId ? 'draft' : 'published');
   // Reset the toggle state if the draft appears/disappears.
   useEffect(() => {
     setPreviewTarget(versionId ? 'draft' : 'published');
@@ -168,9 +183,7 @@ export function PreviewPanel({
   const values = controlledValues ?? internalValues;
   // Unified setter that accepts either a new object or an updater fn,
   // and dispatches to the controlled callback OR the internal setState.
-  const setValues = (
-    updater: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>),
-  ) => {
+  const setValues = (updater: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => {
     if (onValuesChange) {
       const next = typeof updater === 'function' ? updater(values) : updater;
       onValuesChange(next);
@@ -191,6 +204,14 @@ export function PreviewPanel({
   // edit-mode messages (`setEditedBlock`, `highlightField`) — sending them
   // before Solid mounts loses them.
   const [rendererReady, setRendererReady] = useState(false);
+  // Topmost block currently visible in the iframe (reported by the renderer on
+  // scroll). Drives the floating « Éditer ce bloc » CTA.
+  const [visibleBlockId, setVisibleBlockId] = useState<string | null>(null);
+  // Chapter the preview is actually SHOWING (reported by the front). Diverges
+  // from `chapterSlug` (the chapter the manager edits) when the editor
+  // navigates inside the preview via a transition panorama → the edit pill then
+  // switches the edited chapter to match.
+  const [previewChapterSlug, setPreviewChapterSlug] = useState<string | null>(null);
 
   // Stable identity inputs for the URL — using the override's blockId+type
   // (not the full object) keeps the URL stable on every keystroke so the
@@ -218,10 +239,7 @@ export function PreviewPanel({
     //   - 'published' → pass the explicit publishedVersionId if we know it,
     //     otherwise omit the param and let loadChapter fall back to
     //     parcours.published_version_id.
-    const targetVersion =
-      previewTarget === 'draft'
-        ? versionId
-        : publishedVersionId ?? null;
+    const targetVersion = previewTarget === 'draft' ? versionId : (publishedVersionId ?? null);
     if (targetVersion) params.set('version', targetVersion);
     for (const [key, value] of Object.entries(values)) {
       if (value !== '') params.set(key, value);
@@ -231,9 +249,7 @@ export function PreviewPanel({
     // `/`; every other slug uses the dynamic `/parcours/<slug>` route. If no
     // slug is passed we default to `/` for back-compat.
     const path =
-      parcoursSlug && parcoursSlug !== 'demo-ventes'
-        ? `/parcours/${encodeURIComponent(parcoursSlug)}/`
-        : '/';
+      parcoursSlug && parcoursSlug !== 'demo-ventes' ? `/parcours/${encodeURIComponent(parcoursSlug)}/` : '/';
     return `${clientUrl}${path}?${params.toString()}`;
   }, [
     chapterSlug,
@@ -254,6 +270,7 @@ export function PreviewPanel({
   useEffect(() => {
     setIframeReady(false);
     setRendererReady(false);
+    setPreviewChapterSlug(null);
   }, [iframeUrl]);
 
   // Listen for the `preview:rendererReady` handshake from the Solid side.
@@ -287,23 +304,19 @@ export function PreviewPanel({
   // Listen for messages coming back from the iframe (visible block on scroll
   // + click-to-inspect on user click + field rails on edit-mode).
   useEffect(() => {
-    if (!onVisibleBlock && !onBlockClicked && !onFieldRails) return;
+    if (!onVisibleBlock && !onBlockClicked && !onFieldRails && !onEditVisibleBlock) return;
     function handler(e: MessageEvent) {
       // Only accept messages from our own iframe.
       if (e.source !== iframeRef.current?.contentWindow) return;
       if (!e.data || typeof e.data !== 'object') return;
-      if (
-        e.data.type === 'preview:visibleBlock' &&
-        typeof e.data.blockId === 'string' &&
-        onVisibleBlock
-      ) {
-        onVisibleBlock(e.data.blockId);
+      if (e.data.type === 'preview:visibleBlock' && typeof e.data.blockId === 'string') {
+        setVisibleBlockId(e.data.blockId);
+        onVisibleBlock?.(e.data.blockId);
       }
-      if (
-        e.data.type === 'preview:blockClicked' &&
-        typeof e.data.blockId === 'string' &&
-        onBlockClicked
-      ) {
+      if (e.data.type === 'preview:chapterChanged' && typeof e.data.chapterSlug === 'string') {
+        setPreviewChapterSlug(e.data.chapterSlug);
+      }
+      if (e.data.type === 'preview:blockClicked' && typeof e.data.blockId === 'string' && onBlockClicked) {
         onBlockClicked(e.data.blockId, e.data.blockType);
       }
       if (e.data.type === 'preview:fieldRails' && Array.isArray(e.data.rails) && onFieldRails) {
@@ -312,7 +325,7 @@ export function PreviewPanel({
     }
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [onVisibleBlock, onBlockClicked, onFieldRails]);
+  }, [onVisibleBlock, onBlockClicked, onFieldRails, onEditVisibleBlock]);
 
   // Push live block override to the iframe whenever the editor state changes.
   // Debounced 200ms so we don't spam on every keystroke.
@@ -341,10 +354,7 @@ export function PreviewPanel({
     if (!iframeReady || !rendererReady) return;
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
-    win.postMessage(
-      { type: 'preview:setEditedBlock', blockId: editingBlockId ?? null },
-      clientUrl,
-    );
+    win.postMessage({ type: 'preview:setEditedBlock', blockId: editingBlockId ?? null }, clientUrl);
   }, [iframeReady, rendererReady, editingBlockId, clientUrl]);
 
   // Push hovered field path so the iframe lights up the corresponding
@@ -369,8 +379,7 @@ export function PreviewPanel({
 
   // Toggle is only meaningful when we know both versions and we're in chapter
   // (not isolatedBlock) mode — the single-block preview is version-agnostic.
-  const showVersionToggle =
-    mode === 'chapter' && Boolean(versionId) && Boolean(publishedVersionId);
+  const showVersionToggle = mode === 'chapter' && Boolean(versionId) && Boolean(publishedVersionId);
 
   // When a block is being edited AND that block is actually visible in the
   // preview, give the whole panel an ambar halo — a reinforcement of "this
@@ -379,26 +388,42 @@ export function PreviewPanel({
   // attention (no need to double up).
   const editingActive = Boolean(editingBlockId) && !editedBlockOffscreen;
 
+  // Floating navigation cluster (bottom-right of the iframe) :
+  //   - « Éditer ce bloc » → open the editor of the block currently in view
+  //     (only when the host wired `onEditVisibleBlock`, and it's not already
+  //     the block being edited).
+  //   - « ↑/↓ Revenir » → scroll the preview back to the block being edited
+  //     when it has been scrolled offscreen (replaces the old full-width banner).
+  const showEditVisible = Boolean(onEditVisibleBlock && visibleBlockId && visibleBlockId !== editingBlockId);
+  const showReturnToEdited = Boolean(editingBlockId && editedBlockOffscreen);
+  //   - « ← / → Chapitre » → open the previous / next chapter for editing
+  //     (router.push), so the editor can hop chapters straight from the preview.
+  const showChapterNav = Boolean(onGoToChapter && (prevChapter || nextChapter));
+  //   - When the preview has navigated to a DIFFERENT chapter than the one being
+  //     edited (via a transition panorama), the « Éditer ce bloc » pill becomes
+  //     « Éditer ce chapitre » → switches the edited chapter to match.
+  const previewOnOtherChapter = Boolean(onGoToChapter && previewChapterSlug && previewChapterSlug !== chapterSlug);
+
   return (
     <div
       className={
         editingActive
           ? 'sticky top-4 flex h-[calc(100vh-2rem)] flex-col gap-3 rounded-lg border-2 border-amber-300 bg-white p-3 shadow-[0_0_0_4px_rgba(251,191,36,0.18),0_0_30px_4px_rgba(251,191,36,0.25)]'
-          : 'sticky top-4 flex h-[calc(100vh-2rem)] flex-col gap-3 rounded-lg border border-border bg-white p-3 shadow-sm'
+          : 'border-border sticky top-4 flex h-[calc(100vh-2rem)] flex-col gap-3 rounded-lg border bg-white p-3 shadow-sm'
       }
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">Preview</h3>
         <div className="flex items-center gap-1">
           {showVersionToggle && (
-            <div className="mr-2 inline-flex overflow-hidden rounded-md border border-border text-[11px]">
+            <div className="border-border mr-2 inline-flex overflow-hidden rounded-md border text-[11px]">
               <button
                 type="button"
                 onClick={() => setPreviewTarget('draft')}
                 className={
                   previewTarget === 'draft'
                     ? 'bg-amber-100 px-2 py-1 text-amber-900'
-                    : 'bg-white px-2 py-1 text-muted-foreground hover:bg-muted'
+                    : 'text-muted-foreground hover:bg-muted bg-white px-2 py-1'
                 }
                 title="Afficher le brouillon"
               >
@@ -410,7 +435,7 @@ export function PreviewPanel({
                 className={
                   previewTarget === 'published'
                     ? 'bg-emerald-100 px-2 py-1 text-emerald-900'
-                    : 'bg-white px-2 py-1 text-muted-foreground hover:bg-muted'
+                    : 'text-muted-foreground hover:bg-muted bg-white px-2 py-1'
                 }
                 title="Afficher la version publiée (live)"
               >
@@ -418,12 +443,7 @@ export function PreviewPanel({
               </button>
             </div>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            title="Recharger"
-            onClick={() => setNonce((n) => n + 1)}
-          >
+          <Button variant="ghost" size="sm" title="Recharger" onClick={() => setNonce((n) => n + 1)}>
             <RefreshCw className="h-4 w-4" />
           </Button>
           <a href={iframeUrl} target="_blank" rel="noreferrer">
@@ -438,11 +458,11 @@ export function PreviewPanel({
           referenced by the previewed content; if the list is empty we hide
           the simulator entirely. */}
       {variables.length > 0 && (
-        <div className="space-y-1 rounded-md border border-border bg-muted/30 px-2 py-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="border-border bg-muted/30 space-y-1 rounded-md border px-2 py-1.5">
+          <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
             Simulateur de variables
           </p>
-          <div className="divide-y divide-border/60">
+          <div className="divide-border/60 divide-y">
             {variables.map((v) => (
               <VariableControl
                 key={v.id}
@@ -455,7 +475,7 @@ export function PreviewPanel({
         </div>
       )}
 
-      <div className="relative flex-1 overflow-hidden rounded-md border border-border bg-black">
+      <div className="border-border relative flex-1 overflow-hidden rounded-md border bg-black">
         <iframe
           key={iframeUrl}
           ref={iframeRef}
@@ -474,10 +494,7 @@ export function PreviewPanel({
             currently in the viewport (`editingActive` already gates the
             halo around the panel for the same reason). */}
         {editingActive && fieldRails && fieldRails.length > 0 && fieldRailColors && (
-          <div
-            className="pointer-events-none absolute inset-y-0 left-0 z-10"
-            style={{ width: 10 }}
-          >
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10" style={{ width: 10 }}>
             {fieldRails.map((r, i) => {
               const color = fieldRailColors[r.key];
               if (!color) return null;
@@ -504,44 +521,81 @@ export function PreviewPanel({
             })}
           </div>
         )}
-        {/* Floating "revenir" banner — shown only when the edited block is
-            scrolled out of the iframe viewport. Full-width violet bar at the
-            top or bottom of the iframe area. Click → asks the Solid side to
-            scroll back via the existing `preview:scrollToBlock` channel. */}
-        {editingBlockId && editedBlockOffscreen && (
-          <button
-            type="button"
-            onClick={() => {
-              const win = iframeRef.current?.contentWindow;
-              win?.postMessage(
-                { type: 'preview:scrollToBlock', blockId: editingBlockId },
-                clientUrl,
-              );
-            }}
-            className={
-              editedBlockOffscreen === 'above'
-                ? 'absolute left-0 right-0 top-0 z-20 flex items-center justify-center gap-2 bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-md transition hover:bg-violet-700'
-                : 'absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-2 bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-md transition hover:bg-violet-700'
-            }
-            title="Revenir au bloc en cours d'édition"
-          >
-            <span className="text-base">{editedBlockOffscreen === 'above' ? '↑' : '↓'}</span>
-            <span className="truncate">
-              Tu édites{' '}
-              {editedBlockSummary ? (
-                <span className="font-semibold">« {editedBlockSummary} »</span>
-              ) : (
-                'ce bloc'
-              )}
-              {' '}— Revenir
-            </span>
-          </button>
+        {/* Floating navigation cluster (bottom-right): jump to the editor of the
+            block in view, and/or scroll the preview back to the block being
+            edited when it's offscreen. Stacks vertically when both apply. */}
+        {(showEditVisible || showReturnToEdited || showChapterNav || previewOnOtherChapter) && (
+          <div className="absolute bottom-3 right-3 z-20 flex flex-col items-end gap-2">
+            {previewOnOtherChapter ? (
+              <button
+                type="button"
+                onClick={() => onGoToChapter?.(previewChapterSlug!)}
+                className="bg-brand-primary-600 hover:bg-brand-primary-700 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-white shadow-md transition"
+                title="Éditer le chapitre actuellement affiché dans la preview"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Éditer ce chapitre
+              </button>
+            ) : showEditVisible ? (
+              <button
+                type="button"
+                onClick={() => onEditVisibleBlock?.(visibleBlockId!)}
+                className="bg-brand-primary-600 hover:bg-brand-primary-700 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-white shadow-md transition"
+                title="Éditer ce bloc dans le panneau de gauche"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Éditer ce bloc
+              </button>
+            ) : null}
+            {showReturnToEdited && (
+              <button
+                type="button"
+                onClick={() => {
+                  const win = iframeRef.current?.contentWindow;
+                  win?.postMessage({ type: 'preview:scrollToBlock', blockId: editingBlockId }, clientUrl);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3 py-1.5 text-xs font-medium text-white shadow-md transition hover:bg-violet-700"
+                title={
+                  editedBlockSummary ? `Revenir à « ${editedBlockSummary} »` : "Revenir au bloc en cours d'édition"
+                }
+              >
+                <span className="text-sm leading-none">{editedBlockOffscreen === 'above' ? '↑' : '↓'}</span>
+                Revenir
+              </button>
+            )}
+            {showChapterNav && (
+              <div className="flex items-center gap-1.5">
+                {prevChapter && onGoToChapter && (
+                  <button
+                    type="button"
+                    onClick={() => onGoToChapter(prevChapter.slug)}
+                    className="border-border text-foreground inline-flex max-w-[150px] items-center gap-1 rounded-full border bg-white/95 px-2.5 py-1 text-xs font-medium shadow-md transition hover:bg-white"
+                    title={`Éditer le chapitre précédent : ${prevChapter.title}`}
+                  >
+                    <span className="leading-none">←</span>
+                    <span className="truncate">{prevChapter.title}</span>
+                  </button>
+                )}
+                {nextChapter && onGoToChapter && (
+                  <button
+                    type="button"
+                    onClick={() => onGoToChapter(nextChapter.slug)}
+                    className="border-border text-foreground inline-flex max-w-[150px] items-center gap-1 rounded-full border bg-white/95 px-2.5 py-1 text-xs font-medium shadow-md transition hover:bg-white"
+                    title={`Éditer le chapitre suivant : ${nextChapter.title}`}
+                  >
+                    <span className="truncate">{nextChapter.title}</span>
+                    <span className="leading-none">→</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      <p className="text-[10px] text-muted-foreground">
-        L&apos;iframe pointe vers <code>{clientUrl}</code>. Le mode preview bypasse localStorage et
-        Hubspot — les valeurs ci-dessus sont injectées via l&apos;URL.
+      <p className="text-muted-foreground text-[10px]">
+        L&apos;iframe pointe vers <code>{clientUrl}</code>. Le mode preview bypasse localStorage et Hubspot — les
+        valeurs ci-dessus sont injectées via l&apos;URL.
       </p>
     </div>
   );
@@ -558,10 +612,7 @@ function VariableControl({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
-      <code
-        className="truncate text-[11px] font-medium text-muted-foreground"
-        title={variable.label}
-      >
+      <code className="text-muted-foreground truncate text-[11px] font-medium" title={variable.label}>
         {variable.key}
       </code>
       <div className="shrink-0">
@@ -571,7 +622,7 @@ function VariableControl({
           <select
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="h-7 max-w-[180px] rounded-md border border-border bg-white px-2 text-xs"
+            className="border-border h-7 max-w-[180px] rounded-md border bg-white px-2 text-xs"
           >
             {variable.options.map((opt) => (
               <option key={opt.value} value={opt.value}>

@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ChapterEditor } from '@/components/ChapterEditor';
 import {
   copyBlockToChapter,
+  createNavbarVariant,
   deleteBlock,
   duplicateBlock,
   ensureDraftForChapterView,
@@ -95,6 +96,12 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
     'use server';
     const res = await ensureDraftForChapterView(slug);
     return { created: res.created };
+  }
+  // Inline « + Nouvelle navbar… » from a block's navbar picker : create a
+  // parcours navbar variant from a free-text name + return it for selection.
+  async function createNavbarVariantAction(title: string) {
+    'use server';
+    return await createNavbarVariant(slug, title);
   }
 
   // Draft id (if any) so the iframe previews the draft version, not the live.
@@ -204,6 +211,7 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
       reorderBlocksAction={reorderBlocksAction}
       saveBlockAction={saveBlockPayloadAction}
       ensureDraftAction={ensureDraftAction}
+      createNavbarVariantAction={createNavbarVariantAction}
       chapters={chapters}
       navbarVariants={navbarVariants}
       editingVersionId={draftStatus.draftVersionId}

@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
 import { AddBlockForm } from '@/components/AddBlockForm';
-import type { VariableMeta } from '@/components/blocks/editor-types';
+import type { NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
 import { InlineBlockEditor } from '@/components/InlineBlockEditor';
@@ -64,6 +64,8 @@ interface Props {
   saveBlockAction: (blockId: string, payload: Record<string, unknown>) => Promise<string | void>;
   /** Edit-intent: ensure a draft version exists before inline editing starts. */
   ensureDraftAction: () => Promise<{ created: boolean }>;
+  /** Inline « + Nouvelle navbar… » : crée une variante (nom) + la retourne. */
+  createNavbarVariantAction: (title: string) => Promise<NavbarVariantMeta>;
   /** parcours_version id the preview iframe should read from (draft or null). */
   editingVersionId?: string | null;
   /** Published parcours_version id — enables the draft/published toggle. */
@@ -291,6 +293,19 @@ export function ChapterEditor(props: Props) {
     return row ? summarizeBlock(row.type, row.payload) : '';
   }, [activeBlockId, props.blocks]);
 
+  // Adjacent chapters (by the parcours' chapter order) → fuel the « ← / →
+  // Chapitre » nav pills in the preview cluster, so the editor can hop straight
+  // to editing the previous / next chapter without going back to the list.
+  const chapterNav = useMemo(() => {
+    const list = props.chapters ?? [];
+    const idx = list.findIndex((c) => c.slug === props.chapter.slug);
+    if (idx < 0) return { prev: undefined, next: undefined };
+    return {
+      prev: idx > 0 ? list[idx - 1] : undefined,
+      next: idx < list.length - 1 ? list[idx + 1] : undefined,
+    };
+  }, [props.chapters, props.chapter.slug]);
+
   // Centralise selection so the two scroll directions stay decoupled:
   //  - `selectedBlockId` always updates (row highlight + list-follow target),
   //  - `previewTargetId` updates only when the PREVIEW is NOT the source, so a
@@ -304,6 +319,22 @@ export function ChapterEditor(props: Props) {
       manualScrollAtRef.current = Date.now();
       setPreviewTargetId((prev) => (prev === id ? prev : id));
     }
+  }, []);
+
+  // Bring a row's inline editor to the TOP of the list. Used on explicit open
+  // (incl. clicking a sub-block in the preview) so the block "remonte" — even
+  // when it was ALREADY selected (the auto-scroll effect keys on
+  // `selectedBlockId` and wouldn't re-fire). Re-runs shortly after so the
+  // freshly-expanded (taller) row settles at the top, not mid-viewport.
+  const revealRow = useCallback((id: string) => {
+    const scroll = () => {
+      const row = listRef.current?.querySelector<HTMLElement>(`[data-row-id="${id}"]`);
+      if (!row) return;
+      listScrollAtRef.current = Date.now();
+      row.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    };
+    requestAnimationFrame(scroll);
+    window.setTimeout(scroll, 220);
   }, []);
 
   // ---- Open / collapse / activate a block inline ----
@@ -330,6 +361,7 @@ export function ChapterEditor(props: Props) {
     setActiveBlockId(id);
     setHoveredField(null);
     centerOn(id, 'click');
+    revealRow(id);
   }
   function collapseBlock(id: string) {
     setExpandedIds((prev) => {
@@ -412,7 +444,11 @@ export function ChapterEditor(props: Props) {
     // Mark the upcoming scroll as programmatic so the list-scroll handler
     // ignores its echo (avoids a list→preview→list feedback loop).
     listScrollAtRef.current = Date.now();
-    row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    // An explicit open (click, incl. clicking a block in the preview) brings
+    // the row to the TOP so its freshly-expanded inline editor is visible from
+    // its header. A preview-scroll *follow* stays gentle ('nearest').
+    const block = lastSourceRef.current === 'preview' ? 'nearest' : 'start';
+    row.scrollIntoView({ block, inline: 'nearest', behavior: 'smooth' });
   }, [selectedBlockId]);
 
   // List scroll → soft-follow the preview to the top-most visible row. Ignores
@@ -532,6 +568,19 @@ export function ChapterEditor(props: Props) {
     startTransition(() => router.refresh());
     void openBlock(newBlockId);
   };
+
+  // Inline navbar creation : persist via the bound action, refresh so the
+  // canonical `navbarVariants` prop re-flows to every open picker, and return
+  // the created variant for the initiating picker's optimistic display.
+  const { createNavbarVariantAction } = props;
+  const onCreateNavbarVariant = useCallback(
+    async (title: string): Promise<NavbarVariantMeta> => {
+      const created = await createNavbarVariantAction(title);
+      startTransition(() => router.refresh());
+      return created;
+    },
+    [createNavbarVariantAction, router],
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),560px]">
@@ -694,6 +743,7 @@ export function ChapterEditor(props: Props) {
                           variables={props.variables}
                           chapters={props.chapters}
                           navbarVariants={props.navbarVariants}
+                          onCreateNavbarVariant={onCreateNavbarVariant}
                           saveAction={(payload) => props.saveBlockAction(b.id, payload)}
                           draftStatus={b.diff}
                           sourcePayload={null}
@@ -754,6 +804,10 @@ export function ChapterEditor(props: Props) {
           fieldRailColors={FIELD_RAIL_COLORS}
           onVisibleBlock={handleVisibleBlock}
           onBlockClicked={handleBlockClicked}
+          onEditVisibleBlock={(id) => void openBlock(id)}
+          prevChapter={chapterNav.prev}
+          nextChapter={chapterNav.next}
+          onGoToChapter={(slug) => router.push(`/parcours/${props.parcoursSlug}/chapters/${slug}`)}
           blockOverride={blockOverride}
         />
       </div>

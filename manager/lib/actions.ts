@@ -2357,3 +2357,28 @@ export async function setNavbarVariants(parcoursSlug: string, variants: NavbarVa
 
   revalidatePath(`/parcours/${parcoursSlug}`, 'layout');
 }
+
+/**
+ * Append ONE navbar variant from a free-text name — powers the inline
+ * « + Nouvelle navbar… » action of the block editor's navbar picker. Derives a
+ * unique slug-safe `key` from the title (suffixing `-2`, `-3`… on collision so
+ * creation never fails), then persists via `setNavbarVariants`. Colour / icon /
+ * percent are left empty and stay editable afterwards in the « Navbars » tab.
+ * Returns the created variant so the client can select it immediately.
+ */
+export async function createNavbarVariant(parcoursSlug: string, title: string): Promise<NavbarVariant> {
+  const cleanTitle = title.trim();
+  if (!cleanTitle) throw new Error('Le nom de la navbar est requis.');
+  const existing = await getNavbarVariants(parcoursSlug);
+  const base = normalizeVariantKey(cleanTitle) || 'navbar';
+  const taken = new Set(existing.map((v) => v.key));
+  let key = base;
+  let n = 2;
+  while (taken.has(key)) {
+    key = `${base}-${n}`;
+    n += 1;
+  }
+  const created: NavbarVariant = { key, title: cleanTitle };
+  await setNavbarVariants(parcoursSlug, [...existing, created]);
+  return created;
+}
