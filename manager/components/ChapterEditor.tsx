@@ -1,31 +1,33 @@
 'use client';
 
-import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
+import type { ContentBlock } from '@shared/content-schema';
+import { ArrowLeft, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
-import type { ContentBlock } from '@shared/content-schema';
-import { extractUsedVariableKeys } from '@/lib/usedVariables';
-
 import { AddBlockForm } from '@/components/AddBlockForm';
+import type { VariableMeta } from '@/components/blocks/editor-types';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
+import { InlineBlockEditor } from '@/components/InlineBlockEditor';
 import { InPageSearchInput } from '@/components/InPageSearchInput';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { SearchHighlightBanner } from '@/components/SearchHighlightBanner';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
-import type { VariableMeta } from '@/components/blocks/editor-types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { extractBlockSearchTextWeighted, extractSnippet } from '@/lib/blockSearch';
-import { FamilyIcon } from '@/lib/familyIcons';
-import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
 import { summarizeBlock } from '@/lib/blockSummary';
+import { FamilyIcon } from '@/lib/familyIcons';
+import { FIELD_RAIL_COLORS } from '@/lib/fieldRailColors';
+import { isTagColor, TAG_COLOR_HEX } from '@/lib/tagColors';
+import { extractUsedVariableKeys } from '@/lib/usedVariables';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
+import { useUnsavedChangesWarning } from '@/lib/useUnsavedChangesWarning';
 import { cn } from '@/lib/utils';
 
 interface BlockRow {
@@ -35,9 +37,7 @@ interface BlockRow {
   payload: Record<string, unknown>;
   /** Draft diff: 'new', 'modified', 'pristine', or undefined (no draft). */
   diff?: 'new' | 'modified' | 'pristine';
-  /** Maintenance tags attached to this block (via `block_tag`).
-   *  Surfaced as colored chips on the row so the editor sees at a
-   *  glance which interfaces each block depicts. */
+  /** Maintenance tags attached to this block (via `block_tag`). */
   tags?: Array<{ id: string; label: string; color: string }>;
 }
 
@@ -49,16 +49,6 @@ interface Props {
   /** Navbar variants registered on this parcours — used to render a small
    *  colored pill on each block row whose payload references one. */
   navbarVariants?: Array<{ key: string; title: string; color?: string }>;
-  addBlockAction: (type: string) => Promise<void>;
-  /**
-   * Insert a sample block (curated payload from `SAMPLE_PAYLOADS`) at the
-   * end of the current chapter. Powers the popover-driven "Ajouter un bloc"
-   * UI that lets the user pick visually before inserting.
-   *
-   * Returns the newly-created block id so the client can immediately open
-   * its editor (`/blocks/<id>`) — typical follow-up to "Ajouter un bloc" is
-   * "now fill it in", so we save the user a manual pencil click.
-   */
   insertSampleBlockAction: (type: string) => Promise<string>;
   deleteBlockAction: (blockId: string) => Promise<void>;
   duplicateBlockAction: (blockId: string) => Promise<string>;
@@ -69,6 +59,11 @@ interface Props {
   /** All chapters of the parcours (draft view) — used by the "Copy to…" menu. */
   chapters?: { id: string; slug: string; title: string }[];
   reorderBlocksAction: (orderedIds: string[]) => Promise<void>;
+  /** Persist a single block's payload from the inline editor. Returns the id
+   *  actually written (may differ on the first edit after publish). */
+  saveBlockAction: (blockId: string, payload: Record<string, unknown>) => Promise<string | void>;
+  /** Edit-intent: ensure a draft version exists before inline editing starts. */
+  ensureDraftAction: () => Promise<{ created: boolean }>;
   /** parcours_version id the preview iframe should read from (draft or null). */
   editingVersionId?: string | null;
   /** Published parcours_version id — enables the draft/published toggle. */
@@ -76,13 +71,8 @@ interface Props {
 }
 
 /**
- * Renders a snippet with every occurrence of the matching substring
- * wrapped in <mark>. Multiple hits in the same snippet all get the
- * yellow highlight — picking just the first felt inconsistent when
- * the query was short ("pa" appearing twice but only one mark).
- *
- * Local to this file ; the palette's PaletteItem has a similar
- * helper but unexported.
+ * Renders a snippet with every occurrence of the matching substring wrapped
+ * in <mark>.
  */
 function HighlightedSnippet({ snippet, query }: { snippet: string; query: string }) {
   const q = query.trim().toLowerCase();
@@ -108,18 +98,11 @@ function HighlightedSnippet({ snippet, query }: { snippet: string; query: string
 }
 
 /**
- * Renders the maintenance tags attached to a block as colored pills,
- * inline on its row. Same visual contract as the ⌘K palette chips
- * (uses `TAG_COLOR_HEX` so colors render reliably regardless of how
- * Tailwind's JIT scans dynamic classNames). Returns null when there
- * are no tags so the row keeps its layout untouched.
+ * Renders the maintenance tags attached to a block as colored pills, inline on
+ * its row. Returns an amber "Sans tag" badge when there are none.
  */
 function BlockTagsChips({ tags }: { tags?: BlockRow['tags'] }) {
   if (!tags || tags.length === 0) {
-    // Empty state : surface a small amber "Sans tag" badge instead of
-    // rendering nothing. Helps the editor spot blocks that still need
-    // a maintenance tag at a glance — matches the orange counter shown
-    // at the top of the block list.
     return (
       <span
         className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
@@ -174,18 +157,56 @@ export function ChapterEditor(props: Props) {
   const toast = useToast();
   const confirm = useConfirm();
   const searchParams = useSearchParams();
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(props.blocks[0]?.id ?? null);
-  const [isPending, startTransition] = useTransition();
 
-  // ⌘K search context : when the user lands here from the palette,
-  // its query is in `?q=`. We use it to (a) show a banner, (b) mark
-  // matching blocks with a yellow ring + snippet under their summary,
-  // (c) auto-scroll the first match into view.
-  //
-  // `localSearch` is the in-page filter input — a second source of
-  // truth so the user can keep filtering blocks after dismissing the
-  // banner. It is seeded from `?q=` on mount + on URL changes (so
-  // clearing the banner clears the input too).
+  // Row highlight + list-scroll target (the "centered" block).
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(props.blocks[0]?.id ?? null);
+  // What the PREVIEW scrolls to. Decoupled from `selectedBlockId` so a preview
+  // scroll (which updates the highlight) doesn't bounce back into a
+  // programmatic preview scroll. Set on click / list-follow / search only.
+  const [previewTargetId, setPreviewTargetId] = useState<string | null>(props.blocks[0]?.id ?? null);
+  // Rows whose inline editor is mounted (lazy — collapsed rows stay summaries).
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // The expanded row currently driving the shared preview (override + outline).
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  // Live payload reported by the ACTIVE inline editor (for blockOverride).
+  const [activeBlock, setActiveBlock] = useState<{ id: string; block: ContentBlock } | null>(null);
+  // Hovered field path reported by the active editor (preview highlight).
+  const [hoveredField, setHoveredField] = useState<string | null>(null);
+  // Per-block dirty flags → ORed for the beforeunload guard.
+  const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({});
+  // Reported by the preview iframe.
+  const [visibleBlockId, setVisibleBlockId] = useState<string | null>(null);
+  const [fieldRails, setFieldRails] = useState<Array<{ key: string; top: number; height: number }>>([]);
+  // After a first-edit draft clone, re-expand the block at this order post-refresh.
+  const [pendingExpandOrder, setPendingExpandOrder] = useState<number | null>(null);
+
+  const [isPending, startTransition] = useTransition();
+  const draftEnsuredRef = useRef(false);
+
+  // ---- Shared variable simulator (one per chapter) ----
+  const [simValues, setSimValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const v of props.variables) {
+      if (v.type === 'boolean') init[v.key] = 'false';
+      else if (v.type === 'enum') init[v.key] = v.options[0]?.value ?? '';
+      else init[v.key] = '';
+    }
+    return init;
+  });
+  useEffect(() => {
+    setSimValues((prev) => {
+      const next: Record<string, string> = {};
+      for (const v of props.variables) {
+        if (v.key in prev) next[v.key] = prev[v.key];
+        else if (v.type === 'boolean') next[v.key] = 'false';
+        else if (v.type === 'enum') next[v.key] = v.options[0]?.value ?? '';
+        else next[v.key] = '';
+      }
+      return next;
+    });
+  }, [props.variables]);
+
+  // ---- ⌘K search context ----
   const urlQuery = searchParams.get('q')?.trim() ?? '';
   const [localSearch, setLocalSearch] = useState(urlQuery);
   useEffect(() => {
@@ -202,9 +223,6 @@ export function ChapterEditor(props: Props) {
     }
     return ids;
   }, [searchQuery, props.blocks]);
-  // Snippet ±32 chars around the match per block. Pre-computed once
-  // per render rather than inside the For loop so re-renders don't
-  // re-walk the payload of unaffected rows.
   const snippetByBlockId = useMemo(() => {
     if (!searchQuery) return new Map<string, string>();
     const map = new Map<string, string>();
@@ -216,80 +234,171 @@ export function ChapterEditor(props: Props) {
     return map;
   }, [searchQuery, props.blocks]);
 
-  // Keyboard nav over the block list:
-  //   ↑↓ to highlight a block, Enter to open its editor, Esc → chapter list.
+  // Keyboard nav over the list: ↑↓ to highlight, → opens the block inline
+  // (via `?block=<id>` on this same page — soft nav, no redirect bounce),
+  // ← → chapter list.
   const { selectedIdx: kbdIdx, isClient: kbdActive } = useListKeyboardNav(
     props.blocks,
-    (b) => `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`,
+    (b) => `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}?block=${b.id}`,
     `/parcours/${props.parcoursSlug}`,
   );
 
-  // Variables actually referenced by this chapter's content. The simulator
-  // hides itself when this set is empty.
+  // Variables actually referenced by this chapter's persisted content.
   const activeVariables = useMemo(() => {
     const usedKeys = extractUsedVariableKeys(props.blocks as unknown as ContentBlock[]);
     return props.variables.filter((v) => usedKeys.has(v.key));
   }, [props.blocks, props.variables]);
 
-  // Timestamp of the last manual click in the list. While we're inside a
-  // 1.2s window after a click, we ignore visibleBlock messages from the
-  // iframe so the smooth-scroll doesn't make the highlight flicker through
-  // the intermediate blocks.
+  // Timestamp of the last time WE programmatically drove the preview (click /
+  // list-follow / search). The preview's echoed `visibleBlock` reports are
+  // ignored within ~1.2s so the two panes don't fight.
   const manualScrollAtRef = useRef<number>(0);
+  // Timestamp of the last time WE programmatically scrolled the LIST (preview
+  // follow). The list's `scroll` echo is ignored within this window.
+  const listScrollAtRef = useRef<number>(0);
+  const LIST_FOLLOW_WINDOW = 900;
   const listRef = useRef<HTMLDivElement>(null);
-  // Where the most recent selectedBlockId update came from. We use this to
-  // decide whether to auto-scroll the list — only on clicks, never on
-  // preview scrolls (otherwise the visual focus jumps from the preview to
-  // the list, which is annoying when the user is reading the preview).
-  const lastSourceRef = useRef<'click' | 'preview'>('click');
+  const lastSourceRef = useRef<'click' | 'preview' | 'list'>('click');
+  // Tracks the last `?block=<id>` deep-link we acted on, so re-renders don't
+  // re-open it (the param lingers in the URL after opening).
+  const handledBlockParamRef = useRef<string | null>(null);
 
-  function selectBlock(id: string) {
-    lastSourceRef.current = 'click';
-    manualScrollAtRef.current = Date.now();
-    setSelectedBlockId(id);
+  // ---- beforeunload guard across every open inline editor ----
+  const anyDirty = useMemo(() => Object.values(dirtyMap).some(Boolean), [dirtyMap]);
+  useUnsavedChangesWarning(anyDirty);
+
+  // ---- Block override fed to the single shared preview (active block only) ----
+  // Built only when the reported block actually belongs to the active id, so a
+  // switch never pushes a stale (newId + old payload) override to the iframe.
+  const blockOverride = useMemo(() => {
+    if (!activeBlockId || !activeBlock || activeBlock.id !== activeBlockId) return null;
+    return {
+      blockId: activeBlockId,
+      block: { type: activeBlock.block.type, payload: activeBlock.block.payload as Record<string, unknown> },
+    };
+  }, [activeBlockId, activeBlock]);
+
+  const editedBlockOffscreen = useMemo<'above' | 'below' | null>(() => {
+    if (!activeBlockId || !visibleBlockId || visibleBlockId === activeBlockId) return null;
+    const vis = props.blocks.findIndex((b) => b.id === visibleBlockId);
+    const act = props.blocks.findIndex((b) => b.id === activeBlockId);
+    if (vis < 0 || act < 0) return null;
+    return vis < act ? 'below' : 'above';
+  }, [activeBlockId, visibleBlockId, props.blocks]);
+  const editedBlockSummary = useMemo(() => {
+    if (!activeBlockId) return '';
+    const row = props.blocks.find((b) => b.id === activeBlockId);
+    return row ? summarizeBlock(row.type, row.payload) : '';
+  }, [activeBlockId, props.blocks]);
+
+  // Centralise selection so the two scroll directions stay decoupled:
+  //  - `selectedBlockId` always updates (row highlight + list-follow target),
+  //  - `previewTargetId` updates only when the PREVIEW is NOT the source, so a
+  //    preview scroll never bounces back into a programmatic preview scroll.
+  // Stable (only stable setters/refs) → safe in effect deps.
+  const centerOn = useCallback((id: string, source: 'click' | 'preview' | 'list') => {
+    lastSourceRef.current = source;
+    setSelectedBlockId((prev) => (prev === id ? prev : id));
+    if (source !== 'preview') {
+      // We're about to programmatically scroll the preview → ignore its echo.
+      manualScrollAtRef.current = Date.now();
+      setPreviewTargetId((prev) => (prev === id ? prev : id));
+    }
+  }, []);
+
+  // ---- Open / collapse / activate a block inline ----
+  async function openBlock(id: string) {
+    // Edit-intent: when the parcours has no draft yet, clone the whole version
+    // ONCE up-front so block ids stay stable for the rest of the session.
+    if (!props.editingVersionId && !draftEnsuredRef.current) {
+      draftEnsuredRef.current = true;
+      try {
+        const res = await props.ensureDraftAction();
+        if (res?.created) {
+          // ids just changed (whole version cloned) → re-render against the
+          // draft, then re-expand the same block (matched by its order).
+          setPendingExpandOrder(props.blocks.find((b) => b.id === id)?.order ?? null);
+          startTransition(() => router.refresh());
+          return;
+        }
+      } catch (e) {
+        console.error('[ChapterEditor] ensureDraft failed', e);
+        toast.error('Impossible de créer le brouillon — réessaie.');
+      }
+    }
+    setExpandedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    setActiveBlockId(id);
+    setHoveredField(null);
+    centerOn(id, 'click');
+  }
+  function collapseBlock(id: string) {
+    setExpandedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const n = new Set(prev);
+      n.delete(id);
+      return n;
+    });
+    setDirtyMap((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    if (activeBlockId === id) {
+      setActiveBlockId(null);
+      setActiveBlock(null);
+      setHoveredField(null);
+    }
+  }
+  function toggleExpand(id: string) {
+    if (expandedIds.has(id)) collapseBlock(id);
+    else void openBlock(id);
   }
 
-  // Sync coming back from the iframe when the user scrolls the preview.
+  // Re-expand after a first-edit draft clone (ids changed → match by order).
+  useEffect(() => {
+    if (pendingExpandOrder == null) return;
+    const target = props.blocks.find((b) => b.order === pendingExpandOrder);
+    if (target) {
+      setExpandedIds((prev) => new Set(prev).add(target.id));
+      setActiveBlockId(target.id);
+      centerOn(target.id, 'click');
+    }
+    setPendingExpandOrder(null);
+  }, [props.blocks, pendingExpandOrder, centerOn]);
+
+  // Preview scroll → highlight the matching row (no auto-scroll on preview
+  // source — Phase 3 adds the soft follow). Gated 1.2s after a manual click.
+  // `visibleBlockId` is tracked unconditionally so the "Revenir au bloc"
+  // offscreen banner knows whether the active block left the viewport.
   const handleVisibleBlock = useCallback((id: string) => {
+    setVisibleBlockId(id);
     if (Date.now() - manualScrollAtRef.current < 1200) return;
     lastSourceRef.current = 'preview';
     setSelectedBlockId((prev) => (prev === id ? prev : id));
   }, []);
 
-  // Click-to-inspect: the user clicked an actual block inside the preview
-  // iframe. Behave like a click in the list (scroll the row into view, full
-  // attention) AND show a transient ambar flash + a small tooltip with the
-  // block type for ~3s.
+  // Click-to-inspect inside the preview → open that block inline + flash its row.
   const [inspectedBlockId, setInspectedBlockId] = useState<string | null>(null);
   const [inspectedBlockType, setInspectedBlockType] = useState<string | null>(null);
-  const handleBlockClicked = useCallback(
-    (id: string, type?: string) => {
-      lastSourceRef.current = 'click';
-      manualScrollAtRef.current = Date.now();
-      setSelectedBlockId(id);
-      setInspectedBlockId(id);
-      setInspectedBlockType(type ?? null);
-      setTimeout(() => {
-        setInspectedBlockId((cur) => (cur === id ? null : cur));
-      }, 3000);
-      // Navigate to the block edit page so the editor opens on the clicked
-      // block. The chapter list page is a navigator — clicking in the
-      // preview is the fastest path to the per-block editor.
-      router.push(`/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${id}`);
-    },
-    [router, props.parcoursSlug, props.chapter.slug],
-  );
+  function handleBlockClicked(id: string, type?: string) {
+    setInspectedBlockId(id);
+    setInspectedBlockType(type ?? null);
+    setTimeout(() => setInspectedBlockId((cur) => (cur === id ? null : cur)), 3000);
+    void openBlock(id);
+  }
 
-  // Auto-scroll the list ONLY when the change came from a click. Preview
-  // scrolls just update the highlight without grabbing focus.
-  //
-  // The FIRST run (initial mount) is skipped on purpose : arriving on the
-  // page should land at the top (that's `ScrollResetOnNavigate`'s job),
-  // not auto-scroll to whichever block is selected by default. Because
-  // ChapterEditor mounts AFTER the layout-level scroll reset has already
-  // run, an unguarded `scrollIntoView` here would override it and leave
-  // the editor "a bit too low / too far right" on every navigation. We
-  // only want this scroll on genuine in-session selection changes.
+  // Rare fallback: a save translated a published id mid-edit (shouldn't happen
+  // once ensureDraft ran at edit-intent). Refresh to re-sync the list.
+  function handlePersistedId() {
+    startTransition(() => router.refresh());
+  }
+
+  // Auto-scroll the list to follow the selected block. First run (mount)
+  // skipped so we land at the top. 'list' source = the user is scrolling the
+  // list themselves → don't fight them; 'click'/'preview' → reveal the row
+  // (gentle 'nearest', a no-op when already visible → this is the preview→list
+  // soft follow).
   const didInitialAutoScrollRef = useRef(false);
   useEffect(() => {
     if (!didInitialAutoScrollRef.current) {
@@ -297,33 +406,75 @@ export function ChapterEditor(props: Props) {
       return;
     }
     if (!selectedBlockId || !listRef.current) return;
-    if (lastSourceRef.current === 'preview') return;
+    if (lastSourceRef.current === 'list') return;
     const row = listRef.current.querySelector<HTMLElement>(`[data-row-id="${selectedBlockId}"]`);
-    // `inline: 'nearest'` keeps the horizontal axis put — only the
-    // vertical position is adjusted to reveal the row.
-    row?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    if (!row) return;
+    // Mark the upcoming scroll as programmatic so the list-scroll handler
+    // ignores its echo (avoids a list→preview→list feedback loop).
+    listScrollAtRef.current = Date.now();
+    row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   }, [selectedBlockId]);
 
-  // When the user lands here from a ⌘K search, scroll the first
-  // matching block into view + select it in the preview. Runs once
-  // per `searchQuery` change so re-opening the same query doesn't
-  // re-trigger on every render.
+  // List scroll → soft-follow the preview to the top-most visible row. Ignores
+  // the echo of a programmatic list scroll (preview-follow) via listScrollAtRef.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    let raf = 0;
+    function onScroll() {
+      if (Date.now() - listScrollAtRef.current < LIST_FOLLOW_WINDOW) return;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const container = listRef.current;
+        if (!container) return;
+        const top = container.getBoundingClientRect().top;
+        let bestId = '';
+        let bestDist = Infinity;
+        container.querySelectorAll<HTMLElement>('[data-row-id]').forEach((row) => {
+          const id = row.getAttribute('data-row-id');
+          if (!id) return;
+          const dist = Math.abs(row.getBoundingClientRect().top - top);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestId = id;
+          }
+        });
+        if (bestId) centerOn(bestId, 'list');
+      });
+    }
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [centerOn, LIST_FOLLOW_WINDOW]);
+
+  // ⌘K search landing: scroll the first match into view + select it.
   useEffect(() => {
     if (!searchQuery || matchedBlockIds.size === 0) return;
     const firstMatch = props.blocks.find((b) => matchedBlockIds.has(b.id));
     if (!firstMatch) return;
-    lastSourceRef.current = 'click';
-    manualScrollAtRef.current = Date.now();
-    setSelectedBlockId(firstMatch.id);
-    // requestAnimationFrame so the row exists in the DOM before we
-    // try to scroll to it (the matchedBlockIds set is built from
-    // props.blocks, the DOM mirrors props.blocks → safe).
+    centerOn(firstMatch.id, 'click');
     requestAnimationFrame(() => {
       const row = listRef.current?.querySelector<HTMLElement>(`[data-row-id="${firstMatch.id}"]`);
       row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
+
+  // Deep-link entry: `?block=<id>` (from ⌘K, the tag-review modal, the parcours
+  // chapter list, the retired /blocks/<id> redirect, bookmarks…) opens that
+  // block inline. Ref-guarded so the lingering param doesn't re-open it on
+  // every re-render. `openBlock` is intentionally omitted from deps (it's a
+  // fresh closure each render); the guard makes this run once per param value.
+  const urlBlock = searchParams.get('block');
+  useEffect(() => {
+    if (!urlBlock || handledBlockParamRef.current === urlBlock) return;
+    if (!props.blocks.some((b) => b.id === urlBlock)) return;
+    handledBlockParamRef.current = urlBlock;
+    void openBlock(urlBlock);
+  }, [urlBlock, props.blocks]);
 
   function withRefresh<T extends unknown[]>(fn: (...args: T) => Promise<void>) {
     return (...args: T) =>
@@ -345,6 +496,7 @@ export function ChapterEditor(props: Props) {
       destructive: true,
     });
     if (!ok) return;
+    collapseBlock(blockId);
     deleteWithRefresh(blockId);
   }
   function handleDuplicate(blockId: string) {
@@ -373,30 +525,15 @@ export function ChapterEditor(props: Props) {
     });
   }
   const handleReorder = withRefresh(props.reorderBlocksAction);
-  const handleAdd = withRefresh(props.addBlockAction);
-  // Insert with sample payload — called from the new popover-driven Add UI.
-  // After the server action returns the new block id, navigate straight to
-  // its editor page (`/blocks/<id>`). Typical user flow after "Ajouter un
-  // bloc" is "now fill it in", so saving a pencil click on the just-inserted
-  // row keeps momentum. The router.push triggers a fresh server render of
-  // the block editor route, so no separate router.refresh() is needed — the
-  // chapter list will also be re-fetched when the user comes back via the
-  // "Retour aux chapitres" affordance. Errors bubble up to the popover's
-  // toast handler.
+  // Insert with sample payload — open the new row inline (rather than routing
+  // to the full-page editor), keeping the unified-view flow.
   const handleInsertSample = async (type: string) => {
     const newBlockId = await props.insertSampleBlockAction(type);
-    router.push(`/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${newBlockId}`);
+    startTransition(() => router.refresh());
+    void openBlock(newBlockId);
   };
 
   return (
-    // `minmax(0,1fr)` rather than `1fr` for the left track : a bare `1fr`
-    // grid track has an implicit `min-width: auto`, so it refuses to
-    // shrink below its content's min-content width — a long block summary
-    // or the "Ajouter un bloc" row then forces the whole grid wider than
-    // the viewport, producing a horizontal scrollbar (the editor arrived
-    // scrolled "a bit too far right"). `minmax(0,1fr)` lets the track
-    // shrink to 0 and the block rows (which already `truncate`) handle
-    // the overflow gracefully.
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),560px]">
       <div className="min-w-0 space-y-6">
         <div>
@@ -412,20 +549,11 @@ export function ChapterEditor(props: Props) {
           </p>
         </div>
 
-        {/* CTA de création en tête de zone (cohérent avec « Ajouter un
-            chapitre » / « Créer une variable ») : bouton pleine largeur qui
-            déplie le sélecteur de types de blocs. */}
         <ExpandableCreatePanel label="Ajouter un bloc">
           <AddBlockForm insertSampleAction={handleInsertSample} />
         </ExpandableCreatePanel>
 
-        {/* Banner shown only when ?q=<query> is in the URL (i.e. the
-            user landed here from a ⌘K search). Surfaces the original
-            query + match count + a clear button. */}
         <SearchHighlightBanner matchCount={matchedBlockIds.size} />
-        {/* In-page filter — persists across banner dismissal so the
-            user can keep filtering blocks without re-opening ⌘K.
-            Seeded from `?q=` on mount, independent afterwards. */}
         <InPageSearchInput
           value={localSearch}
           onChange={setLocalSearch}
@@ -439,13 +567,8 @@ export function ChapterEditor(props: Props) {
               Blocs
             </CardTitle>
             <p className="text-muted-foreground text-xs">
-              {props.blocks.length} bloc(s). Clique sur un bloc pour le centrer dans la preview, sur le crayon pour
-              l&apos;éditer.
+              {props.blocks.length} bloc(s). Clique sur un bloc pour l&apos;éditer ici ; le panneau de droite suit.
             </p>
-            {/* Permanent untagged-block counter for this chapter. Mirrors
-                the parcours-level counter in DraftStatusBar but scoped
-                to the current chapter so the editor sees coverage at a
-                glance while working inside one. */}
             {(() => {
               const untagged = props.blocks.filter((b) => (b.tags?.length ?? 0) === 0).length;
               if (untagged === 0) {
@@ -467,6 +590,8 @@ export function ChapterEditor(props: Props) {
               itemClassName="border-b border-border last:border-b-0"
               renderItem={(b, dragHandle, idx) => {
                 const isSelected = selectedBlockId === b.id;
+                const isActive = activeBlockId === b.id;
+                const isExpanded = expandedIds.has(b.id);
                 const isInspected = inspectedBlockId === b.id;
                 const isKbd = kbdActive && kbdIdx === idx;
                 const isMatch = matchedBlockIds.has(b.id);
@@ -475,18 +600,10 @@ export function ChapterEditor(props: Props) {
                   <div
                     data-row-id={b.id}
                     className={cn(
-                      // Single-line layout for the row itself — no
-                      // flex-wrap, otherwise long block summaries push
-                      // the action buttons (pencil/copy/trash) onto a
-                      // second line, creating the visual inconsistency
-                      // the user reported. The optional snippet sits
-                      // OUTSIDE the flex row, below it.
                       'relative py-3 transition-colors',
-                      isSelected && 'bg-primary/5 -mx-5 px-5',
+                      (isSelected || isActive) && 'bg-primary/5 -mx-5 px-5',
+                      isActive && 'ring-primary/30 rounded-md ring-1',
                       isInspected && '!bg-amber-100 ring-2 ring-amber-300',
-                      // Match from ⌘K search : yellow ring + tint. Stays
-                      // on top of selected styling, gives way to inspected
-                      // (which is even stronger).
                       isMatch && !isInspected && 'rounded-md bg-amber-50/70 ring-2 ring-amber-300',
                       isKbd && !isInspected && 'ring-brand-primary-300/60 ring-1',
                     )}
@@ -497,24 +614,31 @@ export function ChapterEditor(props: Props) {
                         {(BLOCK_TYPE_LABELS as Record<string, string>)[inspectedBlockType ?? ''] ??
                           inspectedBlockType ??
                           b.type}{' '}
-                        — clique ✏️ pour éditer
+                        — ouvert ci-dessous
                       </div>
                     )}
                     <div className="flex items-center gap-2">
                       {dragHandle}
                       <button
                         type="button"
-                        onClick={() => selectBlock(b.id)}
+                        onClick={() => toggleExpand(b.id)}
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                        title={isExpanded ? 'Replier' : 'Déplier pour éditer'}
+                        aria-expanded={isExpanded}
+                      >
+                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void openBlock(b.id)}
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        title="Centrer dans la preview"
+                        title="Éditer ce bloc (déplie l'éditeur + centre la preview)"
                       >
                         <span className="text-muted-foreground w-6 shrink-0 font-mono text-xs">{b.order}</span>
                         <span className="bg-muted text-muted-foreground inline-flex h-6 shrink-0 items-center rounded px-2 text-[11px] font-medium uppercase tracking-wide">
                           {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
                         </span>
                         <span className="min-w-0 flex-1 truncate text-sm">{summarizeBlock(b.type, b.payload)}</span>
-                        {/* Navbar variant indicator — surfaces the "Tool 1
-                            navbar" used by this block at a glance. */}
                         {(() => {
                           const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
                           if (!variantKey) return null;
@@ -535,23 +659,6 @@ export function ChapterEditor(props: Props) {
                         <BlockTagsChips tags={b.tags} />
                         <BlockDiffBadge diff={b.diff} />
                       </button>
-                      {/* Snippet, action buttons (pencil/duplicate/delete)
-                          continue on the SAME flex row so they sit at
-                          the end of the line, never wrap. */}
-                      <Link
-                        href={
-                          // Propagate the search context to the block
-                          // editor when the user clicks the pencil on a
-                          // matched block — they keep their bearings.
-                          searchQuery
-                            ? `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}?q=${encodeURIComponent(searchQuery)}`
-                            : `/parcours/${props.parcoursSlug}/chapters/${props.chapter.slug}/blocks/${b.id}`
-                        }
-                      >
-                        <Button variant="ghost" size="sm" title="Éditer">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </Link>
                       <DuplicateBlockMenu
                         chapters={props.chapters ?? []}
                         currentChapterSlug={props.chapter.slug}
@@ -569,33 +676,57 @@ export function ChapterEditor(props: Props) {
                         <Trash2 className="text-destructive h-4 w-4" />
                       </Button>
                     </div>
-                    {/* Snippet rendered BELOW the row (outside the
-                        flex container) so it has full width and
-                        doesn't push the action buttons to a new line
-                        when the title is long. Only shown when the
-                        ⌘K search has a match in the block body. */}
                     {snippet && (
                       <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
                         <HighlightedSnippet snippet={snippet} query={searchQuery} />
                       </p>
+                    )}
+                    {isExpanded && (
+                      <div className="border-border bg-muted/20 mt-3 rounded-md border p-3">
+                        <InlineBlockEditor
+                          key={b.id}
+                          blockId={b.id}
+                          chapterSlug={props.chapter.slug}
+                          parcoursSlug={props.parcoursSlug}
+                          isNew={false}
+                          type={b.type as ContentBlock['type']}
+                          initialPayload={b.payload}
+                          variables={props.variables}
+                          chapters={props.chapters}
+                          navbarVariants={props.navbarVariants}
+                          saveAction={(payload) => props.saveBlockAction(b.id, payload)}
+                          draftStatus={b.diff}
+                          sourcePayload={null}
+                          simValues={simValues}
+                          setSimValues={setSimValues}
+                          setHoveredField={setHoveredField}
+                          active={isActive}
+                          onBlockChange={(blk) =>
+                            setActiveBlock((prev) =>
+                              prev && prev.id === b.id && prev.block === blk ? prev : { id: b.id, block: blk },
+                            )
+                          }
+                          onDirtyChange={(d) =>
+                            setDirtyMap((prev) => (prev[b.id] === d ? prev : { ...prev, [b.id]: d }))
+                          }
+                          onPersistedId={handlePersistedId}
+                        />
+                      </div>
                     )}
                   </div>
                 );
               }}
             />
             {props.blocks.length === 0 && (
-              // Empty state with an explicit nudge towards the
-              // "Ajouter un bloc" card below — turn the dead-end "Aucun
-              // bloc." line into the first step of a guided flow.
               <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
                 <div className="text-3xl" aria-hidden="true">
                   🧱
                 </div>
                 <p className="text-sm font-medium">Aucun bloc dans ce chapitre</p>
                 <p className="text-muted-foreground max-w-md text-xs">
-                  Choisis un type de bloc ci-dessous (texte, vidéo, formulaire, condition…) — un aperçu live
-                  s&apos;ouvre, puis « Insérer cet exemple » t&apos;envoie directement dans l&apos;éditeur du nouveau
-                  bloc.
+                  Choisis un type de bloc ci-dessus (texte, vidéo, formulaire, condition…) — un aperçu live
+                  s&apos;ouvre, puis « Insérer cet exemple » ajoute le bloc et l&apos;ouvre directement pour
+                  l&apos;éditer ici.
                 </p>
               </div>
             )}
@@ -608,11 +739,22 @@ export function ChapterEditor(props: Props) {
           chapterSlug={props.chapter.slug}
           parcoursSlug={props.parcoursSlug}
           variables={activeVariables}
-          selectedBlockId={selectedBlockId}
-          onVisibleBlock={handleVisibleBlock}
-          onBlockClicked={handleBlockClicked}
+          values={simValues}
+          onValuesChange={setSimValues}
+          selectedBlockId={previewTargetId}
           versionId={props.editingVersionId}
           publishedVersionId={props.publishedVersionId}
+          hoveredField={hoveredField}
+          hoveredFieldBlockId={activeBlockId ?? undefined}
+          editingBlockId={activeBlockId}
+          editedBlockOffscreen={editedBlockOffscreen}
+          editedBlockSummary={editedBlockSummary}
+          fieldRails={fieldRails}
+          onFieldRails={setFieldRails}
+          fieldRailColors={FIELD_RAIL_COLORS}
+          onVisibleBlock={handleVisibleBlock}
+          onBlockClicked={handleBlockClicked}
+          blockOverride={blockOverride}
         />
       </div>
     </div>

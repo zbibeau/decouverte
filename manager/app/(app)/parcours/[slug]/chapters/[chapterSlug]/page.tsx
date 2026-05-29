@@ -1,21 +1,22 @@
+import type { ContentBlock } from '@shared/content-schema';
 import { notFound } from 'next/navigation';
 
 import { ChapterEditor } from '@/components/ChapterEditor';
 import {
   copyBlockToChapter,
-  createBlock,
   deleteBlock,
   duplicateBlock,
+  ensureDraftForChapterView,
   getDraftBlockDiffs,
   getDraftStatus,
   getEditingVersionId,
   getNavbarVariants,
   insertSampleBlock,
   reorderBlocks,
+  updateBlockPayload,
 } from '@/lib/actions';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { harvestNestedTagIds } from '@/lib/blockSearch';
-import type { ContentBlock } from '@shared/content-schema';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ChapterEditPage({ params }: { params: Promise<{ slug: string; chapterSlug: string }> }) {
@@ -52,10 +53,6 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
     .order('key', { ascending: true });
 
   // Bound server actions — passed as props to the client editor.
-  async function addBlockAction(type: string) {
-    'use server';
-    await createBlock(slug, chapterSlug, chapter!.id, type);
-  }
   async function deleteBlockAction(blockId: string) {
     'use server';
     await deleteBlock(slug, chapterSlug, blockId);
@@ -83,6 +80,21 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
     // flow when the typical follow-up to "Ajouter un bloc" is "now fill it
     // in".
     return blockId;
+  }
+  // Persist a single block's payload from the INLINE editor (unified chapter
+  // view). Returns the id actually written — may differ from the input on the
+  // first edit after a publish (published id → its draft twin).
+  async function saveBlockPayloadAction(blockId: string, payload: Record<string, unknown>): Promise<string> {
+    'use server';
+    return await updateBlockPayload(slug, chapterSlug, blockId, payload);
+  }
+  // Edit-intent : ensure a draft version exists before the user starts editing
+  // inline, so block ids stay stable for the whole session (see
+  // ensureDraftForChapterView). The client refreshes when `created` is true.
+  async function ensureDraftAction(): Promise<{ created: boolean }> {
+    'use server';
+    const res = await ensureDraftForChapterView(slug);
+    return { created: res.created };
   }
 
   // Draft id (if any) so the iframe previews the draft version, not the live.
@@ -185,12 +197,13 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
         type: v.type as 'boolean' | 'enum' | 'string' | 'number',
         options: (v.options as Array<{ value: string; label: string }>) ?? [],
       }))}
-      addBlockAction={addBlockAction}
       insertSampleBlockAction={insertSampleBlockAction}
       deleteBlockAction={deleteBlockAction}
       duplicateBlockAction={duplicateBlockAction}
       copyBlockToChapterAction={copyBlockToChapterAction}
       reorderBlocksAction={reorderBlocksAction}
+      saveBlockAction={saveBlockPayloadAction}
+      ensureDraftAction={ensureDraftAction}
       chapters={chapters}
       navbarVariants={navbarVariants}
       editingVersionId={draftStatus.draftVersionId}

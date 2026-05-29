@@ -157,6 +157,29 @@ async function getOrCreateDraftVersionId(parcoursSlug: string): Promise<string> 
 }
 
 /**
+ * Public, edit-intent wrapper around {@link getOrCreateDraftVersionId} used by
+ * the unified chapter view : called when the user first opens a block inline
+ * for editing. When the parcours has only a published version, this clones the
+ * whole version to a draft ONCE up-front so every block row already carries its
+ * stable draft id — avoiding the mid-edit id churn that clone-on-first-save
+ * would otherwise cause (the per-block save changes every id at once).
+ *
+ * Returns `{ created }`: when true, the caller should `router.refresh()` so the
+ * page re-renders against the freshly-cloned draft rows. No-op (created:false)
+ * when a draft already exists.
+ */
+export async function ensureDraftForChapterView(
+  parcoursSlug: string,
+): Promise<{ created: boolean; draftVersionId: string }> {
+  const info = await getParcoursVersionInfo(parcoursSlug);
+  if (info.draftVersionId) {
+    return { created: false, draftVersionId: info.draftVersionId };
+  }
+  const draftVersionId = await getOrCreateDraftVersionId(parcoursSlug);
+  return { created: true, draftVersionId };
+}
+
+/**
  * Resolve a chapter id so it always points to the draft version of that
  * chapter. If the id already belongs to the draft, return as-is. If it
  * belongs to the published version, clone (if needed) and return the draft
