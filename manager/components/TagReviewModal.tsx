@@ -3,11 +3,12 @@
 import { AlertTriangle, Check, ChevronRight, Hash, Layers, SkipForward, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { TagsField } from '@/components/blocks/TagsField';
 import { Button } from '@/components/ui/Button';
-import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
 import type { BrokenVariableRef, DraftTagReviewSummary } from '@/lib/actions';
+import { isTagColor, TAG_COLOR_HEX } from '@/lib/tagColors';
 
 /**
  * Pre-publish tag review modal.
@@ -133,7 +134,12 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
     allDoneRef.current = allDone;
   }, [allDone]);
 
-  return (
+  // Portal to <body> so the overlay escapes the parcours header's
+  // `backdrop-blur` sticky bar — a `backdrop-filter` ancestor establishes a
+  // containing block for `position: fixed`, which otherwise clipped the modal
+  // to that short bar (its top was cropped above the viewport).
+  if (typeof document === 'undefined') return null;
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -281,7 +287,8 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
