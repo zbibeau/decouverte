@@ -203,6 +203,7 @@ export function ToolContentSectionEditor({
             blocks={(payload.children ?? []) as ContentBlock[]}
             onChange={(next) => onChange({ ...payload, children: next })}
             variables={variables}
+            navbarVariants={navbarVariants}
             depth={depth + 1}
             scopeLabel="Tool section > sous-blocs"
           />

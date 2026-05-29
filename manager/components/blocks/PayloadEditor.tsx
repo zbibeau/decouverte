@@ -38,6 +38,7 @@ export function PayloadEditor({
           payload={block.payload}
           onChange={updatePayload}
           variables={variables}
+          navbarVariants={navbarVariants}
           depth={depth}
           /* Allow promoting `text` to a container by adding a sub-block. */
           onReplace={onChange}
@@ -86,13 +87,22 @@ export function PayloadEditor({
         />
       );
     case 'conditional':
-      return <ConditionalEditor payload={block.payload} onChange={updatePayload} variables={variables} depth={depth} />;
+      return (
+        <ConditionalEditor
+          payload={block.payload}
+          onChange={updatePayload}
+          variables={variables}
+          navbarVariants={navbarVariants}
+          depth={depth}
+        />
+      );
     case 'toolContentSection':
       return (
         <ToolContentSectionEditor
           payload={block.payload}
           onChange={updatePayload}
           variables={variables}
+          navbarVariants={navbarVariants}
           depth={depth}
         />
       );
@@ -107,12 +117,19 @@ export function PayloadEditor({
           onChange={updatePayload}
           variables={variables}
           chapters={chapters}
+          navbarVariants={navbarVariants}
           depth={depth}
         />
       );
     case 'photoCarousel':
       return (
-        <PhotoCarouselEditor payload={block.payload} onChange={updatePayload} variables={variables} depth={depth} />
+        <PhotoCarouselEditor
+          payload={block.payload}
+          onChange={updatePayload}
+          variables={variables}
+          navbarVariants={navbarVariants}
+          depth={depth}
+        />
       );
     default:
       // Exhaustiveness check : if a new variant is added to `ContentBlock`

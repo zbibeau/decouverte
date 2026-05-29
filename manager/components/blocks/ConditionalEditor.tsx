@@ -15,7 +15,13 @@ type CondPayload = {
   else?: ContentBlock[];
 };
 
-export function ConditionalEditor({ payload, onChange, variables, depth = 0 }: PayloadEditorProps<CondPayload>) {
+export function ConditionalEditor({
+  payload,
+  onChange,
+  variables,
+  navbarVariants,
+  depth = 0,
+}: PayloadEditorProps<CondPayload>) {
   /** Live evaluation result from the simulator. `null` = no variables yet. */
   const [simResult, setSimResult] = useState<boolean | null>(null);
 
@@ -32,11 +38,7 @@ export function ConditionalEditor({ payload, onChange, variables, depth = 0 }: P
         />
       </Field>
 
-      <ConditionSimulator
-        condition={payload.condition}
-        variables={variables}
-        onResult={setSimResult}
-      />
+      <ConditionSimulator condition={payload.condition} variables={variables} onResult={setSimResult} />
 
       <div
         className={
@@ -48,14 +50,12 @@ export function ConditionalEditor({ payload, onChange, variables, depth = 0 }: P
               : 'border-muted bg-muted/10 opacity-60')
         }
       >
-        <Field
-          label={`✓ Alors (then)${thenActive ? ' — actif' : ''}`}
-          path="then"
-        >
+        <Field label={`✓ Alors (then)${thenActive ? ' — actif' : ''}`} path="then">
           <ChildBlockList
             blocks={payload.then}
             onChange={(then) => onChange({ ...payload, then })}
             variables={variables}
+            navbarVariants={navbarVariants}
             depth={depth + 1}
             scopeLabel="Conditionnel > Alors"
           />
@@ -72,14 +72,12 @@ export function ConditionalEditor({ payload, onChange, variables, depth = 0 }: P
               : 'border-muted bg-muted/10 opacity-60')
         }
       >
-        <Field
-          label={`✗ Sinon (else)${elseActive ? ' — actif' : ''}`}
-          path="else"
-        >
+        <Field label={`✗ Sinon (else)${elseActive ? ' — actif' : ''}`} path="else">
           <ChildBlockList
             blocks={payload.else ?? []}
             onChange={(next) => onChange({ ...payload, else: next })}
             variables={variables}
+            navbarVariants={navbarVariants}
             depth={depth + 1}
             scopeLabel="Conditionnel > Sinon"
           />
