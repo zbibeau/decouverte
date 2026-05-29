@@ -5,11 +5,41 @@ import { Suspense } from 'react';
 import { DraftStatusBar } from '@/components/DraftStatusBar';
 import { ParcoursTabs } from '@/components/ParcoursTabs';
 import { Badge } from '@/components/ui/Badge';
-import { MfmLoader } from '@/components/ui/MfmLoader';
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog';
 import { getDraftStatus, listVersions, restoreVersionAsDraft } from '@/lib/actions';
 import { pastelForString, safeThemeColor } from '@/lib/pastelColors';
 import { createClient } from '@/lib/supabase/server';
+
+/**
+ * History button + its data, isolated as an async child so the version list
+ * (`listVersions`) + draft status DON'T block the layout shell. The layout
+ * thus renders after a single fast `parcours` SELECT → the `loading.tsx`
+ * boundary mounts immediately on navigation (the loader shows the instant the
+ * user clicks a parcours, instead of waiting for these queries). The button
+ * streams in a beat later (top-right, no layout shift). The dialog refetches
+ * versions on open anyway, so this initial snapshot being slightly deferred is
+ * invisible in practice.
+ */
+async function HistoryButton({
+  slug,
+  loadVersions,
+  restoreAction,
+}: {
+  slug: string;
+  loadVersions: () => Promise<Awaited<ReturnType<typeof listVersions>>>;
+  restoreAction: (versionId: string) => Promise<void>;
+}) {
+  const [versions, draftStatus] = await Promise.all([listVersions(slug), getDraftStatus(slug)]);
+  return (
+    <VersionHistoryDialog
+      parcoursSlug={slug}
+      versions={versions}
+      hasDraft={draftStatus.hasDraft}
+      loadVersions={loadVersions}
+      restoreAction={restoreAction}
+    />
+  );
+}
 
 export default async function ParcoursLayout({
   children,
@@ -66,9 +96,6 @@ export default async function ParcoursLayout({
   // the hex format and guards against legacy garbage.
   const themeColor = safeThemeColor(parcours.theme_color ?? pastelForString(slug));
 
-  // Initial snapshot for the history dialog — the client refetches when opened.
-  const [versions, draftStatus] = await Promise.all([listVersions(slug), getDraftStatus(slug)]);
-
   // Bound server action callbacks passed as props to the client dialog.
   async function loadVersionsAction() {
     'use server';
@@ -96,13 +123,11 @@ export default async function ParcoursLayout({
               <Badge tone="warning">brouillon</Badge>
             )}
             <div className="ml-auto">
-              <VersionHistoryDialog
-                parcoursSlug={slug}
-                versions={versions}
-                hasDraft={draftStatus.hasDraft}
-                loadVersions={loadVersionsAction}
-                restoreAction={restoreAction}
-              />
+              {/* Streamed so the version/draft queries don't delay the shell
+                  (and thus the loading.tsx) on navigation. */}
+              <Suspense fallback={null}>
+                <HistoryButton slug={slug} loadVersions={loadVersionsAction} restoreAction={restoreAction} />
+              </Suspense>
             </div>
           </div>
           <p className="text-muted-foreground mt-0.5 text-xs">
@@ -132,22 +157,13 @@ export default async function ParcoursLayout({
             chapter cards (z-10) and below the global CommandPalette
             (z-50). */}
         <div className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 -mx-4 px-4 py-2 backdrop-blur">
-          {/* DraftStatusBar is an async Server Component that hits
-              multiple Supabase queries (draft diffs, deleted count,
-              tag review summary). Wrapping it in Suspense lets the
-              REST of the page (chapter list, block editor) stream
-              independently — the editor sees the layout + page in
-              ~100ms instead of waiting 500-2000ms for the bar to
-              finish its queries. The fallback is a slim placeholder
-              that preserves the bar's vertical space so the page
-              doesn't reflow when the bar resolves. */}
-          <Suspense
-            fallback={
-              <div className="text-muted-foreground flex items-center justify-center rounded-md border border-dashed px-4 py-2">
-                <MfmLoader size="sm" label="Chargement du statut…" />
-              </div>
-            }
-          >
+          {/* DraftStatusBar is an async Server Component that hits multiple
+              Supabase queries (draft diffs, deleted count, tag review summary).
+              Wrapping it in Suspense lets the REST of the page stream
+              independently. No fallback on purpose: the standalone "Chargement
+              du statut" loader was redundant with the parcours loader below, so
+              the bar simply appears once its queries resolve. */}
+          <Suspense fallback={null}>
             <DraftStatusBar parcoursSlug={slug} />
           </Suspense>
         </div>
