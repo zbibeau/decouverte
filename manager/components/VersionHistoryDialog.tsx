@@ -114,7 +114,7 @@ export function VersionHistoryDialog({
             if (e.target === e.currentTarget) setOpen(false);
           }}
         >
-          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+          <div className="bg-surface flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg shadow-2xl">
             {/* Header */}
             <div className="border-border bg-muted/30 flex items-center justify-between border-b px-5 py-3">
               <div className="flex items-center gap-2">
@@ -215,7 +215,7 @@ function VersionRow({
           href={previewUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="border-border text-foreground hover:border-primary hover:text-primary inline-flex items-center gap-1 rounded-md border bg-white px-2.5 py-1 text-xs transition"
+          className="border-border text-foreground hover:border-primary hover:text-primary bg-surface inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs transition"
           title="Ouvrir cette version dans un nouvel onglet (lecture seule)"
         >
           <ExternalLink className="h-3 w-3" />
@@ -228,7 +228,7 @@ function VersionRow({
           className={
             'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs transition ' +
             (canRestore
-              ? 'border-border text-foreground hover:border-primary hover:text-primary bg-white'
+              ? 'border-border text-foreground hover:border-primary hover:text-primary bg-surface'
               : 'border-border/40 bg-muted/30 text-muted-foreground cursor-not-allowed')
           }
           title={

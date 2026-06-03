@@ -113,7 +113,7 @@ export function VariableHeader({ variableId, initialKey, initialLabel, type, enu
         {type}
       </span>
       <Button variant="ghost" size="sm" onClick={commit} disabled={isPending} title="Enregistrer">
-        <Check className="size-3.5 text-emerald-600" />
+        <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
       </Button>
       <Button variant="ghost" size="sm" onClick={cancel} disabled={isPending} title="Annuler">
         <X className="size-3.5" />

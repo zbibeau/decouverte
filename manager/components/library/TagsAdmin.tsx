@@ -203,7 +203,7 @@ export function TagsAdmin() {
                         </div>
                       ) : (
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls.bg} ${cls.fg}`}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls.bg} ${cls.fg} ${cls.darkBg} ${cls.darkFg}`}
                         >
                           <span>🏷</span>
                           <span>{tag.label}</span>
@@ -351,7 +351,7 @@ function ColorPickerPopover({
         aria-expanded={open}
         onClick={() => (open ? closePopover() : openPopover())}
         title="Cliquer pour changer la couleur"
-        className="border-border inline-flex items-center gap-2 rounded-md border bg-white px-2 py-1 text-xs font-medium shadow-sm transition hover:shadow-md"
+        className="border-border bg-surface inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium shadow-sm transition hover:shadow-md"
       >
         <span
           className="inline-block h-4 w-4 rounded-full border border-black/10"
@@ -372,7 +372,7 @@ function ColorPickerPopover({
             role="dialog"
             aria-label="Choisir une couleur"
             style={popoverStyle}
-            className="border-border min-w-[160px] rounded-lg border bg-white p-1 shadow-lg"
+            className="border-border bg-surface min-w-[160px] rounded-lg border p-1 shadow-lg"
           >
             {TAG_COLORS.map((c) => {
               const hex = TAG_COLOR_HEX[c];

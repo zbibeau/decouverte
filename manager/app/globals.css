@@ -2,25 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================
+   Direction Studio (D) — tokens light + dark.
+   Stratégie : variables sur :root pour le clair, override sous
+   `.dark` (appliquée sur <html> par `ThemeBootstrap` + le toggle
+   dans la Sidebar). Le rail graphite garde les MÊMES valeurs dans
+   les deux modes — c'est la signature visuelle Studio.
+   Format RGB triplet (espace-séparé) pour les couleurs qui ont
+   besoin du modifier d'opacité Tailwind (`bg-primary/5`,
+   `border-border/60`, …). Les couleurs déjà semi-transparentes
+   restent en rgba() / hex et ne supportent pas le modifier
+   (volontairement — leur alpha est figé par construction).
+   ============================================================= */
+
 @layer base {
+  :root {
+    /* rayons / formes */
+    --radius: 14px;
+    --radius-sm: 9px;
+    --btn-radius: 10px;
+
+    /* surfaces & texte (clair) — RGB triplets pour /<alpha-value> */
+    --bg: 244 245 247; /* #f4f5f7 */
+    --surface: 255 255 255; /* #ffffff */
+    --surface-2: 246 247 249; /* #f6f7f9 */
+    --surface-3: 238 240 243; /* #eef0f3 */
+    --border: 232 234 238; /* #e8eaee */
+    --border-strong: 216 219 225; /* #d8dbe1 */
+    --text: 24 27 34; /* #181b22 */
+    --text-muted: 91 101 115; /* #5b6573 */
+    --text-faint: 147 155 168; /* #939ba8 */
+
+    /* violet de marque — usage chirurgical */
+    --primary: 110 30 210; /* #6e1ed2 */
+    --primary-strong: 91 24 176; /* #5b18b0 */
+    --primary-on: 110 30 210; /* #6e1ed2 — violet lisible sur fond clair */
+    --on-primary: 255 255 255;
+    /* Les "weak" gardent une alpha figée → pas de modifier Tailwind dessus. */
+    --primary-weak: #f1ebfc;
+    --primary-weak-border: #e2d3f9;
+
+    /* ombres douces */
+    --shadow: 0 1px 3px rgba(20, 24, 36, 0.05), 0 14px 34px -18px rgba(20, 24, 36, 0.16);
+    --shadow-sm: 0 1px 2px rgba(20, 24, 36, 0.06);
+    --ring: rgba(110, 30, 210, 0.18);
+
+    /* accents (rails + tags) — RGB triplets */
+    --c-rose: 244 63 94; /* #f43f5e */
+    --c-amber: 245 158 11; /* #f59e0b */
+    --c-emerald: 16 185 129; /* #10b981 */
+    --c-violet: 139 92 246; /* #8b5cf6 */
+    --c-sky: 14 165 233; /* #0ea5e9 */
+    --c-slate: 100 116 139; /* #64748b */
+
+    /* rail graphite — IDENTIQUE en clair ET sombre (signature Studio).
+       Valeurs CSS brutes (pas de RGB triplet) : on n'utilise pas les
+       modifiers d'opacité Tailwind dessus, et les états déjà alpha'd
+       (active-bg, hover) restent des rgba(). */
+    --rail-bg: #11141b;
+    --rail-border: #20262f;
+    --rail-text: #c5ccd7;
+    --rail-muted: #818a98;
+    --rail-section: #6a7382;
+    --rail-active-bg: rgba(140, 90, 235, 0.22);
+    --rail-active-text: #ffffff;
+    --rail-active-bar: #b388ff;
+  }
+
+  .dark {
+    --bg: 13 16 22; /* #0d1016 */
+    --surface: 21 25 34; /* #151922 */
+    --surface-2: 27 32 42; /* #1b202a */
+    --surface-3: 35 42 53; /* #232a35 */
+    --border: 39 45 57; /* #272d39 */
+    --border-strong: 54 61 76; /* #363d4c */
+    --text: 233 235 240; /* #e9ebf0 */
+    --text-muted: 151 160 175; /* #97a0af */
+    --text-faint: 100 109 124; /* #646d7c */
+
+    --primary: 179 136 255; /* #b388ff */
+    --primary-strong: 200 168 255; /* #c8a8ff */
+    --primary-on: 203 176 255; /* #cbb0ff */
+    --on-primary: 36 11 64; /* #240b40 */
+    --primary-weak: rgba(179, 136, 255, 0.15);
+    --primary-weak-border: rgba(179, 136, 255, 0.32);
+
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 16px 38px -18px rgba(0, 0, 0, 0.6);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --ring: rgba(179, 136, 255, 0.3);
+
+    --c-rose: 251 113 133;
+    --c-amber: 251 191 36;
+    --c-emerald: 52 211 153;
+    --c-violet: 167 139 250;
+    --c-sky: 56 189 248;
+    --c-slate: 148 163 184;
+
+    /* rail graphite inchangé en sombre — pas de redéfinition. */
+  }
+
   html,
   body {
     height: 100%;
-  }
-
-  body {
-    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-  }
-
-  /* Subtle brand glow at the top of the viewport */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0 0 auto 0;
-    height: 320px;
-    pointer-events: none;
-    background: radial-gradient(80% 100% at 50% 0%, rgba(180, 128, 255, 0.16) 0%, rgba(255, 255, 255, 0) 70%);
-    z-index: -1;
   }
 }
 
@@ -33,7 +116,7 @@
      so it can never leak to another cmdk instance. cmdk emits the
      heading as `[cmdk-group-heading]` and each family as `[cmdk-group]`. */
   .mfm-palette [cmdk-group-heading] {
-    @apply text-muted-foreground px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wider;
+    @apply text-text-muted px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wider;
   }
 
   .mfm-palette [cmdk-group]:not(:first-child) {

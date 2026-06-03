@@ -1,14 +1,10 @@
 /** Pretty-print a (possibly nested) BranchingCondition for the block list. */
 function summarizeCondition(c: Record<string, unknown>): string {
   if (Array.isArray((c as { all?: unknown[] }).all)) {
-    return ((c as { all: Record<string, unknown>[] }).all)
-      .map(summarizeCondition)
-      .join(' ET ');
+    return (c as { all: Record<string, unknown>[] }).all.map(summarizeCondition).join(' ET ');
   }
   if (Array.isArray((c as { any?: unknown[] }).any)) {
-    return ((c as { any: Record<string, unknown>[] }).any)
-      .map(summarizeCondition)
-      .join(' OU ');
+    return (c as { any: Record<string, unknown>[] }).any.map(summarizeCondition).join(' OU ');
   }
   const variable = c.variable;
   const op = c.op;
@@ -24,6 +20,11 @@ export function summarizeBlock(type: string, payload: Record<string, unknown>): 
       case 'heroTitle':
         return String((payload.title as string) ?? '');
       case 'video': {
+        // Author-set internal label always wins — lets the user disambiguate
+        // a chapter's multiple Vimeo entries at a glance ("Présentation",
+        // "Cas patient A", …) without polluting the front rendering.
+        const managerTitle = String((payload.managerTitle as string) ?? '').trim();
+        if (managerTitle) return managerTitle;
         // Don't expose the raw URL (vimeo/<id>?hash=... or
         // https://...supabase.../<file>.mp4) — it's long, noisy and not
         // useful in a list. Surface a friendly label instead, with a

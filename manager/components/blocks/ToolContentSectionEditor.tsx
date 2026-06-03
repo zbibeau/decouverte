@@ -94,7 +94,7 @@ export function ToolContentSectionEditor({
       <Section title="Vidéo" accentColor="green">
         <Field label="Mode" path="video">
           <select
-            className="border-border flex h-9 w-full rounded-md border bg-white px-3 text-sm"
+            className="border-border bg-surface flex h-9 w-full rounded-md border px-3 text-sm"
             value={videoKind}
             onChange={(e) => setVideoKind(e.target.value as 'none' | 'fixed' | 'branchOnPersonWhoHandleCalls')}
           >

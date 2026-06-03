@@ -1,7 +1,7 @@
 'use client';
 
 import type { ContentBlock } from '@shared/content-schema';
-import { ArrowLeft, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
@@ -12,13 +12,13 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
 import { InlineBlockEditor } from '@/components/InlineBlockEditor';
 import { InPageSearchInput } from '@/components/InPageSearchInput';
+import { MoveIntoBlockMenu } from '@/components/MoveIntoBlockMenu';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { SearchHighlightBanner } from '@/components/SearchHighlightBanner';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { extractBlockSearchTextWeighted, extractSnippet } from '@/lib/blockSearch';
 import { summarizeBlock } from '@/lib/blockSummary';
@@ -59,6 +59,13 @@ interface Props {
   /** All chapters of the parcours (draft view) — used by the "Copy to…" menu. */
   chapters?: { id: string; slug: string; title: string }[];
   reorderBlocksAction: (orderedIds: string[]) => Promise<void>;
+  /** Move a top-level chapter block into another block's container payload.
+   *  Used by the « Déplacer dans… » menu next to each row. */
+  moveBlockIntoContainerAction: (
+    sourceBlockId: string,
+    destContainerId: string,
+    destField: 'children' | 'then' | 'else',
+  ) => Promise<void>;
   /** Persist a single block's payload from the inline editor. Returns the id
    *  actually written (may differ on the first edit after publish). */
   saveBlockAction: (blockId: string, payload: Record<string, unknown>) => Promise<string | void>;
@@ -90,7 +97,10 @@ function HighlightedSnippet({ snippet, query }: { snippet: string; query: string
     }
     if (idx > cursor) parts.push(snippet.slice(cursor, idx));
     parts.push(
-      <mark key={`m-${idx}`} className="rounded-sm bg-amber-200 px-0.5 not-italic text-amber-950">
+      <mark
+        key={`m-${idx}`}
+        className="rounded-sm bg-amber-200 px-0.5 not-italic text-amber-950 dark:bg-amber-800/60 dark:text-amber-100"
+      >
         {snippet.slice(idx, idx + q.length)}
       </mark>,
     );
@@ -107,7 +117,7 @@ function BlockTagsChips({ tags }: { tags?: BlockRow['tags'] }) {
   if (!tags || tags.length === 0) {
     return (
       <span
-        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
         title="Aucun tag de maintenance sur ce bloc"
       >
         <span aria-hidden="true">⚠</span>
@@ -139,14 +149,14 @@ function BlockTagsChips({ tags }: { tags?: BlockRow['tags'] }) {
 function BlockDiffBadge({ diff }: { diff?: BlockRow['diff'] }) {
   if (diff === 'new') {
     return (
-      <span className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800">
+      <span className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800 dark:bg-sky-900/50 dark:text-sky-200">
         Nouveau
       </span>
     );
   }
   if (diff === 'modified') {
     return (
-      <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800">
+      <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
         Modifié
       </span>
     );
@@ -179,8 +189,30 @@ export function ChapterEditor(props: Props) {
   // Reported by the preview iframe.
   const [visibleBlockId, setVisibleBlockId] = useState<string | null>(null);
   const [fieldRails, setFieldRails] = useState<Array<{ key: string; top: number; height: number }>>([]);
+  // Block id being hovered in the « Déplacer dans… » menu — drives a temporary
+  // outline on the matching row so the author sees which target their cursor
+  // is pointing at without having to read the menu's text summary.
+  const [moveHoverDestId, setMoveHoverDestId] = useState<string | null>(null);
   // After a first-edit draft clone, re-expand the block at this order post-refresh.
   const [pendingExpandOrder, setPendingExpandOrder] = useState<number | null>(null);
+  // After a fresh insert (handleInsertSample), the new block id lives here
+  // until `router.refresh()` propagates it into `props.blocks` — at which
+  // point a useEffect below scrolls its row to the top of the list. Without
+  // this, `revealRow` fires immediately on the synthetic open and finds no
+  // `data-row-id` element in the DOM (the block is in DB, not yet in the
+  // rendered tree). By the time the block does appear, `selectedBlockId`
+  // already matches → the `selectedBlockId` auto-scroll effect skips it.
+  const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
+  // Bumped on insert so the PreviewPanel forces its iframe to remount. The
+  // Solid front fetches data at load time only — without a fresh URL it would
+  // keep showing its pre-insert snapshot, and the `preview:scrollToBlock`
+  // sent for the new id would have nothing to target.
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
+  // Disclosure du panneau « Ajouter un bloc » (la liste des types : HERO,
+  // VIDÉO, …). Le CTA vit désormais dans le header de la card « Blocs »
+  // (coin haut-droit) au lieu d'un panneau pleine largeur au-dessus — la
+  // liste de blocs reste le focus tant que l'utilisateur ne déplie pas.
+  const [addBlockOpen, setAddBlockOpen] = useState(false);
 
   const [isPending, startTransition] = useTransition();
   const draftEnsuredRef = useRef(false);
@@ -399,6 +431,33 @@ export function ChapterEditor(props: Props) {
     setPendingExpandOrder(null);
   }, [props.blocks, pendingExpandOrder, centerOn]);
 
+  // After a fresh insert, scroll the newly-appeared row to the top of the
+  // list. We wait for `props.blocks` to actually include the id (= the
+  // post-`router.refresh()` render) before scrolling, then retry once at
+  // 250 ms to let the freshly-expanded inline editor settle (sample HTML,
+  // form fields, images). Without the retry the scroll lands on the row's
+  // initial height and the bottom of the editor falls below the fold.
+  useEffect(() => {
+    if (!pendingScrollToId) return;
+    const exists = props.blocks.some((b) => b.id === pendingScrollToId);
+    if (!exists) return;
+    const id = pendingScrollToId;
+    setPendingScrollToId(null);
+    const scroll = () => {
+      const row = listRef.current?.querySelector<HTMLElement>(`[data-row-id="${id}"]`);
+      if (!row) return;
+      // Mark as programmatic so the list-scroll handler doesn't bounce-echo.
+      listScrollAtRef.current = Date.now();
+      row.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    };
+    const rafId = requestAnimationFrame(scroll);
+    const t = window.setTimeout(scroll, 250);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(t);
+    };
+  }, [props.blocks, pendingScrollToId]);
+
   // Preview scroll → highlight the matching row (no auto-scroll on preview
   // source — Phase 3 adds the soft follow). Gated 1.2s after a manual click.
   // `visibleBlockId` is tracked unconditionally so the "Revenir au bloc"
@@ -420,10 +479,20 @@ export function ChapterEditor(props: Props) {
     void openBlock(id);
   }
 
-  // Rare fallback: a save translated a published id mid-edit (shouldn't happen
-  // once ensureDraft ran at edit-intent). Refresh to re-sync the list.
+  // First save after a publish translates the block's id from `published_id`
+  // to its `draft_id` twin (server-side `ensureDraftBlockId`). On `<Inline-
+  // BlockEditor key={b.id}>` that's a NEW key the moment `router.refresh()`
+  // lands → React unmounts + remounts the editor → the input the author was
+  // typing into loses focus → keystrokes silently disappear until they click
+  // back in. Symptom : « le champ a l'air d'avoir une limite à ~30 chars ».
+  //
+  // We deliberately DON'T refresh here. The chapter list keeps the stale
+  // published-era id row visible, but every subsequent save still routes
+  // through `ensureDraftBlockId` on the server, so saves continue to land
+  // on the draft. The next user-driven refresh (nav, reload, drag/drop,
+  // delete…) re-syncs the list naturally without yanking focus mid-typing.
   function handlePersistedId() {
-    startTransition(() => router.refresh());
+    /* no-op : see comment above. */
   }
 
   // Auto-scroll the list to follow the selected block. First run (mount)
@@ -512,11 +581,18 @@ export function ChapterEditor(props: Props) {
     void openBlock(urlBlock);
   }, [urlBlock, props.blocks]);
 
+  // Wraps a server action so that after it resolves we refresh the manager
+  // tree AND bump `previewReloadKey`. The iframe is a separate page that
+  // fetches its own data once at load, so `router.refresh()` alone leaves
+  // the preview stuck on the pre-action snapshot — e.g. drag-and-dropping
+  // a chapter block reorders the manager list but the preview keeps the
+  // old order. Bumping the reload key remounts the iframe and re-fetches.
   function withRefresh<T extends unknown[]>(fn: (...args: T) => Promise<void>) {
     return (...args: T) =>
       startTransition(async () => {
         await fn(...args);
         router.refresh();
+        setPreviewReloadKey((k) => k + 1);
       });
   }
 
@@ -561,11 +637,59 @@ export function ChapterEditor(props: Props) {
     });
   }
   const handleReorder = withRefresh(props.reorderBlocksAction);
+  // Move a top-level block INTO another block's container payload. Confirms
+  // before so the user doesn't accidentally collapse a row with tags into a
+  // payload position (tags don't survive the move — see the warning in
+  // `MoveIntoBlockMenu`). `withRefresh` already bumps `previewReloadKey`,
+  // so the iframe will re-fetch the new structure automatically.
+  function handleMoveInto(sourceBlockId: string, destContainerId: string, destField: 'children' | 'then' | 'else') {
+    const src = props.blocks.find((b) => b.id === sourceBlockId);
+    const summary = src ? summarizeBlock(src.type, src.payload) : '';
+    void (async () => {
+      const ok = await confirm({
+        title: `Déplacer ce bloc${summary ? ` (${summary})` : ''} ?`,
+        message:
+          'Le bloc sera retiré du chapitre et inséré comme sous-bloc dans la cible. Les tags de maintenance attachés à ce bloc seront perdus.',
+        confirmLabel: 'Déplacer',
+        cancelLabel: 'Annuler',
+      });
+      if (!ok) return;
+      startTransition(async () => {
+        try {
+          await props.moveBlockIntoContainerAction(sourceBlockId, destContainerId, destField);
+          toast.success('Bloc déplacé');
+          router.refresh();
+          setPreviewReloadKey((k) => k + 1);
+        } catch (e) {
+          console.error('[ChapterEditor] move-into failed', e);
+          toast.error(`Échec du déplacement : ${(e as Error).message}`);
+        }
+      });
+    })();
+  }
   // Insert with sample payload — open the new row inline (rather than routing
-  // to the full-page editor), keeping the unified-view flow.
+  // to the full-page editor), keeping the unified-view flow. We arm
+  // `pendingScrollToId` so the useEffect above scrolls to the row once
+  // `router.refresh()` has actually rendered it (calling `revealRow`
+  // synchronously here would target a DOM that doesn't include the row yet),
+  // and bump `previewReloadKey` so the iframe remounts and re-fetches —
+  // otherwise the preview keeps showing its pre-insert snapshot and the
+  // `preview:scrollToBlock` for the new id targets a non-existent element.
+  //
+  // NOTE: we intentionally call `router.refresh()` OUTSIDE `startTransition`.
+  // When wrapped, the refresh runs as a low-priority update and React will
+  // happily defer it behind the high-priority state updates that
+  // `openBlock` fires right after (setExpandedIds, setActiveBlockId,
+  // centerOn, revealRow, …) — so the iframe (which reloads via the
+  // synchronous `previewReloadKey` bump) ends up showing the new block
+  // before the left-side list does. Sometimes the list never catches up
+  // until the user hits the browser refresh button. Calling refresh as
+  // a regular urgent update keeps the two panes in sync.
   const handleInsertSample = async (type: string) => {
     const newBlockId = await props.insertSampleBlockAction(type);
-    startTransition(() => router.refresh());
+    setPendingScrollToId(newBlockId);
+    setPreviewReloadKey((k) => k + 1);
+    router.refresh();
     void openBlock(newBlockId);
   };
 
@@ -583,7 +707,7 @@ export function ChapterEditor(props: Props) {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),560px]">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-6">
         <div>
           <Link href={`/parcours/${props.parcoursSlug}`}>
@@ -598,10 +722,6 @@ export function ChapterEditor(props: Props) {
           </p>
         </div>
 
-        <ExpandableCreatePanel label="Ajouter un bloc">
-          <AddBlockForm insertSampleAction={handleInsertSample} />
-        </ExpandableCreatePanel>
-
         <SearchHighlightBanner matchCount={matchedBlockIds.size} />
         <InPageSearchInput
           value={localSearch}
@@ -611,26 +731,55 @@ export function ChapterEditor(props: Props) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FamilyIcon family="block" className="h-4 w-4" />
-              Blocs
-            </CardTitle>
-            <p className="text-muted-foreground text-xs">
-              {props.blocks.length} bloc(s). Clique sur un bloc pour l&apos;éditer ici ; le panneau de droite suit.
-            </p>
-            {(() => {
-              const untagged = props.blocks.filter((b) => (b.tags?.length ?? 0) === 0).length;
-              if (untagged === 0) {
-                return props.blocks.length > 0 ? (
-                  <p className="mt-1 text-[11px] text-emerald-700">🏷 Tous les blocs sont taggés</p>
-                ) : null;
-              }
-              return (
-                <p className="mt-1 text-[11px] font-medium text-amber-700">
-                  🏷 {untagged} bloc{untagged > 1 ? 's' : ''} sans tag dans ce chapitre
+            {/* Header en flex : titre + sous-textes à gauche, CTA « Ajouter
+                un bloc » à droite. Le CTA est primary brand-color pour
+                rester l'action évidente, et toggle un panneau qui se déplie
+                JUSTE DESSOUS (entre header et liste). */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <CardTitle className="flex items-center gap-2">
+                  <FamilyIcon family="block" className="h-4 w-4" />
+                  Blocs
+                </CardTitle>
+                <p className="text-muted-foreground text-xs">
+                  {props.blocks.length} bloc(s). Clique sur un bloc pour l&apos;éditer ici ; le panneau de droite suit.
                 </p>
-              );
-            })()}
+                {(() => {
+                  const untagged = props.blocks.filter((b) => (b.tags?.length ?? 0) === 0).length;
+                  if (untagged === 0) {
+                    return props.blocks.length > 0 ? (
+                      <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+                        🏷 Tous les blocs sont taggés
+                      </p>
+                    ) : null;
+                  }
+                  return (
+                    <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                      🏷 {untagged} bloc{untagged > 1 ? 's' : ''} sans tag dans ce chapitre
+                    </p>
+                  );
+                })()}
+              </div>
+              <button
+                type="button"
+                onClick={() => setAddBlockOpen((o) => !o)}
+                aria-expanded={addBlockOpen}
+                className="bg-brand-primary-600 hover:bg-brand-primary-700 shadow-brand inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Ajouter un bloc
+                <ChevronDown className={cn('h-4 w-4 transition-transform', addBlockOpen && 'rotate-180')} />
+              </button>
+            </div>
+            {/* Panneau de choix des types de blocs. Déplié uniquement quand
+                l'utilisateur clique le CTA — sinon le focus reste sur la
+                liste existante. Encadré pour matérialiser visuellement
+                qu'il est un sous-niveau du header. */}
+            {addBlockOpen && (
+              <div className="border-border bg-muted/30 mt-3 rounded-lg border p-4">
+                <AddBlockForm insertSampleAction={handleInsertSample} />
+              </div>
+            )}
           </CardHeader>
           <CardContent ref={listRef} className="max-h-[calc(100vh-280px)] overflow-y-auto">
             <SortableList
@@ -644,6 +793,7 @@ export function ChapterEditor(props: Props) {
                 const isInspected = inspectedBlockId === b.id;
                 const isKbd = kbdActive && kbdIdx === idx;
                 const isMatch = matchedBlockIds.has(b.id);
+                const isMoveHoverDest = moveHoverDestId === b.id;
                 const snippet = snippetByBlockId.get(b.id);
                 return (
                   <div
@@ -652,9 +802,17 @@ export function ChapterEditor(props: Props) {
                       'relative py-3 transition-colors',
                       (isSelected || isActive) && 'bg-primary/5 -mx-5 px-5',
                       isActive && 'ring-primary/30 rounded-md ring-1',
-                      isInspected && '!bg-amber-100 ring-2 ring-amber-300',
-                      isMatch && !isInspected && 'rounded-md bg-amber-50/70 ring-2 ring-amber-300',
-                      isKbd && !isInspected && 'ring-brand-primary-300/60 ring-1',
+                      isInspected && '!bg-amber-100 ring-2 ring-amber-300 dark:!bg-amber-900/60 dark:ring-amber-500/60',
+                      isMatch &&
+                        !isInspected &&
+                        'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/50 dark:ring-amber-700/60',
+                      isKbd && !isInspected && 'ring-primary/40 ring-1',
+                      // Move-into hover preview wins over the rest visually so the
+                      // user can see exactly which row their cursor in the menu
+                      // is targeting. Violet to stay distinct from selection
+                      // (primary), inspection (amber) and just-added (emerald).
+                      isMoveHoverDest &&
+                        '!bg-violet-50 ring-2 ring-violet-400 dark:!bg-violet-950/60 dark:bg-violet-950/50 dark:ring-violet-500/60',
                     )}
                   >
                     {isInspected && (
@@ -687,14 +845,35 @@ export function ChapterEditor(props: Props) {
                         <span className="bg-muted text-muted-foreground inline-flex h-6 shrink-0 items-center rounded px-2 text-[11px] font-medium uppercase tracking-wide">
                           {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-sm">{summarizeBlock(b.type, b.payload)}</span>
+                        <span
+                          className={cn(
+                            'min-w-0 flex-1 truncate text-sm',
+                            // Hero titles are the chapter's anchor lines — give
+                            // them more visual weight in the row list so the
+                            // user can scan a chapter's structure at a glance.
+                            b.type === 'heroTitle' && 'font-semibold',
+                          )}
+                        >
+                          {summarizeBlock(
+                            b.type,
+                            // Use the live (unsaved) payload of the active
+                            // editor when it matches this row, so editing
+                            // e.g. a hero's title immediately updates the row
+                            // summary above instead of waiting for autosave +
+                            // refresh. Falls back to the server-side payload
+                            // for any inactive row.
+                            isActive && activeBlock?.block
+                              ? (activeBlock.block.payload as Record<string, unknown>)
+                              : b.payload,
+                          )}
+                        </span>
                         {(() => {
                           const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
                           if (!variantKey) return null;
                           const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
                           return (
                             <span
-                              className="border-border inline-flex shrink-0 items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-[10px]"
+                              className="border-border bg-surface inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
                               title={`Navbar « ${variantKey} »`}
                             >
                               <span
@@ -714,6 +893,13 @@ export function ChapterEditor(props: Props) {
                         disabled={isPending}
                         onDuplicateHere={() => handleDuplicate(b.id)}
                         onCopyTo={(targetChapterId) => handleCopyTo(b.id, targetChapterId)}
+                      />
+                      <MoveIntoBlockMenu
+                        sourceBlockId={b.id}
+                        allBlocks={props.blocks}
+                        disabled={isPending}
+                        onMove={(destContainerId, destField) => handleMoveInto(b.id, destContainerId, destField)}
+                        onHoverDestination={setMoveHoverDestId}
                       />
                       <Button
                         variant="ghost"
@@ -809,6 +995,7 @@ export function ChapterEditor(props: Props) {
           nextChapter={chapterNav.next}
           onGoToChapter={(slug) => router.push(`/parcours/${props.parcoursSlug}/chapters/${slug}`)}
           blockOverride={blockOverride}
+          reloadKey={previewReloadKey}
         />
       </div>
     </div>

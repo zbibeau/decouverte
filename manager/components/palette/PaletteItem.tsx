@@ -44,7 +44,7 @@ function HighlightedSnippet({ snippet, highlight }: { snippet: string; highlight
   return (
     <span className="text-muted-foreground block truncate text-[11px]">
       {before}
-      <mark className="text-foreground rounded-sm bg-amber-200 px-0.5">{match}</mark>
+      <mark className="text-foreground rounded-sm bg-amber-200 px-0.5 dark:bg-amber-800/60">{match}</mark>
       {after}
     </span>
   );

@@ -55,13 +55,15 @@ export function Field({
   // diff border without offsetting the layout.
   const diffClass =
     effectiveStatus === 'modified'
-      ? 'space-y-1 rounded-md border border-amber-300 bg-amber-50/60 p-1.5'
+      ? 'space-y-1 rounded-md border border-amber-300 dark:border-amber-700/60 bg-amber-50/60 dark:bg-amber-950/30 p-1.5'
       : effectiveStatus === 'added'
-        ? 'space-y-1 rounded-md border border-sky-300 bg-sky-50/60 p-1.5'
+        ? 'space-y-1 rounded-md border border-sky-300 dark:border-sky-700/60 bg-sky-50/60 dark:bg-sky-950/30 p-1.5'
         : effectiveStatus === 'removed'
-          ? 'space-y-1 rounded-md border border-red-300 bg-red-50/60 p-1.5'
+          ? 'space-y-1 rounded-md border border-red-300 dark:border-red-700/60 bg-red-50/60 dark:bg-red-950/30 p-1.5'
           : 'space-y-1';
-  const searchClass = isSearchMatch ? 'rounded-md bg-amber-100/80 ring-2 ring-amber-400 p-1.5' : '';
+  const searchClass = isSearchMatch
+    ? 'rounded-md bg-amber-100/80 dark:bg-amber-900/40 ring-2 ring-amber-400 p-1.5'
+    : '';
 
   return (
     <div
@@ -77,20 +79,20 @@ export function Field({
              visual feel uneven against the inline <mark> highlights
              ("one bigger than the other"). */}
         {effectiveStatus === 'modified' && (
-          <span className="inline-flex items-center rounded bg-amber-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-900">
+          <span className="inline-flex items-center rounded bg-amber-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-900 dark:bg-amber-800/60 dark:text-amber-100">
             Modifié
           </span>
         )}
         {effectiveStatus === 'added' && (
-          <span className="inline-flex items-center rounded bg-sky-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-sky-900">
+          <span className="inline-flex items-center rounded bg-sky-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-sky-900 dark:bg-sky-800/60 dark:text-sky-200">
             Nouveau
           </span>
         )}
       </div>
       {children}
       {isSearchMatch && snippet && (
-        <p className="text-[11px] italic leading-snug text-amber-900">
-          <span className="text-amber-700" aria-hidden="true">
+        <p className="text-[11px] italic leading-snug text-amber-900 dark:text-amber-100">
+          <span className="text-amber-700 dark:text-amber-300" aria-hidden="true">
             ↪{' '}
           </span>
           <FieldMatchSnippet snippet={snippet} query={searchQuery} />
@@ -124,7 +126,10 @@ function FieldMatchSnippet({ snippet, query }: { snippet: string; query: string 
     }
     if (idx > cursor) parts.push(snippet.slice(cursor, idx));
     parts.push(
-      <mark key={`m-${idx}`} className="rounded-sm bg-amber-300 px-0.5 font-semibold not-italic text-amber-950">
+      <mark
+        key={`m-${idx}`}
+        className="rounded-sm bg-amber-300 px-0.5 font-semibold not-italic text-amber-950 dark:bg-amber-800/60 dark:text-amber-100"
+      >
         {snippet.slice(idx, idx + q.length)}
       </mark>,
     );
@@ -137,11 +142,11 @@ type AccentColor = 'slate' | 'rose' | 'green' | 'amber' | 'purple' | 'sky';
 
 const ACCENT_CLASSES: Record<AccentColor, { border: string; title: string }> = {
   slate: { border: 'border-l-slate-300', title: 'text-muted-foreground' },
-  rose: { border: 'border-l-rose-400', title: 'text-rose-700' },
-  green: { border: 'border-l-emerald-400', title: 'text-emerald-700' },
-  amber: { border: 'border-l-amber-400', title: 'text-amber-800' },
-  purple: { border: 'border-l-violet-400', title: 'text-violet-700' },
-  sky: { border: 'border-l-sky-400', title: 'text-sky-700' },
+  rose: { border: 'border-l-rose-400', title: 'text-rose-700 dark:text-rose-300' },
+  green: { border: 'border-l-emerald-400', title: 'text-emerald-700 dark:text-emerald-300' },
+  amber: { border: 'border-l-amber-400', title: 'text-amber-800 dark:text-amber-200' },
+  purple: { border: 'border-l-violet-400', title: 'text-violet-700 dark:text-violet-300' },
+  sky: { border: 'border-l-sky-400', title: 'text-sky-700 dark:text-sky-300' },
 };
 
 export function Section({

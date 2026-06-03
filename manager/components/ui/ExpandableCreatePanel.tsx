@@ -37,7 +37,7 @@ export function ExpandableCreatePanel({
         {label}
         <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
       </button>
-      {open && <div className="border-border mt-3 rounded-lg border bg-white p-5 shadow-sm">{children}</div>}
+      {open && <div className="border-border bg-surface mt-3 rounded-lg border p-5 shadow-sm">{children}</div>}
     </div>
   );
 }

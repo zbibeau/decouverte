@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +14,17 @@ interface Props {
    *  uniqueness CLIENT-side (debounce-free, the list is small) and to
    *  auto-suggest an incremented slug when there's a collision. */
   existingSlugs?: string[];
+  /**
+   * Optional pre-warm hook : when present, we fire it once on mount in the
+   * background. The action ensures a draft `parcours_version` exists for
+   * this parcours (clones the published one on first call — slow). Since
+   * this form is only mounted when the user expanded the "Ajouter un
+   * chapitre" panel (= clear edit intent), we use that moment to amortise
+   * the clone cost ; by the time the user submits seconds later, the draft
+   * already exists and `createChapter` short-circuits its slow path.
+   * No-op on subsequent mounts (the action itself is idempotent).
+   */
+  ensureDraftAction?: () => Promise<void>;
 }
 
 /**
@@ -66,6 +77,25 @@ export function CreateChapterForm(props: Props) {
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
 
+  // Pre-warm the draft version on mount. The form only mounts when the
+  // user has expanded the panel (clear edit intent), so this is the right
+  // moment to start the (potentially multi-second) `clone_version_as_draft`
+  // call. We store the promise so the submit handler can AWAIT it before
+  // calling `createAction` — running both `clone_version_as_draft` calls
+  // in parallel would race on the DB side. The reads from the resolved
+  // promise are cheap (just propagates success/failure).
+  const { ensureDraftAction } = props;
+  const preWarmPromiseRef = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    if (!ensureDraftAction || preWarmPromiseRef.current) return;
+    preWarmPromiseRef.current = ensureDraftAction().catch((err) => {
+      // Swallow + log : the real submit will retry implicitly (its own
+      // `getOrCreateDraftVersionId` call) and surface any persistent error.
+      console.warn('[CreateChapterForm] draft pre-warm failed', err);
+      preWarmPromiseRef.current = null;
+    });
+  }, [ensureDraftAction]);
+
   const takenSet = useMemo(
     () => new Set((props.existingSlugs ?? []).map((s) => s.trim().toLowerCase())),
     [props.existingSlugs],
@@ -117,6 +147,18 @@ export function CreateChapterForm(props: Props) {
     }
     startTransition(async () => {
       try {
+        // If an `ensureDraftAction` pre-warm is still in flight, wait for
+        // it before submitting — otherwise both calls would race on the
+        // server's `clone_version_as_draft` RPC. Errors are non-fatal :
+        // they get logged at the pre-warm site, and the create call below
+        // does its own implicit ensure-draft as the source of truth.
+        if (preWarmPromiseRef.current) {
+          try {
+            await preWarmPromiseRef.current;
+          } catch {
+            /* swallowed — pre-warm failure is logged at the source */
+          }
+        }
         const fd = new FormData();
         fd.set('slug', trimmedSlug);
         fd.set('title', trimmedTitle);
@@ -146,7 +188,7 @@ export function CreateChapterForm(props: Props) {
               slugStatus.kind === 'taken' || slugStatus.kind === 'invalid'
                 ? 'border-destructive focus-visible:ring-destructive/40'
                 : slugStatus.kind === 'ok'
-                  ? 'border-emerald-400'
+                  ? 'border-emerald-400 dark:border-emerald-400/60 dark:border-emerald-500'
                   : undefined
             }
           />
@@ -167,18 +209,18 @@ export function CreateChapterForm(props: Props) {
       <div id="slug-feedback" className="min-h-5 text-xs">
         {slugStatus.kind === 'invalid' && <span className="text-destructive">⚠︎ {slugStatus.message}</span>}
         {slugStatus.kind === 'taken' && (
-          <span className="text-amber-700">
+          <span className="text-amber-700 dark:text-amber-300">
             ⚠︎ Slug déjà utilisé.{' '}
             <button
               type="button"
               onClick={() => setSlug(slugStatus.suggestion)}
-              className="underline hover:text-amber-900"
+              className="underline hover:text-amber-900 dark:text-amber-100"
             >
               Utiliser « {slugStatus.suggestion} »
             </button>
           </span>
         )}
-        {slugStatus.kind === 'ok' && <span className="text-emerald-700">✓ Slug disponible</span>}
+        {slugStatus.kind === 'ok' && <span className="text-emerald-700 dark:text-emerald-300">✓ Slug disponible</span>}
       </div>
     </form>
   );

@@ -369,7 +369,7 @@ export function BlockEditor(props: Props) {
           onClick={() => setPendingNavigation(null)}
         >
           <div
-            className="border-border w-full max-w-md rounded-lg border bg-white p-5 shadow-lg"
+            className="border-border bg-surface w-full max-w-md rounded-lg border p-5 shadow-lg"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"

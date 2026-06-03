@@ -1,9 +1,17 @@
+import { LibrarySectionTabs } from '@/components/library/LibrarySectionTabs';
 import { NavbarVariantsEditor } from '@/components/NavbarVariantsEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { getNavbarVariants, setNavbarVariants } from '@/lib/actions';
 import type { NavbarVariant } from '@/lib/actions';
 import { FamilyIcon } from '@/lib/familyIcons';
 
+/**
+ * Édition des variantes de top bar (= « navbars pilote » côté schéma, qu'on
+ * rend dans le front au-dessus de chaque chapitre selon `payload.navbar.variant`).
+ * Sous-section « Bibliothèque » → onglet « Top bar ». L'URL `/navbars` est
+ * conservée pour les deep-links et la nomenclature du schéma ; on rebaptise
+ * uniquement à l'affichage user-facing.
+ */
 export default async function NavbarsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug: rawSlug } = await params;
   const slug = decodeURIComponent(rawSlug);
@@ -15,16 +23,19 @@ export default async function NavbarsPage({ params }: { params: Promise<{ slug: 
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FamilyIcon family="navbar" className="h-4 w-4" />
-          Navbars pilote
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <NavbarVariantsEditor parcoursSlug={slug} initial={variants} saveAction={saveAction} />
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <LibrarySectionTabs slug={slug} />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FamilyIcon family="navbar" className="h-4 w-4" />
+            Top bar
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NavbarVariantsEditor parcoursSlug={slug} initial={variants} saveAction={saveAction} />
+        </CardContent>
+      </Card>
+    </div>
   );
 }

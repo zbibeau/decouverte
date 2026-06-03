@@ -57,10 +57,7 @@ export function LibraryBlockCard({
     function handler(e: MessageEvent) {
       if (e.source !== iframeRef.current?.contentWindow) return;
       if (!e.data || typeof e.data !== 'object') return;
-      if (
-        e.data.type === 'preview:isolatedReady' &&
-        String(e.data.blockId ?? '') === previewId
-      ) {
+      if (e.data.type === 'preview:isolatedReady' && String(e.data.blockId ?? '') === previewId) {
         e.source?.postMessage(
           {
             type: 'preview:setBlockOverride',
@@ -79,8 +76,7 @@ export function LibraryBlockCard({
     startTransition(async () => {
       try {
         const result = await insertAction(type, sample.payload, targetChapterId);
-        const targetTitle =
-          chapters.find((c) => c.id === targetChapterId)?.title ?? result.chapterSlug;
+        const targetTitle = chapters.find((c) => c.id === targetChapterId)?.title ?? result.chapterSlug;
         toast.success(`Bloc inséré dans « ${targetTitle} »`);
         router.refresh();
       } catch (e) {
@@ -93,22 +89,22 @@ export function LibraryBlockCard({
   const sampleKeys = Object.keys(sample.payload);
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-white p-4 shadow-sm">
+    <div className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-4 shadow-sm">
       {/* Header: type badge + label + description */}
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <span className="inline-flex h-5 items-center rounded bg-muted px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="bg-muted text-muted-foreground inline-flex h-5 items-center rounded px-2 text-[10px] font-medium uppercase tracking-wide">
             {label}
           </span>
           <p className="text-sm font-medium leading-snug">{sample.description}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             <span className="font-medium">Quand l'utiliser :</span> {sample.whenToUse}
           </p>
         </div>
       </div>
 
       {/* Live preview iframe */}
-      <div className="overflow-hidden rounded-md border border-border bg-secondary-50">
+      <div className="border-border overflow-hidden rounded-md border bg-secondary-50">
         <iframe
           ref={iframeRef}
           src={iframeUrl}
@@ -119,11 +115,11 @@ export function LibraryBlockCard({
       </div>
 
       {/* Available fields */}
-      <details className="rounded-md border border-border bg-muted/30 p-2 text-xs">
-        <summary className="cursor-pointer font-medium text-muted-foreground">
+      <details className="border-border bg-muted/30 rounded-md border p-2 text-xs">
+        <summary className="text-muted-foreground cursor-pointer font-medium">
           Champs disponibles ({sampleKeys.length})
         </summary>
-        <ul className="mt-2 space-y-0.5 pl-3 font-mono text-[11px] text-muted-foreground">
+        <ul className="text-muted-foreground mt-2 space-y-0.5 pl-3 font-mono text-[11px]">
           {sampleKeys.map((k) => (
             <li key={k}>• {k}</li>
           ))}

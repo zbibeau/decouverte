@@ -60,7 +60,7 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+      <div className="space-y-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-200">
         <p className="font-semibold">💡 À quoi sert une navbar « pilote Tool 1 » ?</p>
         <p>
           Les navbars te permettent de <strong>découper un chapitre en sous-parties visuelles</strong>. Chaque bloc
@@ -89,7 +89,7 @@ export function NavbarVariantsEditor({ initial, saveAction }: Props) {
         {variants.map((v, idx) => (
           <div
             key={idx}
-            className="border-border grid grid-cols-1 gap-3 rounded-md border bg-white p-3 md:grid-cols-[160px_1fr_180px_120px_100px_auto]"
+            className="border-border bg-surface grid grid-cols-1 gap-3 rounded-md border p-3 md:grid-cols-[160px_1fr_180px_120px_100px_auto]"
           >
             <div className="space-y-1">
               <label className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">Clé</label>

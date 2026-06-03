@@ -79,14 +79,7 @@ export function ConditionSimulator({ condition, variables, onResult }: Props) {
   /** Single setter that targets either the shared context or the local fallback. */
   function writeValue(key: string, next: unknown) {
     if (sim) {
-      const stringForm =
-        typeof next === 'boolean'
-          ? next
-            ? 'true'
-            : 'false'
-          : next == null
-            ? ''
-            : String(next);
+      const stringForm = typeof next === 'boolean' ? (next ? 'true' : 'false') : next == null ? '' : String(next);
       sim.setValue(key, stringForm);
     } else {
       setLocalValues((prev) => ({ ...prev, [key]: next }));
@@ -102,7 +95,7 @@ export function ConditionSimulator({ condition, variables, onResult }: Props) {
 
   if (keys.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+      <div className="border-border bg-muted/20 text-muted-foreground rounded-md border border-dashed p-3 text-xs">
         <Beaker className="mr-1 inline-block h-3.5 w-3.5" />
         Configure une variable dans la condition pour activer le simulateur.
       </div>
@@ -110,16 +103,16 @@ export function ConditionSimulator({ condition, variables, onResult }: Props) {
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-border bg-amber-50/40 p-3">
+    <div className="border-border space-y-2 rounded-md border bg-amber-50/40 p-3 dark:bg-amber-950/30">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-100">
           <Beaker className="h-3.5 w-3.5" />
           Simulateur
         </span>
         <ResultBadge result={result} />
       </div>
 
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-muted-foreground text-[10px]">
         {sim
           ? 'Synchronisé avec le simulateur de la preview — un toggle ici met aussi à jour l’iframe.'
           : 'Ajuste les valeurs ci-dessous pour voir, en direct, quelle branche est rendue.'}
@@ -131,16 +124,15 @@ export function ConditionSimulator({ condition, variables, onResult }: Props) {
           const value = typedValues[key];
           return (
             <div key={key} className="flex items-center gap-2">
-              <code className="min-w-[90px] truncate text-[11px] font-medium text-foreground" title={meta?.label ?? key}>
+              <code
+                className="text-foreground min-w-[90px] truncate text-[11px] font-medium"
+                title={meta?.label ?? key}
+              >
                 {key}
               </code>
-              <ValueInput
-                meta={meta}
-                value={value}
-                onChange={(v) => writeValue(key, v)}
-              />
+              <ValueInput meta={meta} value={value} onChange={(v) => writeValue(key, v)} />
               {!meta && (
-                <span className="text-[10px] text-destructive" title="Variable absente du parcours">
+                <span className="text-destructive text-[10px]" title="Variable absente du parcours">
                   ⚠ inconnue
                 </span>
               )}
@@ -154,22 +146,18 @@ export function ConditionSimulator({ condition, variables, onResult }: Props) {
 
 function ResultBadge({ result }: { result: boolean | null }) {
   if (result === null) {
-    return (
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        en attente
-      </span>
-    );
+    return <span className="text-muted-foreground text-[10px] uppercase tracking-wide">en attente</span>;
   }
   if (result) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
         <CheckCircle2 className="h-3 w-3" />
         rendu : Alors
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">
       <XCircle className="h-3 w-3" />
       rendu : Sinon
     </span>
@@ -211,7 +199,7 @@ function ValueInput({
               'rounded-md border px-2 py-0.5 text-[11px] transition ' +
               (value === opt.val
                 ? 'border-amber-600 bg-amber-600 text-white'
-                : 'border-border bg-white text-foreground hover:border-amber-400')
+                : 'border-border bg-surface text-foreground hover:border-amber-400')
             }
           >
             {opt.label}
@@ -224,7 +212,7 @@ function ValueInput({
   if (meta.type === 'enum') {
     return (
       <select
-        className="h-7 rounded-md border border-border bg-white px-2 text-xs"
+        className="border-border bg-surface h-7 rounded-md border px-2 text-xs"
         value={String(value ?? '')}
         onChange={(e) => onChange(e.target.value)}
       >

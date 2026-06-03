@@ -2,28 +2,21 @@
 
 import type { ContentBlock } from '@shared/content-schema';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
-import { type ReactNode, useCallback, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 import { BlockTypeSelector } from '@/components/BlockTypeSelector';
 import { Button } from '@/components/ui/Button';
-import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS, blankBlock } from '@/lib/blockDefaults';
+import { blankBlock, BLOCK_TYPE_LABELS, BLOCK_TYPES_ORDER } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { summarizeBlock } from '@/lib/blockSummary';
 
 /** Block types that don't make sense as a nested sub-block : the hero
  *  title is per-chapter, and component refs are top-level only. */
-const NESTED_EXCLUDED_TYPES = new Set<ContentBlock['type']>([
-  'heroTitle',
-  'componentRef',
-]);
+const NESTED_EXCLUDED_TYPES = new Set<ContentBlock['type']>(['heroTitle', 'componentRef']);
 
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
+import type { ChapterMeta, NavbarVariantMeta, VariableMeta } from './editor-types';
 import { PayloadEditor } from './PayloadEditor';
-import type {
-  ChapterMeta,
-  NavbarVariantMeta,
-  VariableMeta,
-} from './editor-types';
 
 interface Props {
   blocks: ContentBlock[];
@@ -56,6 +49,56 @@ export function ChildBlockList({
 }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(blocks.length === 1 ? 0 : null);
 
+  // Refs to each rendered row, indexed by position. Used to scroll the
+  // newly-inserted sub-block into view (Bug #2 — "Quand j'ajoute un
+  // sous-bloc, merci de me mettre le focus dessus").
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
+
+  // When `focusIdx` is set after an insert, scroll the matching row into
+  // view and flash an emerald ring around it (Bug #2). The scroll is
+  // attempted twice — once on the next animation frame (after the row
+  // mounts), then again ~250ms later because the freshly-expanded editor
+  // body usually keeps growing as async content (sample HTML, images,
+  // form fields) settles. A single immediate `scrollIntoView` would
+  // target the row's initial position and miss the final layout.
+  useEffect(() => {
+    if (focusIdx === null) return;
+    let cancelled = false;
+    const scroll = () => {
+      if (cancelled) return;
+      const el = rowRefs.current[focusIdx];
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+    const rafId = requestAnimationFrame(scroll);
+    const t1 = window.setTimeout(scroll, 250);
+    // Keep the emerald flash visible long enough to clearly signal "this
+    // is the new one" (~3 s), then clear so the row falls back to its
+    // normal style.
+    const t2 = window.setTimeout(() => setFocusIdx(null), 3000);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [focusIdx]);
+
+  // Keep refs to the latest `blocks` / `onChange` so the `add` callback
+  // below can stay referentially stable (empty deps array). This matters
+  // because `add` is part of the deps of `useRegisterAddScope` — if `add`
+  // changed identity on every render, the scope would re-register in a
+  // loop and `bump()` inside `register()` would max out React's update
+  // depth (the call sites — e.g. ConditionalEditor — pass an inline
+  // `onChange` and a `payload.else ?? []` that are fresh each render).
+  const blocksRef = useRef(blocks);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    blocksRef.current = blocks;
+    onChangeRef.current = onChange;
+  });
+
   function update(idx: number, next: ContentBlock) {
     const copy = blocks.slice();
     copy[idx] = next;
@@ -80,21 +123,26 @@ export function ChildBlockList({
    *
    * Wrapped in a Promise to match the `AddBlockButton` onInsert signature
    * — the popover awaits it before showing success / closing.
+   *
+   * Stable identity (empty deps) — reads the latest `blocks` / `onChange`
+   * from refs maintained above. See the comment on those refs for why.
    */
-  const add = useCallback(
-    async (type: ContentBlock['type']) => {
-      const sample = SAMPLE_PAYLOADS[type];
-      const newBlock: ContentBlock = sample
-        ? ({
-            type,
-            payload: JSON.parse(JSON.stringify(sample.payload)),
-          } as ContentBlock)
-        : blankBlock(type);
-      onChange([...blocks, newBlock]);
-      setOpenIdx(blocks.length);
-    },
-    [blocks, onChange],
-  );
+  const add = useCallback(async (type: ContentBlock['type']) => {
+    const sample = SAMPLE_PAYLOADS[type];
+    const newBlock: ContentBlock = sample
+      ? ({
+          type,
+          payload: JSON.parse(JSON.stringify(sample.payload)),
+        } as ContentBlock)
+      : blankBlock(type);
+    const currBlocks = blocksRef.current;
+    const newIdx = currBlocks.length;
+    onChangeRef.current([...currBlocks, newBlock]);
+    setOpenIdx(newIdx);
+    // Trigger the scroll-into-view + flash on the next render, once the
+    // new row has mounted and its ref is populated.
+    setFocusIdx(newIdx);
+  }, []);
 
   // Publish "Ajouter un sous-bloc" actions to the ⌘K palette. Depth grows
   // with nesting so an inner card outranks its outer container.
@@ -104,9 +152,7 @@ export function ChildBlockList({
           id: `children-${scopeLabel.replace(/\s+/g, '_')}-${depth}`,
           label: `${scopeLabel} · sous-blocs`,
           depth: 15 + depth * 5,
-          actions: BLOCK_TYPES_ORDER.filter(
-            (t) => t !== 'heroTitle' && t !== 'componentRef',
-          ).map((t) => ({
+          actions: BLOCK_TYPES_ORDER.filter((t) => t !== 'heroTitle' && t !== 'componentRef').map((t) => ({
             id: `add-${t}`,
             label: `Ajouter ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}`,
             run: () => void add(t),
@@ -116,15 +162,29 @@ export function ChildBlockList({
     [add, scopeLabel, depth],
   );
 
-  const scopeId = scopeLabel
-    ? `children-${scopeLabel.replace(/\s+/g, '_')}-${depth}`
-    : null;
+  const scopeId = scopeLabel ? `children-${scopeLabel.replace(/\s+/g, '_')}-${depth}` : null;
   const inner: ReactNode = (
     <>
       {blocks.map((b, idx) => {
         const isOpen = openIdx === idx;
+        const justAdded = focusIdx === idx;
         return (
-          <div key={idx} className="rounded-md border border-border bg-white">
+          <div
+            key={idx}
+            ref={(el) => {
+              rowRefs.current[idx] = el;
+            }}
+            className={
+              'bg-surface rounded-md border transition-all ' +
+              // Emerald flash = "just added" — distinct from the
+              // brand-primary ring/background used elsewhere for the
+              // chapter-level *selected* / *active* row, so the user
+              // can't confuse "I added this" with "this is selected".
+              (justAdded
+                ? 'border-emerald-400 bg-emerald-50 shadow-lg ring-2 ring-emerald-400 ring-offset-2 dark:border-emerald-500/60 dark:bg-emerald-950/40 dark:ring-emerald-500'
+                : 'border-border')
+            }
+          >
             {/*
               Header row of a child block — only action is to expand /
               collapse / move / delete. Per UX request: clicking here
@@ -133,10 +193,7 @@ export function ChildBlockList({
               ScopeRoot. The inner editor (rendered when isOpen) has its
               own ScopeRoot that handles selection independently.
             */}
-            <div
-              className="flex items-center gap-2 px-2 py-1.5"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
+            <div className="flex items-center gap-2 px-2 py-1.5" onMouseDown={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 className="text-muted-foreground hover:text-foreground"
@@ -144,7 +201,7 @@ export function ChildBlockList({
               >
                 {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               </button>
-              <span className="inline-flex h-5 items-center rounded bg-muted px-1.5 text-[10px] font-medium uppercase text-muted-foreground">
+              <span className="bg-muted text-muted-foreground inline-flex h-5 items-center rounded px-1.5 text-[10px] font-medium uppercase">
                 {BLOCK_TYPE_LABELS[b.type] ?? b.type}
               </span>
               <span className="flex-1 truncate text-xs">
@@ -153,20 +210,15 @@ export function ChildBlockList({
               <Button variant="ghost" size="sm" onClick={() => move(idx, -1)} disabled={idx === 0}>
                 <ArrowUp className="h-3 w-3" />
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => move(idx, 1)}
-                disabled={idx === blocks.length - 1}
-              >
+              <Button variant="ghost" size="sm" onClick={() => move(idx, 1)} disabled={idx === blocks.length - 1}>
                 <ArrowDown className="h-3 w-3" />
               </Button>
               <Button variant="ghost" size="sm" onClick={() => remove(idx)}>
-                <Trash2 className="h-3 w-3 text-destructive" />
+                <Trash2 className="text-destructive h-3 w-3" />
               </Button>
             </div>
             {isOpen && (
-              <div className="border-t border-border bg-muted/20 p-3">
+              <div className="border-border bg-muted/20 border-t p-3">
                 <PayloadEditor
                   block={b}
                   onChange={(next) => update(idx, next)}
@@ -181,15 +233,11 @@ export function ChildBlockList({
         );
       })}
 
-      <BlockTypeSelector
-        onInsert={(t) => add(t)}
-        excludeTypes={NESTED_EXCLUDED_TYPES}
-        insertTarget="children"
-      />
+      <BlockTypeSelector onInsert={(t) => add(t)} excludeTypes={NESTED_EXCLUDED_TYPES} insertTarget="children" />
     </>
   );
   return scopeId ? (
-    <ScopeRoot scopeId={scopeId} className="space-y-2 rounded-md p-1 -m-1">
+    <ScopeRoot scopeId={scopeId} className="-m-1 space-y-2 rounded-md p-1">
       {inner}
     </ScopeRoot>
   ) : (

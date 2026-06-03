@@ -4,13 +4,17 @@ import { cn } from '@/lib/utils';
 
 type Tone = 'success' | 'warning' | 'info' | 'neutral' | 'primary' | 'danger';
 
+// Tones — chacune utilise le token `tone-*` (vars CSS qui switchent en
+// dark, cf. globals.css). bg = 10% du ton (fond léger lisible sur clair
+// ET sombre), text = ton plein (pour clair) / ton plus pâle automatique
+// en dark via le mapping `tone-*` qui change de teinte. ring = 30%.
 const toneClasses: Record<Tone, string> = {
-  success: 'bg-brand-success-50 text-brand-success-700 ring-brand-success-500/20',
-  warning: 'bg-brand-warning-50 text-brand-warning-700 ring-brand-warning-500/30',
-  info: 'bg-brand-info-50 text-brand-info-700 ring-brand-info-500/20',
-  neutral: 'bg-brand-dark-50 text-brand-dark-700 ring-brand-dark-300/40',
-  primary: 'bg-brand-primary-50 text-brand-primary-700 ring-brand-primary-500/20',
-  danger: 'bg-brand-danger-50 text-brand-danger-700 ring-brand-danger-500/20',
+  success: 'bg-tone-emerald/15 text-tone-emerald ring-tone-emerald/30',
+  warning: 'bg-tone-amber/15 text-tone-amber ring-tone-amber/30',
+  info: 'bg-tone-sky/15 text-tone-sky ring-tone-sky/30',
+  neutral: 'bg-surface-3 text-text-muted ring-border-strong/60',
+  primary: 'bg-primary/15 text-primary-on ring-primary/30',
+  danger: 'bg-tone-rose/15 text-tone-rose ring-tone-rose/30',
 };
 
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {

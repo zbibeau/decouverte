@@ -315,7 +315,7 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
   return (
     <div ref={wrapperRef} className="relative">
       <div
-        className="border-input focus-within:ring-primary/20 flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1.5 focus-within:ring-2"
+        className="border-input focus-within:ring-primary/20 bg-surface flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border px-2 py-1.5 focus-within:ring-2"
         onClick={() => inputRef.current?.focus()}
       >
         {loadingCurrent ? (
@@ -329,7 +329,7 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
             return (
               <span
                 key={tag.id}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls.bg} ${cls.fg}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls.bg} ${cls.fg} ${cls.darkBg} ${cls.darkFg}`}
               >
                 <span>🏷</span>
                 <span>{tag.label}</span>
@@ -367,7 +367,7 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
       </div>
 
       {showDropdown && (
-        <div className="border-border absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-md border bg-white shadow-lg">
+        <div className="border-border bg-surface absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-md border shadow-lg">
           {loadingAll && suggestions.length === 0 && (
             <div className="text-muted-foreground px-3 py-2 text-xs italic">Chargement du vocabulaire…</div>
           )}

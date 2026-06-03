@@ -10,6 +10,17 @@ export const AfterHeroContainer: Component<{
   contentId?: string;
   class?: string;
   contentClass?: string;
+  /**
+   * When true, the container drops its `min-h-dvh` so it takes its content's
+   * natural height instead of always filling a full viewport. The block
+   * still gets `snap-start` (= remains a scroll-snap target), so the parcours
+   * still snaps to it as the user scrolls — it just doesn't reserve a whole
+   * empty viewport when the content is short.
+   *
+   * Used by short top-level blocks (typically `text`) that author requests
+   * to flow right under the previous block instead of opening a new slide.
+   */
+  inline?: boolean;
 }> = (props) => {
   const isMobile = isLayoutMobileDisplay();
   // `snap-always` (= scroll-snap-stop: always) forces the parent scroller
@@ -23,11 +34,11 @@ export const AfterHeroContainer: Component<{
       class={cx(
         'relative flex snap-start snap-always flex-col pb-8',
         props?.class,
-        isMobile() ? 'min-h-[calc(100dvh-56px)]' : 'min-h-dvh',
+        props.inline ? '' : isMobile() ? 'min-h-[calc(100dvh-56px)]' : 'min-h-dvh',
       )}
     >
       {props.preChildren}
-      <div class="flex grow items-center">
+      <div class={props.inline ? '' : 'flex grow items-center'}>
         <div class={cx('m-auto w-full max-w-[600px] px-1 pt-8 md:px-0', props?.contentClass)}>{props.children}</div>
       </div>
     </div>

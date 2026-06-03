@@ -13,36 +13,80 @@ export const TAG_COLORS: TagColor[] = ['amber', 'rose', 'sky', 'emerald', 'viole
 
 /** Tailwind class triplet per palette key. Static strings so JIT
  *  emits the corresponding utilities — DO NOT switch to `bg-${color}-100`
- *  string interpolation, the compiler can't resolve it. */
-export const TAG_COLOR_CLASSES: Record<TagColor, { bg: string; fg: string; ring: string; dot: string }> = {
-  amber: { bg: 'bg-amber-100', fg: 'text-amber-900', ring: 'ring-amber-300', dot: 'bg-amber-400' },
-  rose: { bg: 'bg-rose-100', fg: 'text-rose-900', ring: 'ring-rose-300', dot: 'bg-rose-400' },
-  sky: { bg: 'bg-sky-100', fg: 'text-sky-900', ring: 'ring-sky-300', dot: 'bg-sky-400' },
+ *  string interpolation, the compiler can't resolve it.
+ *
+ *  Dark-mode counterparts (`darkBg`, `darkFg`) are appended next to each
+ *  base class at every consumption site (template literal) — JIT picks
+ *  them up because they appear here in plain text. The Tailwind safelist
+ *  in `tailwind.config.ts` also lists every shade explicitly. */
+export const TAG_COLOR_CLASSES: Record<
+  TagColor,
+  { bg: string; fg: string; ring: string; dot: string; darkBg: string; darkFg: string }
+> = {
+  amber: {
+    bg: 'bg-amber-100',
+    fg: 'text-amber-900',
+    ring: 'ring-amber-300',
+    dot: 'bg-amber-400',
+    darkBg: 'dark:bg-amber-900/50',
+    darkFg: 'dark:text-amber-100',
+  },
+  rose: {
+    bg: 'bg-rose-100',
+    fg: 'text-rose-900',
+    ring: 'ring-rose-300',
+    dot: 'bg-rose-400',
+    darkBg: 'dark:bg-rose-900/50',
+    darkFg: 'dark:text-rose-100',
+  },
+  sky: {
+    bg: 'bg-sky-100',
+    fg: 'text-sky-900',
+    ring: 'ring-sky-300',
+    dot: 'bg-sky-400',
+    darkBg: 'dark:bg-sky-900/50',
+    darkFg: 'dark:text-sky-100',
+  },
   emerald: {
     bg: 'bg-emerald-100',
     fg: 'text-emerald-900',
     ring: 'ring-emerald-300',
     dot: 'bg-emerald-400',
+    darkBg: 'dark:bg-emerald-900/50',
+    darkFg: 'dark:text-emerald-100',
   },
   violet: {
     bg: 'bg-violet-100',
     fg: 'text-violet-900',
     ring: 'ring-violet-300',
     dot: 'bg-violet-400',
+    darkBg: 'dark:bg-violet-900/50',
+    darkFg: 'dark:text-violet-100',
   },
   slate: {
     bg: 'bg-slate-100',
     fg: 'text-slate-900',
     ring: 'ring-slate-300',
     dot: 'bg-slate-400',
+    darkBg: 'dark:bg-slate-800/60',
+    darkFg: 'dark:text-slate-100',
   },
   orange: {
     bg: 'bg-orange-100',
     fg: 'text-orange-900',
     ring: 'ring-orange-300',
     dot: 'bg-orange-400',
+    darkBg: 'dark:bg-orange-900/50',
+    darkFg: 'dark:text-orange-100',
   },
-  gray: { bg: 'bg-gray-100', fg: 'text-gray-900', ring: 'ring-gray-300', dot: 'bg-gray-400' },
+  gray: {
+    bg: 'bg-gray-100',
+    fg: 'text-gray-900',
+    ring: 'ring-gray-300',
+    dot: 'bg-gray-400',
+    darkBg: 'dark:bg-gray-800/60',
+    darkFg: 'dark:text-gray-100',
+  },
 };
 
 /**

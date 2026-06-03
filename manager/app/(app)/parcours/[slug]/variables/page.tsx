@@ -2,15 +2,16 @@ import type { ContentBlock } from '@shared/content-schema';
 import { Trash2 } from 'lucide-react';
 
 import { ConfirmForm } from '@/components/ConfirmForm';
+import { LibrarySectionTabs } from '@/components/library/LibrarySectionTabs';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
 import { Input } from '@/components/ui/Input';
 import { AddVariableForm } from '@/components/variables/AddVariableForm';
-import { OptionsListInput } from '@/components/variables/OptionsListInput';
 import { ValueMapInput } from '@/components/variables/ValueMapInput';
 import { VariableAccordionItem } from '@/components/variables/VariableAccordionItem';
 import { VariableHeader } from '@/components/variables/VariableHeader';
+import { VariableOptionsForm } from '@/components/variables/VariableOptionsForm';
 import {
   createVariable,
   deleteVariable,
@@ -128,6 +129,7 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
 
   return (
     <div className="space-y-6">
+      <LibrarySectionTabs slug={slug} />
       {/* Full-width call-to-action : creating a variable is the primary
           action on this page, so it sits at the very top and spans the
           width. Clicking it reveals the (otherwise hidden) creation form
@@ -171,7 +173,7 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
                           ? `Voir un bloc qui référence cette variable (chapitre « ${u.sampleChapterSlug} »)`
                           : 'Voir les références'
                       }
-                      className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 hover:bg-amber-100"
+                      className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/50"
                     >
                       {usageCount} bloc{usageCount > 1 ? 's' : ''} ↗
                     </a>
@@ -221,25 +223,21 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
                   />
                 </div>
 
-                {/* Options editor — enum only */}
+                {/* Options editor — enum only. Auto-save sur chaque modif
+                    (drag-and-drop, ajout, suppression, édition d'un value/
+                    label) avec toast de confirmation — plus de bouton
+                    « Enregistrer » à cliquer, l'utilisateur ne risque plus
+                    d'oublier de sauver et de perdre ses réordonnancements. */}
                 {v.type === 'enum' && (
-                  <form
-                    action={async (fd) => {
-                      'use server';
-                      await updateVariableOptions(slug, v.id, fd);
-                    }}
-                    className="border-border/60 bg-muted/20 space-y-2 rounded-md border p-3"
-                  >
-                    <label className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
-                      Options
-                    </label>
-                    <OptionsListInput name="options" initial={(v.options as VariableOption[]) ?? []} />
-                    <div className="flex justify-end">
-                      <Button type="submit" size="sm" variant="outline">
-                        Enregistrer les options
-                      </Button>
-                    </div>
-                  </form>
+                  <div className="border-border/60 bg-muted/20 rounded-md border p-3">
+                    <VariableOptionsForm
+                      initial={(v.options as VariableOption[]) ?? []}
+                      saveAction={async (fd) => {
+                        'use server';
+                        await updateVariableOptions(slug, v.id, fd);
+                      }}
+                    />
+                  </div>
                 )}
 
                 {/* Hubspot mapping editor */}

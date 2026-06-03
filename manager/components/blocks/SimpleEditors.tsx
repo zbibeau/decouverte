@@ -81,7 +81,7 @@ export function TextEditor({
       </Field>
       <Field label="Variante" path="variant">
         <select
-          className="border-border h-9 rounded-md border bg-white px-3 text-sm"
+          className="border-border bg-surface h-9 rounded-md border px-3 text-sm"
           value={payload.variant ?? 'default'}
           onChange={(e) => onChange({ ...payload, variant: e.target.value })}
         >
@@ -134,6 +134,9 @@ type VideoPayload = {
   contentId?: string;
   contentClass?: string;
   navbar?: { variant: string };
+  /** Internal label shown in the manager's block row + ⌘K search. Never
+   *  rendered by the front. See `VideoBlock.managerTitle` in the schema. */
+  managerTitle?: string;
   /** Inline maintenance tag IDs, used when this VideoBlock appears
    *  nested inside another block. Top-level instances ignore this. */
   tagIds?: string[];
@@ -148,6 +151,17 @@ export function VideoEditor({ payload, onChange, navbarVariants, depth = 0 }: Pa
   const isNested = depth > 0;
   return (
     <div className="space-y-3">
+      <Field
+        label="Titre interne (manager)"
+        path="managerTitle"
+        hint="Affiché uniquement dans la liste des blocs et dans ⌘K — jamais rendu en front. Sert à distinguer plusieurs vidéos d'un même chapitre (ex. « Présentation », « Cas patient A »)."
+      >
+        <Input
+          value={payload.managerTitle ?? ''}
+          onChange={(e) => onChange({ ...payload, managerTitle: e.target.value })}
+          placeholder="Ex. Présentation du dossier patient"
+        />
+      </Field>
       <Field
         label="Source vidéo"
         path="vimeoSrc"
@@ -398,7 +412,9 @@ function VideoUploadButton({ onUploaded }: { onUploaded: (url: string) => void }
             Annuler
           </Button>
         )}
-        {statusLabel && !pending && <span className="text-[10px] text-emerald-700">{statusLabel}</span>}
+        {statusLabel && !pending && (
+          <span className="text-[10px] text-emerald-700 dark:text-emerald-300">{statusLabel}</span>
+        )}
       </div>
       {pending && progress != null && (
         <div className="space-y-1">
@@ -585,7 +601,7 @@ export function ComponentRefEditor({
         }
       >
         <select
-          className="border-border h-9 w-full rounded-md border bg-white px-3 text-sm"
+          className="border-border bg-surface h-9 w-full rounded-md border px-3 text-sm"
           value={payload.name ?? ''}
           onChange={(e) => onChange({ ...payload, name: e.target.value || undefined })}
           disabled={!list}
@@ -616,7 +632,7 @@ export function ComponentRefEditor({
         </div>
       )}
 
-      <details className="border-border rounded-md border bg-white p-2 text-xs">
+      <details className="border-border bg-surface rounded-md border p-2 text-xs">
         <summary className="text-muted-foreground cursor-pointer font-medium">
           Comment importer un nouveau composant custom ?
         </summary>
@@ -697,7 +713,7 @@ function ComponentRefPropsEditor({
         value={draft}
         onChange={(e) => handleChange(e.target.value)}
         rows={5}
-        className="border-border w-full rounded-md border bg-white p-2 font-mono text-xs"
+        className="border-border bg-surface w-full rounded-md border p-2 font-mono text-xs"
         placeholder='{"subTitle": "Découvrez MadeForMed"}'
       />
       {error && <p className="text-destructive mt-1 text-[10px]">JSON invalide : {error}</p>}

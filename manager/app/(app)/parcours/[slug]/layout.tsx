@@ -7,7 +7,6 @@ import { ParcoursTabs } from '@/components/ParcoursTabs';
 import { Badge } from '@/components/ui/Badge';
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog';
 import { getDraftStatus, listVersions, restoreVersionAsDraft } from '@/lib/actions';
-import { pastelForString, safeThemeColor } from '@/lib/pastelColors';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -63,6 +62,10 @@ export default async function ParcoursLayout({
   // select if the column doesn't exist yet on this DB (migration 0035 not
   // applied). Same defensive pattern as `(app)/layout.tsx` so a fresh
   // deploy doesn't 404 every parcours page until someone runs the SQL.
+  // NOTE direction Studio : on continue de lire `theme_color` pour ne pas
+  // briser le contrat DB, mais le header ne le matérialise plus en bandeau
+  // teinté — la couleur survit côté Sidebar (dot du parcours) et grille
+  // chapitres. Le header est sobre, surface blanche, hairline en bas.
   let parcours: {
     id: string;
     slug: string;
@@ -90,12 +93,6 @@ export default async function ParcoursLayout({
 
   if (!parcours) notFound();
 
-  // Resolve the header tint : explicit `theme_color` wins, else fall back to
-  // a deterministic pastel computed from the slug so existing rows still
-  // look distinct without a manual migration. `safeThemeColor` validates
-  // the hex format and guards against legacy garbage.
-  const themeColor = safeThemeColor(parcours.theme_color ?? pastelForString(slug));
-
   // Bound server action callbacks passed as props to the client dialog.
   async function loadVersionsAction() {
     'use server';
@@ -108,15 +105,14 @@ export default async function ParcoursLayout({
 
   return (
     <div>
-      {/* Header tinted with the parcours' theme color so the author can tell
-           at a glance which project they're editing. Inline `background` is
-           used (rather than a Tailwind class) because the color is dynamic
-           per-parcours. A subtle bottom border keeps the visual separation
-           from the content area. */}
-      <div className="border-border border-b" style={{ background: themeColor }}>
-        <div className="mx-auto max-w-[1400px] px-8 pt-6">
+      {/* Header Studio : surface blanche, plus de bandeau teinté, hairline
+          en bas. Padding sobre `pt-[18px] pb-4 px-[30px]`. Les onglets ne
+          sont PLUS à l'intérieur — ils vivent juste sous le header, dans
+          une bande dédiée centrée (voir bloc <nav /> ci-dessous). */}
+      <div className="bg-surface border-border border-b">
+        <div className="mx-auto max-w-[1400px] px-[30px] pb-4 pt-[18px]">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold">{parcours.name}</h1>
+            <h1 className="text-text text-[21px] font-semibold leading-tight">{parcours.name}</h1>
             {parcours.published_version_id ? (
               <Badge tone="success">publié</Badge>
             ) : (
@@ -130,8 +126,8 @@ export default async function ParcoursLayout({
               </Suspense>
             </div>
           </div>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            slug : <code>{parcours.slug}</code>
+          <p className="text-text-muted mt-1 font-mono text-xs">
+            slug : <code className="font-mono">{parcours.slug}</code>
           </p>
           {/* URL publique de ce parcours sur le front (varie selon le slug
               + NEXT_PUBLIC_CLIENT_URL). Clic = ouvre dans un nouvel onglet. */}
@@ -139,16 +135,28 @@ export default async function ParcoursLayout({
             href={publicUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-muted-foreground hover:text-brand-primary-700 mt-0.5 inline-flex items-center gap-1 text-xs transition-colors"
+            className="text-text-faint hover:text-primary-on mt-0.5 inline-flex items-center gap-1 font-mono text-xs transition-colors"
             title="Ouvrir ce parcours sur le front public (nouvel onglet)"
           >
             <ExternalLink className="h-3 w-3 shrink-0" />
-            <code>{publicUrl}</code>
+            <code className="font-mono">{publicUrl}</code>
           </a>
+        </div>
+      </div>
+      {/* Onglets sortis de la barre du haut, centrés en bande indépendante
+          sous le header. Sélecteur positif `has-[nav]:block` : la bande
+          n'est rendue QUE quand `ParcoursTabs` émet réellement un `<nav>`.
+          Sur l'écran éditeur de chapitre, le composant renvoie `null` →
+          aucun `<nav>` descendant → la bande reste `hidden` (par défaut).
+          Le `:has(:empty)` qu'on avait avant matchait aussi les `<path>`
+          internes des SVG lucide-react (qui sont sans enfants), du coup
+          la bande était masquée même avec les tabs présents. */}
+      <div className="bg-surface border-border hidden border-b has-[nav]:block">
+        <div className="mx-auto flex max-w-[1400px] justify-center px-[30px] py-3">
           <ParcoursTabs slug={slug} />
         </div>
       </div>
-      <div className="mx-auto max-w-[1400px] space-y-4 px-8 py-6">
+      <div className="mx-auto max-w-[1400px] space-y-4 px-[30px] py-6">
         {/* DraftStatusBar pinned to the top of the viewport while the
             visitor scrolls long chapter / block lists. Without sticky,
             the author lost sight of whether the current edits land in

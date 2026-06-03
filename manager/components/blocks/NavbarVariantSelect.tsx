@@ -108,7 +108,7 @@ export function NavbarVariantSelect({ value, onChange, variants }: Props) {
   return (
     <div className="space-y-1">
       <select
-        className="border-border h-9 rounded-md border bg-white px-3 text-sm"
+        className="border-border bg-surface h-9 rounded-md border px-3 text-sm"
         value={value ?? ''}
         onChange={(e) => {
           const v = e.target.value;

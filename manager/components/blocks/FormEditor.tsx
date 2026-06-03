@@ -1,18 +1,17 @@
 'use client';
 
 import type { FormBlock, FormField } from '@shared/content-schema';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 import { IconPicker } from '@/components/IconPicker';
-import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
+import type { PayloadEditorProps } from './editor-types';
 import { Field, Section } from './Field';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
-import type { PayloadEditorProps } from './editor-types';
+import { TabbedItemList } from './TabbedItemList';
 
 type FormPayload = FormBlock['payload'];
 
@@ -26,6 +25,46 @@ export function FormEditor({ payload, onChange, variables, navbarVariants }: Pay
   function updateFields(next: FormField[]) {
     onChange({ ...payload, fields: next });
   }
+
+  // Auto-resync des options enum. Quand l'auteur réordonne les options d'une
+  // variable (`logicielMedecin` à 28 entrées par ex.), les blocs `form` qui
+  // pointent dessus gardent leur SNAPSHOT figé dans `FormField.options` (=
+  // ce qui a été copié au moment du `pickVariable`) — du coup le front
+  // continue d'afficher l'ancien ordre. On detecte ici l'écart (ordre OU
+  // contenu) et on patche silencieusement. L'autosave de `InlineBlockEditor`
+  // pousse ensuite la nouvelle payload en DB. Si rien à patcher, no-op.
+  //
+  // Comparaison par identité de la séquence value→label : si les deux
+  // tableaux sont strictement égaux dans leur ordre + labels, on ne touche
+  // pas (évite des boucles `useEffect → setBlock → re-render`).
+  useEffect(() => {
+    let dirty = false;
+    const next = fields.map((f) => {
+      if (f.type !== 'enum') return f;
+      const v = variables.find((x) => x.key === f.key);
+      if (!v || v.type !== 'enum') return f;
+      const fresh = v.options.map((o) => ({ value: o.value, label: o.label }));
+      const current = f.options ?? [];
+      const sameLength = current.length === fresh.length;
+      const sameOrder = sameLength && current.every((o, i) => o.value === fresh[i].value && o.label === fresh[i].label);
+      if (sameOrder) return f;
+      dirty = true;
+      return { ...f, options: fresh };
+    });
+    if (dirty) updateFields(next);
+    // Deps = signatures sérialisées des variables (key|type|options:value=label)
+    // ET des fields (key|type). Ces strings changent uniquement quand l'ordre
+    // / contenu côté variable bouge ou qu'une question change de cible — donc
+    // l'effet re-fire exactement quand un patch peut être nécessaire, sans
+    // re-fire à chaque keystroke sur un label de question. Pas d'eslint-disable
+    // exhaustive-deps : la règle n'est pas enregistrée côté manager (= error
+    // « rule not found » si on l'ajoute).
+  }, [
+    variables
+      .map((v) => `${v.key}|${v.type}|${(v.options ?? []).map((o) => `${o.value}=${o.label}`).join(',')}`)
+      .join('||'),
+    fields.map((f) => `${f.key}|${f.type}`).join('||'),
+  ]);
 
   const addField = useCallback(() => {
     const firstVar = variables[0];
@@ -132,47 +171,24 @@ export function FormEditor({ payload, onChange, variables, navbarVariants }: Pay
         </Field>
       </Section>
 
-      <Section
-        title={`Questions (${fields.length})`}
-        action={
-          <Button size="sm" variant="outline" onClick={addField}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Ajouter
-          </Button>
-        }
-      >
-        {fields.length === 0 && (
-          <p className="text-muted-foreground text-xs">
-            Aucune question. Clique sur « Ajouter » pour brancher une variable existante.
-          </p>
-        )}
-        <div className="space-y-3">
-          {fields.map((f, idx) => {
+      <Section title={`Questions (${fields.length})`}>
+        {/* TabbedItemList : un onglet par question, panel actif uniquement.
+            Move ↑↓ + Suppression + bouton "+ Ajouter" sont centralisés dans
+            le composant. Le contenu de chaque question (variable picker,
+            label, required, placeholder) reste rendu par le `renderItem`. */}
+        <TabbedItemList<FormField>
+          items={fields}
+          getLabel={(_f, idx) => `Question #${idx + 1}`}
+          onAdd={addField}
+          onRemove={removeField}
+          onMove={moveField}
+          addLabel="Ajouter"
+          emptyText="Aucune question. Clique sur « Ajouter » pour brancher une variable existante."
+          renderItem={(f, idx) => {
             const variable = variables.find((v) => v.key === f.key);
             const typeMismatch = variable && variable.type !== f.type;
             return (
-              <div key={idx} className="border-border space-y-2 rounded-md border bg-white p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
-                    Question #{idx + 1}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => moveField(idx, -1)} disabled={idx === 0}>
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => moveField(idx, 1)}
-                      disabled={idx === fields.length - 1}
-                    >
-                      <ArrowDown className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeField(idx)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-
+              <>
                 <Field
                   label="Variable"
                   path={`fields[${idx}].key`}
@@ -185,7 +201,7 @@ export function FormEditor({ payload, onChange, variables, navbarVariants }: Pay
                   }
                 >
                   <select
-                    className="border-border h-9 w-full rounded-md border bg-white px-3 text-sm"
+                    className="border-border bg-surface h-9 w-full rounded-md border px-3 text-sm"
                     value={f.key}
                     onChange={(e) => pickVariable(idx, e.target.value)}
                   >
@@ -226,10 +242,10 @@ export function FormEditor({ payload, onChange, variables, navbarVariants }: Pay
                     />
                   </Field>
                 )}
-              </div>
+              </>
             );
-          })}
-        </div>
+          }}
+        />
       </Section>
 
       <Section title="Bouton">

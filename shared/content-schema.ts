@@ -78,6 +78,13 @@ export interface VideoBlock {
     contentClass?: string;
     /** Optional pilot-specific Tool1 navbar variant rendered on top of the video. */
     navbar?: { variant: string };
+    /**
+     * Internal label used ONLY by the manager UI (block row summary, search,
+     * etc.) so authors can tell "Vimeo · 907..." rows apart at a glance.
+     * Never read by the front renderer — pure editorial metadata. Optional :
+     * when missing, the manager falls back to the raw vimeoSrc-derived summary.
+     */
+    managerTitle?: string;
     /** Inline maintenance tag IDs, used when this VideoBlock appears
      *  NESTED inside another block's payload (card.children,
      *  toolContentSection.children, conditional.then/else…). Top-level

@@ -6,6 +6,7 @@ import {
   createChapter,
   deleteChapter,
   duplicateChapter,
+  ensureDraftForChapterView,
   getDraftChapterDiffs,
   getEditingVersionId,
   getNavbarVariants,
@@ -33,6 +34,15 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
     .order('order', { ascending: true });
 
   const createChapterAction = createChapter.bind(null, slug);
+  // Pre-warm hook used by `<CreateChapterForm>` on mount : ensures a draft
+  // version exists ASAP (= when the user opens the form, not when they
+  // click Submit). For a fresh parcours without a draft yet, this clone
+  // can take many seconds — running it in parallel with the user typing
+  // amortises the cost so the actual submit feels instant.
+  async function ensureDraftFromCreateChapter() {
+    'use server';
+    await ensureDraftForChapterView(slug);
+  }
 
   async function reorderChaptersAction(orderedItems: Array<{ id: string; sectionLabel: string | null }>) {
     'use server';
@@ -207,7 +217,11 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
       {/* CTA de création en tête de liste (cohérent avec Variables / Blocs) :
           bouton pleine largeur qui déplie le formulaire d'ajout de chapitre. */}
       <ExpandableCreatePanel label="Ajouter un chapitre">
-        <CreateChapterForm createAction={createChapterAction} existingSlugs={(chapters ?? []).map((c) => c.slug)} />
+        <CreateChapterForm
+          createAction={createChapterAction}
+          existingSlugs={(chapters ?? []).map((c) => c.slug)}
+          ensureDraftAction={ensureDraftFromCreateChapter}
+        />
       </ExpandableCreatePanel>
 
       <Card>
@@ -221,7 +235,7 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
             {totalUntaggedBlocks > 0 && (
               <>
                 {' · '}
-                <span className="font-medium text-amber-700">
+                <span className="font-medium text-amber-700 dark:text-amber-300">
                   🏷 {totalUntaggedBlocks} bloc{totalUntaggedBlocks > 1 ? 's' : ''} sans tag
                 </span>
               </>

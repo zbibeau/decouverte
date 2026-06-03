@@ -61,7 +61,7 @@ export function IconPicker({ value, onChange, clientUrl = 'http://localhost:3100
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'flex h-9 w-full items-center gap-2 rounded-md border border-border bg-white px-2 text-sm transition-colors hover:bg-muted',
+          'border-border bg-surface hover:bg-muted flex h-9 w-full items-center gap-2 rounded-md border px-2 text-sm transition-colors',
         )}
       >
         {value ? (
@@ -84,7 +84,7 @@ export function IconPicker({ value, onChange, clientUrl = 'http://localhost:3100
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') clear(e);
               }}
-              className="rounded p-0.5 text-muted-foreground hover:bg-border"
+              className="text-muted-foreground hover:bg-border rounded p-0.5"
               title="Retirer l'icône"
               aria-label="Retirer l'icône"
             >
@@ -92,16 +92,16 @@ export function IconPicker({ value, onChange, clientUrl = 'http://localhost:3100
             </span>
           </>
         ) : (
-          <span className="flex-1 text-left text-xs text-muted-foreground">— Choisir une icône —</span>
+          <span className="text-muted-foreground flex-1 text-left text-xs">— Choisir une icône —</span>
         )}
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        <ChevronDown className="text-muted-foreground h-3.5 w-3.5" />
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-hidden rounded-md border border-border bg-white shadow-lg">
-          <div className="border-b border-border p-2">
+        <div className="border-border bg-surface absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-hidden rounded-md border shadow-lg">
+          <div className="border-border border-b p-2">
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -114,7 +114,7 @@ export function IconPicker({ value, onChange, clientUrl = 'http://localhost:3100
 
           <div className="max-h-[260px] overflow-y-auto p-2">
             {filtered.length === 0 ? (
-              <p className="p-4 text-center text-xs text-muted-foreground">Aucune icône trouvée.</p>
+              <p className="text-muted-foreground p-4 text-center text-xs">Aucune icône trouvée.</p>
             ) : (
               <div className="grid grid-cols-6 gap-1">
                 {filtered.map((key) => {
@@ -129,7 +129,7 @@ export function IconPicker({ value, onChange, clientUrl = 'http://localhost:3100
                         'flex aspect-square flex-col items-center justify-center gap-0.5 rounded-md border p-1 transition-colors',
                         isActive
                           ? 'border-primary bg-primary/5'
-                          : 'border-transparent hover:border-border hover:bg-muted',
+                          : 'hover:border-border hover:bg-muted border-transparent',
                       )}
                     >
                       <img
@@ -147,7 +147,7 @@ export function IconPicker({ value, onChange, clientUrl = 'http://localhost:3100
             )}
           </div>
 
-          <div className="border-t border-border bg-muted/30 px-2 py-1 text-[10px] text-muted-foreground">
+          <div className="border-border bg-muted/30 text-muted-foreground border-t px-2 py-1 text-[10px]">
             {filtered.length} / {ICON_KEYS.length} icônes
           </div>
         </div>

@@ -99,7 +99,7 @@ export function DuplicateBlockMenu({ chapters, currentChapterSlug, disabled, onD
           <div
             ref={menuRef}
             style={{ position: 'fixed', top: coords.top, right: coords.right }}
-            className="border-border z-50 min-w-[220px] overflow-hidden rounded-md border bg-white text-sm shadow-lg"
+            className="border-border bg-surface z-50 min-w-[220px] overflow-hidden rounded-md border text-sm shadow-lg"
           >
             <button
               type="button"

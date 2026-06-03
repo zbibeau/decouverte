@@ -5,6 +5,7 @@ import { Component, createEffect, createMemo, createSignal, For, onMount, Show }
 import { z } from 'zod';
 
 import { Card } from '../../../atoms/Card';
+import { ComboboxForm } from '../../../atoms/ComboboxForm';
 import { Icon } from '../../../atoms/Icon';
 import { RadioGroupForm } from '../../../atoms/RadioGroup';
 import { InputLineSwitchForm } from '../../../molecules/InputLineSwitch';
@@ -30,6 +31,14 @@ import {
 // values into HomeContext before advancing to `nextStep`. Replaces the
 // hardcoded IntroFormFields custom component; the fields list is stored
 // in the block payload (edited via FormEditor in the manager).
+
+/**
+ * Au-delà de N options, un champ enum bascule du RadioGroup vertical au
+ * Combobox (dropdown + recherche-as-you-type). 3-5 options = radio inline
+ * reste plus lisible ; 8+ = dropdown bien plus efficace (cf. `logicielMedecin`
+ * à 28 logiciels métier). Constante ajustable selon retours UX.
+ */
+const ENUM_DROPDOWN_THRESHOLD = 8;
 
 function buildZodSchema(fields: FormField[]) {
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -325,24 +334,42 @@ const RenderField: Component<{
         </F>
       ) as unknown as ReturnType<Component>;
 
-    case 'enum':
+    case 'enum': {
+      const opts = (f.options ?? []).map((o) => ({ value: o.value, label: o.label }));
+      const useDropdown = opts.length > ENUM_DROPDOWN_THRESHOLD;
       return (
         <F name={f.key} type="string">
           {(field, fProps) => (
             <div class="group flex items-center justify-between gap-2 rounded-2xl border border-transparent bg-secondary-50 px-4 py-3 hover:border-secondary-100">
-              <RadioGroupForm
-                label={f.label}
-                name={fProps.name}
-                options={(f.options ?? []).map((o) => ({ value: o.value, label: o.label }))}
-                value={field.value as string | undefined}
-                error={field.touched ? field.error : undefined}
-                form={form}
-                variant="default"
-              />
+              {useDropdown ? (
+                // Beaucoup d'options (typ. logicielMedecin = 28) → Combobox
+                // avec recherche-as-you-type. Mêmes props sémantiques que le
+                // RadioGroupForm, même valeur poussée dans le store.
+                <ComboboxForm
+                  label={f.label}
+                  name={fProps.name}
+                  options={opts}
+                  value={field.value as string | undefined}
+                  error={field.touched ? field.error : undefined}
+                  placeholder={f.placeholder ?? 'Choisis dans la liste…'}
+                  form={form}
+                />
+              ) : (
+                <RadioGroupForm
+                  label={f.label}
+                  name={fProps.name}
+                  options={opts}
+                  value={field.value as string | undefined}
+                  error={field.touched ? field.error : undefined}
+                  form={form}
+                  variant="default"
+                />
+              )}
             </div>
           )}
         </F>
       ) as unknown as ReturnType<Component>;
+    }
 
     case 'number':
       return (

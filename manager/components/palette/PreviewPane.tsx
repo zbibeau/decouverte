@@ -119,7 +119,13 @@ export function PreviewPane({
   const liveHeader = useMemo(() => {
     if (parsed?.kind === 'add') {
       const label = (BLOCK_TYPE_LABELS as Record<string, string>)[parsed.type] ?? parsed.type;
-      return <PreviewHeader eyebrow="Ajouter" title={label} icon={<Plus className="h-4 w-4 text-emerald-600" />} />;
+      return (
+        <PreviewHeader
+          eyebrow="Ajouter"
+          title={label}
+          icon={<Plus className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+        />
+      );
     }
     if (parsed?.kind === 'block') {
       const b = data?.blocks.find((bl) => bl.id === parsed.id);
@@ -129,7 +135,7 @@ export function PreviewPane({
         <PreviewHeader
           eyebrow={`${label} · ${b.chapterTitle}`}
           title={b.summary || `Bloc ${b.type}`}
-          icon={<Layers className="h-4 w-4 text-violet-600" />}
+          icon={<Layers className="h-4 w-4 text-violet-600 dark:text-violet-300" />}
         />
       );
     }
@@ -252,7 +258,10 @@ function Highlighted({ text, query }: { text: string; query?: string }) {
     }
     if (idx > cursor) parts.push(text.slice(cursor, idx));
     parts.push(
-      <mark key={`h-${idx}`} className="rounded-sm bg-amber-200 px-0.5 text-amber-950">
+      <mark
+        key={`h-${idx}`}
+        className="rounded-sm bg-amber-200 px-0.5 text-amber-950 dark:bg-amber-800/60 dark:text-amber-100"
+      >
         {text.slice(idx, idx + q.length)}
       </mark>,
     );
@@ -309,7 +318,7 @@ function ChapterPreview({
             {blocks.length} bloc{blocks.length > 1 ? 's' : ''}
           </span>
           {hasForm && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
               <Sparkles className="h-3 w-3" /> Form
             </span>
           )}
@@ -327,13 +336,13 @@ function ChapterPreview({
             return (
               <li
                 key={b.id}
-                className={`flex items-start gap-2 text-sm ${isMatch ? '-mx-1 rounded bg-amber-50/70 px-1' : ''}`}
+                className={`flex items-start gap-2 text-sm ${isMatch ? '-mx-1 rounded bg-amber-50/70 px-1 dark:bg-amber-950/30' : ''}`}
               >
                 <span className="bg-muted text-muted-foreground mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-medium">
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="mr-1.5 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                  <span className="mr-1.5 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
                     {typeLabel}
                   </span>
                   <span className="text-foreground">
@@ -423,7 +432,7 @@ function VariablePreview({ variable, search }: { variable: PaletteVariable; sear
         <PreviewHeader
           eyebrow="Variable"
           title={<Highlighted text={variable.label || variable.key} query={search} />}
-          icon={<ListOrdered className="h-4 w-4 text-amber-600" />}
+          icon={<ListOrdered className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
         />
       }
     >
@@ -437,7 +446,7 @@ function VariablePreview({ variable, search }: { variable: PaletteVariable; sear
         <div className="flex items-center gap-2">
           <dt className="text-muted-foreground w-16 shrink-0 text-xs uppercase">Type</dt>
           <dd>
-            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
+            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
               {variable.type}
             </span>
           </dd>
@@ -462,7 +471,7 @@ function ScopeActionPreview({
         <PreviewHeader
           eyebrow={scopeLabel}
           title={<Highlighted text={action.label} query={search} />}
-          icon={<Plus className="h-4 w-4 text-emerald-600" />}
+          icon={<Plus className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
         />
       }
     >
@@ -547,7 +556,7 @@ function TagsRow({ tags }: { tags?: { label: string; color: string }[] }) {
         return (
           <span
             key={t.label}
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${cls.bg} ${cls.fg}`}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${cls.bg} ${cls.fg} ${cls.darkBg} ${cls.darkFg}`}
           >
             <span>🏷</span>
             <span>{t.label}</span>

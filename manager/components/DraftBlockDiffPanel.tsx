@@ -29,9 +29,9 @@ export function DraftBlockDiffPanel({ status, currentPayload, sourcePayload }: P
 
   if (status === 'new') {
     return (
-      <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-        🔵 <strong>Nouveau bloc</strong> — il n'existe pas encore dans la version publiée. Tout son
-        contenu partira en prod au prochain publish.
+      <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-200">
+        🔵 <strong>Nouveau bloc</strong> — il n'existe pas encore dans la version publiée. Tout son contenu partira en
+        prod au prochain publish.
       </div>
     );
   }
@@ -44,47 +44,46 @@ export function DraftBlockDiffPanel({ status, currentPayload, sourcePayload }: P
   if (entries.length === 0) return null;
 
   return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 text-xs text-amber-900">
+    <div className="rounded-md border border-amber-200 bg-amber-50 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-amber-100/50"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-amber-100/50 dark:hover:bg-amber-900/40"
       >
-        {open ? (
-          <ChevronDown className="h-3.5 w-3.5" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
-        )}
+        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <span>
-          🟡 <strong>{entries.length} modification{entries.length > 1 ? 's' : ''}</strong> dans ce
-          bloc par rapport au publié
+          🟡{' '}
+          <strong>
+            {entries.length} modification{entries.length > 1 ? 's' : ''}
+          </strong>{' '}
+          dans ce bloc par rapport au publié
         </span>
       </button>
       {open && (
-        <ul className="divide-y divide-amber-200 border-t border-amber-200">
+        <ul className="divide-y divide-amber-200 border-t border-amber-200 dark:divide-amber-900/50 dark:border-amber-900/50">
           {entries.map((e, i) => (
             <li key={i} className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 px-3 py-1.5">
-              <code className="font-mono text-[11px] text-amber-950">{e.path}</code>
+              <code className="font-mono text-[11px] text-amber-950 dark:text-amber-100">{e.path}</code>
               <span
                 className={
                   e.kind === 'added'
-                    ? 'text-[10px] uppercase tracking-wide text-sky-700'
+                    ? 'text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-300'
                     : e.kind === 'removed'
-                    ? 'text-[10px] uppercase tracking-wide text-red-700'
-                    : 'text-[10px] uppercase tracking-wide text-amber-700'
+                      ? 'text-[10px] uppercase tracking-wide text-red-700 dark:text-red-300'
+                      : 'text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300'
                 }
               >
                 {e.kind === 'added' ? 'ajouté' : e.kind === 'removed' ? 'supprimé' : 'modifié'}
               </span>
               {e.kind !== 'added' && (
-                <span className="col-span-2 text-[11px] text-muted-foreground">
-                  <span className="text-red-700">− </span>
+                <span className="text-muted-foreground col-span-2 text-[11px]">
+                  <span className="text-red-700 dark:text-red-300">− </span>
                   <span className="font-mono">{formatDiffValue(e.before)}</span>
                 </span>
               )}
               {e.kind !== 'removed' && (
-                <span className="col-span-2 text-[11px] text-muted-foreground">
-                  <span className="text-emerald-700">+ </span>
+                <span className="text-muted-foreground col-span-2 text-[11px]">
+                  <span className="text-emerald-700 dark:text-emerald-300">+ </span>
                   <span className="font-mono">{formatDiffValue(e.after)}</span>
                 </span>
               )}

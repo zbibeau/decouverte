@@ -47,13 +47,13 @@ export function ParcoursGrid({ parcours }: { parcours: ParcoursRow[] }) {
             className={
               'transition-colors ' +
               (isClient && idx === selectedIdx
-                ? 'border-brand-primary-400 bg-brand-primary-50/40 ring-brand-primary-300/40 ring-2'
-                : 'hover:border-brand-primary-200 hover:bg-brand-primary-50/30')
+                ? 'border-primary/50 bg-primary/10 ring-primary/30 ring-2'
+                : 'hover:border-primary/30 hover:bg-primary/5')
             }
           >
             <CardHeader className="flex flex-row items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-rose-50">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-rose-50 dark:bg-rose-950/50">
                   <FamilyIcon family="parcours" className="h-5 w-5" />
                 </div>
                 <div>

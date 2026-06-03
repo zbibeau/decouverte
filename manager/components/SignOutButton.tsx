@@ -18,7 +18,9 @@ export function SignOutButton({ children }: { children: React.ReactNode }) {
     <button
       type="button"
       onClick={handleSignOut}
-      className="flex items-center gap-1 rounded p-1 hover:bg-muted"
+      // Bouton vit dans la sidebar graphite — `hover:bg-muted` (clair) ne
+      // marchait plus en thème sombre/graphite. On utilise les classes rail.
+      className="text-rail-muted hover:text-rail-text inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/[0.06]"
       title="Se déconnecter"
     >
       {children}

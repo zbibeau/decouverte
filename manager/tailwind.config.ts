@@ -1,10 +1,23 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Manager design tokens — aligned with the MadeForMed front charte graphique.
- * Semantic aliases (primary / muted / border / …) keep all existing components
- * working without refactor; the full brand palettes are also exposed for ad-hoc
- * use (e.g. `bg-brand-primary-50`, `text-brand-success-700`).
+ * Manager design tokens — direction « D · Studio ».
+ *
+ * Surfaces / texte / primary / accents sont conduits par des variables CSS
+ * définies dans `app/globals.css` (root = clair, .dark = sombre), au format
+ * RGB triplet pour que les modifiers `/<alpha-value>` Tailwind marchent
+ * (ex. `bg-primary/5`, `border-border/60`). Le rail graphite reste en valeurs
+ * brutes — il est volontairement identique en clair et en sombre (signature
+ * Studio), et n'a pas besoin de modifiers d'opacité.
+ *
+ * Les anciens tokens sémantiques (`background`, `foreground`, `muted`,
+ * `muted-foreground`, `accent`, `destructive`) sont conservés mais re-mappés
+ * vers les vars Studio, pour que chaque `bg-muted/40` / `text-foreground` /
+ * etc. déjà présents dans le code continue de marcher SANS refactor — la
+ * couleur change visuellement (et passe en dark mode), pas l'API CSS.
+ *
+ * Les palettes brand-* d'origine restent disponibles pour les composants
+ * legacy qui les utilisent explicitement (loader MfmLoader, certains badges).
  */
 const brand = {
   primary: {
@@ -46,30 +59,10 @@ const brand = {
     900: '#2D3E4D',
     950: '#1C2630',
   },
-  info: {
-    50: '#EEF5FF',
-    500: '#357BFC',
-    600: '#1F5BF1',
-    700: '#1745DE',
-  },
-  success: {
-    50: '#F6FEE7',
-    500: '#7CC81A',
-    600: '#5EA010',
-    700: '#497A11',
-  },
-  warning: {
-    50: '#FEFDE8',
-    500: '#EFBE03',
-    600: '#CE9300',
-    700: '#A46904',
-  },
-  danger: {
-    50: '#FFF2F1',
-    500: '#F8453B',
-    600: '#E5271D',
-    700: '#C11D14',
-  },
+  info: { 50: '#EEF5FF', 500: '#357BFC', 600: '#1F5BF1', 700: '#1745DE' },
+  success: { 50: '#F6FEE7', 500: '#7CC81A', 600: '#5EA010', 700: '#497A11' },
+  warning: { 50: '#FEFDE8', 500: '#EFBE03', 600: '#CE9300', 700: '#A46904' },
+  danger: { 50: '#FFF2F1', 500: '#F8453B', 600: '#E5271D', 700: '#C11D14' },
 };
 
 // Maintenance-tag color palette — must be safelisted because the
@@ -87,34 +80,110 @@ const TAG_PALETTE_SAFELIST = ['amber', 'rose', 'sky', 'emerald', 'violet', 'slat
   `text-${c}-900`,
   `ring-${c}-300`,
   `bg-${c}-400`,
+  // Dark-mode counterparts — consumed by tagColors.ts via `darkBg`/`darkFg`
+  // and concatenated with the base classes. JIT can't infer interpolated
+  // class names so we list each shade explicitly.
+  `dark:bg-${c}-900`,
+  `dark:bg-${c}-900/50`,
+  `dark:bg-${c}-800/60`,
+  `dark:text-${c}-100`,
 ]);
 
 const config: Config = {
+  darkMode: 'class', // .dark sur <html>, géré par `ThemeBootstrap`
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
   safelist: TAG_PALETTE_SAFELIST,
   theme: {
     extend: {
       colors: {
-        // ── Semantic tokens (used by Button/Card/Input/Sidebar) ─────────────
-        border: brand.dark[100],
-        background: '#ffffff',
-        foreground: brand.dark[950],
-        muted: brand.dark[50],
-        'muted-foreground': brand.dark[500],
-        primary: brand.primary[600],
-        'primary-foreground': '#ffffff',
-        accent: brand.primary[50],
-        'accent-foreground': brand.primary[700],
+        // ── Studio surfaces ─────────────────────────────────────────────
+        bg: 'rgb(var(--bg) / <alpha-value>)',
+        surface: {
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          2: 'rgb(var(--surface-2) / <alpha-value>)',
+          3: 'rgb(var(--surface-3) / <alpha-value>)',
+        },
+        border: {
+          DEFAULT: 'rgb(var(--border) / <alpha-value>)',
+          strong: 'rgb(var(--border-strong) / <alpha-value>)',
+        },
+        text: {
+          DEFAULT: 'rgb(var(--text) / <alpha-value>)',
+          muted: 'rgb(var(--text-muted) / <alpha-value>)',
+          faint: 'rgb(var(--text-faint) / <alpha-value>)',
+        },
+
+        // ── Studio primary (violet chirurgical) ─────────────────────────
+        primary: {
+          DEFAULT: 'rgb(var(--primary) / <alpha-value>)',
+          strong: 'rgb(var(--primary-strong) / <alpha-value>)',
+          weak: 'var(--primary-weak)', // alpha figée → pas de modifier
+          'weak-border': 'var(--primary-weak-border)',
+          on: 'rgb(var(--primary-on) / <alpha-value>)',
+        },
+        'on-primary': 'rgb(var(--on-primary) / <alpha-value>)',
+
+        // ── Tones (rails + tags accents) ────────────────────────────────
+        // Cohérent avec `lib/fieldRailColors.ts` et `lib/tagColors.ts` :
+        // les valeurs hex y restent inchangées, mais les utilities
+        // `bg-tone-rose`, `text-tone-emerald`, etc. permettent un usage
+        // direct dans le markup quand on veut éviter le style inline.
+        tone: {
+          rose: 'rgb(var(--c-rose) / <alpha-value>)',
+          amber: 'rgb(var(--c-amber) / <alpha-value>)',
+          emerald: 'rgb(var(--c-emerald) / <alpha-value>)',
+          violet: 'rgb(var(--c-violet) / <alpha-value>)',
+          sky: 'rgb(var(--c-sky) / <alpha-value>)',
+          slate: 'rgb(var(--c-slate) / <alpha-value>)',
+        },
+
+        // ── Rail graphite (Sidebar) — clair = sombre ────────────────────
+        rail: {
+          bg: 'var(--rail-bg)',
+          border: 'var(--rail-border)',
+          text: 'var(--rail-text)',
+          muted: 'var(--rail-muted)',
+          section: 'var(--rail-section)',
+          'active-bg': 'var(--rail-active-bg)',
+          'active-text': 'var(--rail-active-text)',
+          'active-bar': 'var(--rail-active-bar)',
+        },
+
+        // ── Back-compat sémantique (composants legacy) ──────────────────
+        // Tout `bg-muted/40`, `text-muted-foreground/70`, `border-border/60`
+        // etc. déjà présent reste fonctionnel — les vars CSS Studio
+        // alimentent la même clé, donc dark mode marche automatiquement.
+        background: 'rgb(var(--surface) / <alpha-value>)',
+        foreground: 'rgb(var(--text) / <alpha-value>)',
+        muted: 'rgb(var(--surface-2) / <alpha-value>)',
+        'muted-foreground': 'rgb(var(--text-muted) / <alpha-value>)',
+        'primary-foreground': 'rgb(var(--on-primary) / <alpha-value>)',
+        accent: 'var(--primary-weak)',
+        'accent-foreground': 'rgb(var(--primary-on) / <alpha-value>)',
         destructive: brand.danger[600],
 
-        // ── Full brand palettes ─────────────────────────────────────────────
+        // ── Palettes brand complètes (legacy, ad-hoc) ───────────────────
         brand: brand,
       },
-      fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+      borderRadius: {
+        app: 'var(--radius)', // 14px — cartes / panneaux
+        'app-sm': 'var(--radius-sm)', // 9px — champs / chips
+        btn: 'var(--btn-radius)', // 10px — boutons
       },
       boxShadow: {
+        app: 'var(--shadow)',
+        'app-sm': 'var(--shadow-sm)',
         brand: '0 1px 2px 0 rgba(110, 30, 210, 0.06), 0 1px 3px 0 rgba(110, 30, 210, 0.10)',
+      },
+      ringColor: {
+        app: 'var(--ring)',
+      },
+      fontFamily: {
+        // `--font-figtree` et `--font-jetbrains` sont injectés par
+        // `next/font/google` dans `app/layout.tsx`. Inter reste en
+        // fallback historique (encore référencé par certaines vues).
+        sans: ['var(--font-figtree)', 'Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['var(--font-jetbrains)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       backgroundImage: {
         'brand-radial': 'radial-gradient(100% 100% at 50% 0%, rgba(180, 128, 255, 0.18) 0%, rgba(255,255,255,0) 70%)',

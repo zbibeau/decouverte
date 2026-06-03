@@ -191,10 +191,21 @@ const RenderBlock: Component<BlockProps> = (props) => {
               </Text>
             );
             if (props.nested) {
-              return <div class="py-2">{textInner}</div>;
+              // No extra wrapper — let the parent container's `space-y-*`
+              // be the single source of truth for inter-sub-block spacing,
+              // so a nested text sits at the same canonical gap (24 px in
+              // `card`'s `space-y-6`) as its keyPointsCard / conditional
+              // siblings instead of inheriting an extra `py-2` (= 16 px)
+              // that visually detaches it from the preceding zone.
+              return textInner;
             }
+            // Top-level text → flow at natural height (`inline`) so a short
+            // paragraph placed right after another block (e.g. a card)
+            // sits directly under it instead of opening its own viewport-
+            // tall slide with a giant empty area before/after. Snap-start
+            // still applies → the parcours still snaps to it on scroll.
             return (
-              <AfterHeroContainer contentClass="" preChildren={renderNavbar(blk.payload.navbar)}>
+              <AfterHeroContainer inline contentClass="" preChildren={renderNavbar(blk.payload.navbar)}>
                 {textInner}
               </AfterHeroContainer>
             );
@@ -800,16 +811,25 @@ export const ChapterRenderer: Component<{
         case 'preview:scrollToBlock': {
           const blockId = String(e.data.blockId ?? '');
           if (!blockId) return;
+          // Optional alignment knob — the manager defaults to 'center' so
+          // the edited block lands in the middle of the preview viewport
+          // (UX request: "aligner le centre du sous-bloc édité avec le
+          // centre de la vue de la preview"). 'start' stays available
+          // for any caller that wants the legacy top-anchored behavior.
+          const align =
+            e.data.align === 'start' || e.data.align === 'center' || e.data.align === 'nearest'
+              ? (e.data.align as ScrollLogicalPosition)
+              : 'center';
           // Retry for up to ~2s: the block element may not be in the DOM
           // yet if the chapter just remounted (new variables → re-evaluated
-          // conditions → new children mounting). We also use `instant`
-          // because the parcours scroller has `scroll-snap-type: mandatory`
-          // which silently cancels smooth scrolls in Chrome.
+          // conditions → new children mounting). We use `instant` because
+          // the parcours scroller's `snap-y snap-proximity` silently
+          // shortens smooth scrolls in Chrome.
           let attempts = 0;
           const tryScroll = () => {
             const el = document.getElementById(`block-${blockId}`);
             if (el) {
-              el.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
+              el.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: align });
               return;
             }
             if (attempts++ < 20) setTimeout(tryScroll, 100);

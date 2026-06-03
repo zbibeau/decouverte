@@ -13,6 +13,7 @@ import {
   getEditingVersionId,
   getNavbarVariants,
   insertSampleBlock,
+  moveBlockIntoContainer,
   reorderBlocks,
   updateBlockPayload,
 } from '@/lib/actions';
@@ -69,6 +70,17 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
   async function reorderBlocksAction(orderedIds: string[]) {
     'use server';
     await reorderBlocks(slug, chapterSlug, chapter!.id, orderedIds);
+  }
+  // « Déplacer dans… » : send a top-level chapter block inside another
+  // block's container payload (card/toolContentSection.children or
+  // conditional.then/else). Translates both ids to their draft twins.
+  async function moveBlockIntoContainerAction(
+    sourceBlockId: string,
+    destContainerId: string,
+    destField: 'children' | 'then' | 'else',
+  ) {
+    'use server';
+    await moveBlockIntoContainer(slug, chapterSlug, sourceBlockId, destContainerId, destField);
   }
   async function insertSampleBlockAction(type: string): Promise<string> {
     'use server';
@@ -209,6 +221,7 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
       duplicateBlockAction={duplicateBlockAction}
       copyBlockToChapterAction={copyBlockToChapterAction}
       reorderBlocksAction={reorderBlocksAction}
+      moveBlockIntoContainerAction={moveBlockIntoContainerAction}
       saveBlockAction={saveBlockPayloadAction}
       ensureDraftAction={ensureDraftAction}
       createNavbarVariantAction={createNavbarVariantAction}

@@ -61,7 +61,7 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
     // to clean up the empty draft.
     if (totalChanges === 0) {
       return (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-200">
           <span>
             ✅ <strong>Version publiée v{status.publishedVersionNumber ?? '—'}</strong>. Toute modification ouvrira
             automatiquement un brouillon (sans toucher au live).
@@ -72,7 +72,7 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
           >
             <button
               type="submit"
-              className="ml-auto text-[11px] italic text-emerald-700/70 underline-offset-2 transition-colors hover:text-emerald-900 hover:underline"
+              className="ml-auto text-[11px] italic text-emerald-700/70 underline-offset-2 transition-colors hover:text-emerald-900 hover:underline dark:text-emerald-300/70 dark:hover:text-emerald-200"
               title={`Le brouillon v${status.draftVersionNumber} existe mais n'a aucun changement par rapport à v${status.publishedVersionNumber}.`}
             >
               Jeter le brouillon vide v{status.draftVersionNumber}
@@ -83,7 +83,7 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
     }
 
     return (
-      <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
         <span>
           ✏️ Vous éditez le <strong>brouillon v{status.draftVersionNumber}</strong>
           {status.publishedVersionNumber != null && <> (publié : v{status.publishedVersionNumber})</>} —{' '}
@@ -96,11 +96,13 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
             <>
               {' · '}
               {untaggedRows > 0 ? (
-                <span className="font-medium text-amber-800">
+                <span className="font-medium text-amber-800 dark:text-amber-200">
                   🏷 {untaggedRows} sans tag (sur {tagReview.total} à revoir)
                 </span>
               ) : (
-                <span className="text-emerald-700">🏷 tous taggés ({tagReview.total} à confirmer)</span>
+                <span className="text-emerald-700 dark:text-emerald-300">
+                  🏷 tous taggés ({tagReview.total} à confirmer)
+                </span>
               )}
             </>
           )}
@@ -125,7 +127,7 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
           >
             <button
               type="submit"
-              className="border-brand-primary-200 text-brand-primary-700 hover:bg-brand-primary-50 inline-flex h-8 items-center justify-center rounded-lg border bg-white px-3 text-xs font-medium transition-all"
+              className="border-primary-weak-border text-primary-on hover:bg-primary/10 bg-surface inline-flex h-8 items-center justify-center rounded-lg border px-3 text-xs font-medium transition-all"
             >
               Jeter le brouillon
             </button>
@@ -136,7 +138,7 @@ export async function DraftStatusBar({ parcoursSlug }: { parcoursSlug: string })
   }
 
   return (
-    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900">
+    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-200">
       ✅ <strong>Version publiée v{status.publishedVersionNumber ?? '—'}</strong>. Toute modification ouvrira
       automatiquement un brouillon (sans toucher au live).
     </div>

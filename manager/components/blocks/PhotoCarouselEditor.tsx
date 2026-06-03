@@ -1,7 +1,7 @@
 'use client';
 
 import type { CarouselPhoto, PhotoCarouselBlock } from '@shared/content-schema';
-import { ArrowDown, ArrowUp, ImageUp, Loader2, Plus, Trash2, Upload } from 'lucide-react';
+import { ImageUp, Loader2, Plus, Upload } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -11,6 +11,7 @@ import { uploadImageDirect } from '@/lib/uploadImageClient';
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { Field, Section } from './Field';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
+import { TabbedItemList } from './TabbedItemList';
 import { TagsField, TagsHelpBanner } from './TagsField';
 import type { PayloadEditorProps } from './editor-types';
 
@@ -172,7 +173,7 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
         </Field>
         <Field label="Format d'image (ratio)" path="aspectRatio">
           <select
-            className="border-border h-9 w-full rounded-md border bg-white px-3 text-sm"
+            className="border-border bg-surface h-9 w-full rounded-md border px-3 text-sm"
             value={payload.aspectRatio ?? '16/9'}
             onChange={(e) =>
               onChange({
@@ -262,8 +263,8 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
           className={[
             'mb-3 flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed p-4 text-center text-xs transition-colors',
             dragOver
-              ? 'border-rose-500 bg-rose-50 text-rose-700'
-              : 'border-border bg-muted/30 text-muted-foreground hover:border-rose-300 hover:bg-rose-50/50',
+              ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+              : 'border-border bg-muted/30 text-muted-foreground hover:border-rose-300 hover:bg-rose-50/50 dark:hover:border-rose-700/60 dark:hover:bg-rose-950/30',
             uploading ? 'pointer-events-none opacity-60' : '',
           ].join(' ')}
         >
@@ -292,115 +293,105 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
           </p>
         )}
 
-        {photos.length === 0 ? (
-          <p className="text-muted-foreground text-xs">
-            Aucune photo. Glisse une image dans la zone ci-dessus, ou clique sur « URL manuelle » pour saisir une URL.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {photos.map((photo, idx) => (
-              <div key={idx} className="border-border space-y-2 rounded-md border bg-white p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
-                    Photo #{idx + 1}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      title="Remplacer l'image"
-                      disabled={uploading}
-                      onClick={() => {
-                        pendingReplaceIdxRef.current = idx;
-                        replaceInputRef.current?.click();
-                      }}
-                    >
-                      {uploading && replacingIdx === idx ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-500" />
-                      ) : (
-                        <ImageUp className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => movePhoto(idx, -1)} disabled={idx === 0}>
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => movePhoto(idx, 1)}
-                      disabled={idx === photos.length - 1}
-                    >
-                      <ArrowDown className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => removePhoto(idx)}>
-                      <Trash2 className="text-destructive h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-
-                <Field label="URL de l'image" path={`photos[${idx}].url`}>
-                  <Input
-                    value={photo.url}
-                    onChange={(e) => updatePhoto(idx, { url: e.target.value })}
-                    placeholder="https://… ou /illustrations/ma-photo.webp"
-                  />
-                </Field>
-
-                <Field
-                  label="Titre (facultatif)"
-                  path={`photos[${idx}].title`}
-                  hint="Affiché en bas de la photo, en surimpression sur un fond translucide."
+        {/* TabbedItemList : un onglet par photo, panel actif uniquement.
+            Move ↑↓ + Suppression + "+ Ajouter URL manuelle" sont centralisés
+            par le composant. Le bouton "Remplacer l'image" reste dans le
+            renderItem (action spécifique à la photo active, pas générique). */}
+        <TabbedItemList<CarouselPhoto>
+          items={photos}
+          getLabel={(_p, idx) => `Photo #${idx + 1}`}
+          onAdd={addPhoto}
+          onRemove={removePhoto}
+          onMove={movePhoto}
+          addLabel="URL manuelle"
+          emptyText="Aucune photo. Glisse une image dans la zone ci-dessus, ou clique sur « URL manuelle » pour saisir une URL."
+          renderItem={(photo, idx) => (
+            <>
+              {/* Action photo-spécifique : remplacer l'image en place via
+                  le file picker partagé. Conservée séparément du header
+                  générique du TabbedItemList. */}
+              <div className="flex items-center justify-end">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="Remplacer l'image"
+                  disabled={uploading}
+                  onClick={() => {
+                    pendingReplaceIdxRef.current = idx;
+                    replaceInputRef.current?.click();
+                  }}
                 >
-                  <Input
-                    value={photo.title ?? ''}
-                    onChange={(e) => updatePhoto(idx, { title: e.target.value })}
-                    placeholder="La salle d'attente refaite en 2024"
-                  />
-                </Field>
-
-                <Field
-                  label="Description (facultative)"
-                  path={`photos[${idx}].description`}
-                  hint="Texte affiché sous le carrousel. Sauts de ligne préservés."
-                >
-                  <textarea
-                    value={photo.description ?? ''}
-                    onChange={(e) => updatePhoto(idx, { description: e.target.value })}
-                    placeholder="Travaux réalisés en mars 2024.&#10;Mobilier en chêne, éclairage LED."
-                    rows={3}
-                    className="border-border focus-visible:ring-ring w-full rounded-md border bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1"
-                  />
-                </Field>
-
-                <Field
-                  label="Texte alternatif (alt) — accessibilité"
-                  path={`photos[${idx}].alt`}
-                  hint="Lu par les lecteurs d'écran. Si vide, le titre sera utilisé."
-                >
-                  <Input
-                    value={photo.alt ?? ''}
-                    onChange={(e) => updatePhoto(idx, { alt: e.target.value })}
-                    placeholder="Vue intérieure de la salle d'attente"
-                  />
-                </Field>
-
-                {/* Mini-preview de l'image pour confort */}
-                {photo.url && (
-                  <div className="border-border bg-muted/30 mt-2 overflow-hidden rounded-md border">
-                    <img
-                      src={photo.url}
-                      alt={photo.alt ?? photo.title ?? `Photo ${idx + 1}`}
-                      className="max-h-32 w-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  </div>
-                )}
+                  {uploading && replacingIdx === idx ? (
+                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin text-rose-500" />
+                  ) : (
+                    <ImageUp className="mr-1 h-3.5 w-3.5" />
+                  )}
+                  <span className="text-[11px]">Remplacer l&apos;image</span>
+                </Button>
               </div>
-            ))}
-          </div>
-        )}
+
+              <Field label="URL de l'image" path={`photos[${idx}].url`}>
+                <Input
+                  value={photo.url}
+                  onChange={(e) => updatePhoto(idx, { url: e.target.value })}
+                  placeholder="https://… ou /illustrations/ma-photo.webp"
+                />
+              </Field>
+
+              <Field
+                label="Titre (facultatif)"
+                path={`photos[${idx}].title`}
+                hint="Affiché en bas de la photo, en surimpression sur un fond translucide."
+              >
+                <Input
+                  value={photo.title ?? ''}
+                  onChange={(e) => updatePhoto(idx, { title: e.target.value })}
+                  placeholder="La salle d'attente refaite en 2024"
+                />
+              </Field>
+
+              <Field
+                label="Description (facultative)"
+                path={`photos[${idx}].description`}
+                hint="Texte affiché sous le carrousel. Sauts de ligne préservés."
+              >
+                <textarea
+                  value={photo.description ?? ''}
+                  onChange={(e) => updatePhoto(idx, { description: e.target.value })}
+                  placeholder="Travaux réalisés en mars 2024.&#10;Mobilier en chêne, éclairage LED."
+                  rows={3}
+                  className="border-border focus-visible:ring-ring bg-surface w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1"
+                />
+              </Field>
+
+              <Field
+                label="Texte alternatif (alt) — accessibilité"
+                path={`photos[${idx}].alt`}
+                hint="Lu par les lecteurs d'écran. Si vide, le titre sera utilisé."
+              >
+                <Input
+                  value={photo.alt ?? ''}
+                  onChange={(e) => updatePhoto(idx, { alt: e.target.value })}
+                  placeholder="Vue intérieure de la salle d'attente"
+                />
+              </Field>
+
+              {/* Mini-preview de l'image pour confort */}
+              {photo.url && (
+                <div className="border-border bg-muted/30 mt-2 overflow-hidden rounded-md border">
+                  <img
+                    src={photo.url}
+                    alt={photo.alt ?? photo.title ?? `Photo ${idx + 1}`}
+                    className="max-h-32 w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        />
       </Section>
       {isNested && (
         <>

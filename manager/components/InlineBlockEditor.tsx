@@ -353,11 +353,16 @@ export function InlineBlockEditor(props: Props) {
       {!isCreating && (
         <Section title="Tags de maintenance" accentColor="slate">
           <TagsHelpBanner contextHint="Aide à retrouver ce bloc via ⌘K quand une fonctionnalité produit évolue." />
-          <TagsField />
+          {/* Explicit blockId : the unified chapter view's URL doesn't carry
+              the block id (it's `/parcours/<slug>/chapters/<chapter>?block=…`,
+              not the legacy `/blocks/<id>` route), so without this prop the
+              TagsField falls back to URL parsing → null → renders the
+              misleading "save first" placeholder for already-saved blocks. */}
+          <TagsField target={{ kind: 'block', blockId: props.blockId }} />
         </Section>
       )}
 
-      <div className="border-border sticky bottom-0 flex items-center gap-3 rounded-md border bg-white/95 p-2 shadow-sm backdrop-blur">
+      <div className="border-border bg-surface/95 sticky bottom-0 flex items-center gap-3 rounded-md border p-2 shadow-sm backdrop-blur">
         {isCreating ? (
           <>
             <Button onClick={handleManualSave} disabled={isPending || status === 'saving'}>
@@ -389,7 +394,7 @@ export function SaveIndicator({ status, manualSave }: { status: SaveStatus; manu
   switch (status) {
     case 'dirty':
       return (
-        <span className="flex items-center gap-1.5 text-xs text-amber-600">
+        <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
           Modifications non enregistrées
         </span>
@@ -491,14 +496,14 @@ function MissingTagsBanner({
 
   return (
     <div
-      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
       data-testid="missing-tags-banner"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">🏷 Tags à ajouter ({totalMissing}) —</span>
         {topLevelMissing && (
           <span
-            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium"
+            className="bg-surface inline-flex items-center gap-1 rounded-full border border-amber-300 px-2 py-0.5 text-[11px] font-medium dark:border-amber-700/60"
             title="Le bloc lui-même n'a pas encore de tag de maintenance"
           >
             <span aria-hidden="true">⚠</span>
@@ -508,7 +513,7 @@ function MissingTagsBanner({
         {nestedSlots.map((slot, i) => (
           <span
             key={`${slot.path}-${i}`}
-            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium"
+            className="bg-surface inline-flex items-center gap-1 rounded-full border border-amber-300 px-2 py-0.5 text-[11px] font-medium dark:border-amber-700/60"
             title={`Sous-bloc ${slot.label} sans tag (path : ${slot.path})`}
           >
             <span aria-hidden="true">⚠</span>
@@ -516,7 +521,7 @@ function MissingTagsBanner({
           </span>
         ))}
       </div>
-      <p className="mt-1.5 text-[10px] italic text-amber-700/80">
+      <p className="mt-1.5 text-[10px] italic text-amber-700/80 dark:text-amber-300/80">
         Ces tags se renseignent dans les sous-sections « Tags de maintenance » ci-dessous. Cette zone disparaît dès que
         tous les slots sont remplis.
       </p>

@@ -963,7 +963,7 @@ export async function listVersions(parcoursSlug: string): Promise<VersionSummary
     chaptersByVersion.set(c.version_id, arr);
   }
   const allChapterIds = (chapterRows ?? []).map((c) => c.id);
-  let blocksByChapter = new Map<string, number>();
+  const blocksByChapter = new Map<string, number>();
   if (allChapterIds.length > 0) {
     const { data: blockRows } = await supabase.from('block').select('id, chapter_id').in('chapter_id', allChapterIds);
     for (const b of blockRows ?? []) {
@@ -1354,6 +1354,91 @@ export async function deleteBlock(parcoursSlug: string, chapterSlug: string, blo
   const draftBlockId = await ensureDraftBlockId(parcoursSlug, blockId);
   const { error } = await supabase.from('block').delete().eq('id', draftBlockId);
   if (error) throw error;
+  revalidatePath(`/parcours/${parcoursSlug}/chapters/${chapterSlug}`);
+}
+
+/**
+ * Move a top-level chapter block INTO another chapter block's container
+ * payload — making it a nested sub-block.
+ *
+ * Supported destinations :
+ *   - `card.payload.children`              → field = 'children'
+ *   - `toolContentSection.payload.children`→ field = 'children'
+ *   - `conditional.payload.then`           → field = 'then'
+ *   - `conditional.payload.else`           → field = 'else'
+ *
+ * The source block is removed from the `block` table (its `block_tag` rows
+ * cascade away — tags don't survive the move, which is documented in the
+ * dropdown's hint). The source's own `payload.children` come along because
+ * they live inside the payload JSON.
+ *
+ * Both ids are translated to their draft twins before mutation so a move
+ * on the published chapter auto-creates the draft. Caller is responsible
+ * for refreshing the manager + remounting the preview iframe.
+ */
+export async function moveBlockIntoContainer(
+  parcoursSlug: string,
+  chapterSlug: string,
+  sourceBlockId: string,
+  destContainerId: string,
+  destField: 'children' | 'then' | 'else',
+): Promise<void> {
+  if (sourceBlockId === destContainerId) {
+    throw new Error('On ne peut pas déplacer un bloc dans lui-même.');
+  }
+  const supabase = await createClient();
+
+  const draftSourceId = await ensureDraftBlockId(parcoursSlug, sourceBlockId);
+  const draftDestId = await ensureDraftBlockId(parcoursSlug, destContainerId);
+
+  // Read both rows. We need `type` + `payload` for the source (we copy them
+  // into the dest container) and `type` + `payload` for the dest (we mutate
+  // its payload).
+  const { data: src, error: srcErr } = await supabase
+    .from('block')
+    .select('type, payload, parent_block_id')
+    .eq('id', draftSourceId)
+    .maybeSingle();
+  if (srcErr) throw srcErr;
+  if (!src) throw new Error(`Bloc source ${draftSourceId} introuvable.`);
+  if (src.parent_block_id) {
+    throw new Error("Le déplacement de blocs déjà imbriqués n'est pas encore supporté.");
+  }
+
+  const { data: dest, error: destErr } = await supabase
+    .from('block')
+    .select('type, payload')
+    .eq('id', draftDestId)
+    .maybeSingle();
+  if (destErr) throw destErr;
+  if (!dest) throw new Error(`Bloc cible ${draftDestId} introuvable.`);
+
+  // Validate the destField vs. dest type so we don't write `then` into a
+  // card, etc.
+  const allowed: Record<string, ReadonlyArray<'children' | 'then' | 'else'>> = {
+    card: ['children'],
+    toolContentSection: ['children'],
+    conditional: ['then', 'else'],
+  };
+  const validFields = allowed[dest.type] ?? [];
+  if (!validFields.includes(destField)) {
+    throw new Error(`Le bloc cible (${dest.type}) ne supporte pas le champ « ${destField} ».`);
+  }
+
+  const destPayload = (dest.payload ?? {}) as Record<string, unknown>;
+  const currentChildren = Array.isArray(destPayload[destField]) ? (destPayload[destField] as unknown[]) : [];
+  const newChild = { type: src.type, payload: src.payload };
+  const nextPayload = { ...destPayload, [destField]: [...currentChildren, newChild] };
+
+  // Write the updated container payload first (so we never end up in a
+  // state where the source row is gone but the move didn't apply).
+  const { error: updateErr } = await supabase.from('block').update({ payload: nextPayload }).eq('id', draftDestId);
+  if (updateErr) throw updateErr;
+
+  // Then drop the source row. `block_tag` rows cascade (FK).
+  const { error: deleteErr } = await supabase.from('block').delete().eq('id', draftSourceId);
+  if (deleteErr) throw deleteErr;
+
   revalidatePath(`/parcours/${parcoursSlug}/chapters/${chapterSlug}`);
 }
 

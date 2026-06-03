@@ -64,12 +64,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 function ToastView({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const tone =
     toast.kind === 'success'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/50 dark:text-emerald-200'
       : toast.kind === 'error'
-      ? 'border-red-200 bg-red-50 text-red-900'
-      : 'border-sky-200 bg-sky-50 text-sky-900';
-  const Icon =
-    toast.kind === 'success' ? CheckCircle2 : toast.kind === 'error' ? AlertCircle : Info;
+        ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-800/60 dark:bg-red-950/50 dark:text-red-200'
+        : 'border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-800/60 dark:bg-sky-950/50 dark:text-sky-200';
+  const Icon = toast.kind === 'success' ? CheckCircle2 : toast.kind === 'error' ? AlertCircle : Info;
 
   return (
     <div
@@ -77,12 +76,7 @@ function ToastView({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <span className="flex-1 whitespace-pre-line">{toast.message}</span>
-      <button
-        type="button"
-        className="opacity-60 hover:opacity-100"
-        onClick={onDismiss}
-        aria-label="Fermer"
-      >
+      <button type="button" className="opacity-60 hover:opacity-100" onClick={onDismiss} aria-label="Fermer">
         <X className="h-3.5 w-3.5" />
       </button>
     </div>

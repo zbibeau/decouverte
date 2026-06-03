@@ -32,13 +32,13 @@ export function SearchHighlightBanner({ matchCount }: { matchCount?: number }) {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
       <div className="flex min-w-0 items-center gap-2">
         <Search className="h-4 w-4 shrink-0" />
         <span className="truncate">
           Recherche : <strong>« {q} »</strong>
           {typeof matchCount === 'number' && (
-            <span className="ml-2 text-amber-800/80">
+            <span className="ml-2 text-amber-800 dark:text-amber-200/80">
               ·{' '}
               {matchCount === 0
                 ? 'aucun bloc correspondant ici'
@@ -50,7 +50,7 @@ export function SearchHighlightBanner({ matchCount }: { matchCount?: number }) {
       <button
         type="button"
         onClick={handleClear}
-        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+        className="bg-surface dark:bg-surface inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 transition hover:bg-amber-100 dark:border-amber-700/60 dark:text-amber-200 dark:hover:bg-amber-900/40"
         title="Effacer la recherche"
       >
         <X className="h-3 w-3" />

@@ -43,18 +43,14 @@ export function LibraryInsertMenu({ chapters, disabled, onPick }: Props) {
 
   return (
     <div ref={ref} className="relative">
-      <Button
-        size="sm"
-        disabled={disabled || chapters.length === 0}
-        onClick={() => setOpen((v) => !v)}
-      >
+      <Button size="sm" disabled={disabled || chapters.length === 0} onClick={() => setOpen((v) => !v)}>
         <Plus className="mr-1 h-3.5 w-3.5" />
         Insérer dans un chapitre
         <ChevronDown className="ml-1 h-3 w-3 opacity-60" />
       </Button>
       {open && chapters.length > 0 && (
-        <div className="absolute right-0 top-full z-30 mt-1 min-w-[260px] overflow-hidden rounded-md border border-border bg-white text-sm shadow-lg">
-          <div className="border-b border-border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="border-border bg-surface absolute right-0 top-full z-30 mt-1 min-w-[260px] overflow-hidden rounded-md border text-sm shadow-lg">
+          <div className="border-border text-muted-foreground border-b px-3 py-1 text-[10px] font-semibold uppercase tracking-wide">
             Choisir un chapitre cible
           </div>
           <div className="max-h-72 overflow-y-auto">
@@ -62,16 +58,14 @@ export function LibraryInsertMenu({ chapters, disabled, onPick }: Props) {
               <button
                 key={c.id}
                 type="button"
-                className="block w-full px-3 py-2 text-left hover:bg-muted/60"
+                className="hover:bg-muted/60 block w-full px-3 py-2 text-left"
                 onClick={() => {
                   setOpen(false);
                   onPick(c.id);
                 }}
               >
                 <span className="truncate">{c.title}</span>
-                <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                  ({c.slug})
-                </span>
+                <span className="text-muted-foreground ml-2 font-mono text-[10px]">({c.slug})</span>
               </button>
             ))}
           </div>

@@ -6,35 +6,50 @@
  *     (kept for backwards-compat — still used by code that wants one
  *     blob without weighting).
  *   - `extractBlockSearchTextWeighted(payload)` returns `{ primary,
- *     secondary }`. Primary holds the high-signal labels (titles,
+ *     secondary, full }`. Primary holds the high-signal labels (titles,
  *     subtitles, labels…) ; secondary holds the body content (html,
- *     long text, descriptions, captions, …). The palette duplicates
- *     primary in its keywords array so cmdk's fuzzy matcher ranks a
- *     "saturation" match on a block title higher than the same word
- *     buried in the 12th line of HTML body.
+ *     long text, descriptions, captions…) ; `full` is the **exhaustive**
+ *     index — every text-bearing value found in the payload, except for
+ *     the technical keys listed in `EXCLUDED_KEYS` (URLs, UUIDs, icons,
+ *     operator names…). The palette duplicates `primary` in its keywords
+ *     array so cmdk's fuzzy matcher ranks a "saturation" match on a
+ *     block title higher than the same word buried in the 12th line of
+ *     HTML body — but the chapter-level "Filter blocks" input scans
+ *     `full`, so a query matches *any* text field (sectionTitle, eyebrow,
+ *     question, answer, custom payload key…).
  *
- * The walker only collects values stored under a known set of
- * text-bearing keys — payloads contain plenty of technical strings
- * (`vimeoSrc`, `icon`, condition operators…) that would pollute the
- * index. Hardcoding the meaningful keys keeps the index tight and
- * avoids false positives.
+ * Strategy is BLACKLIST, not whitelist : every string is indexed unless
+ * its parent key denotes a non-searchable technical value (e.g.
+ * `vimeoSrc`, `icon`, `tagIds`). Adding new text-bearing keys to the
+ * schema requires NO change here — they're picked up automatically.
  *
  * HTML tags are stripped so that `<strong>foo</strong>` becomes `foo`.
  */
 const PRIMARY_KEYS = new Set<string>([
   'title',
   'subtitle',
+  'sectionTitle',
+  'eyebrow',
   'label',
   'advantageTitle',
   'caption',
   'nextButtonText',
   'name',
+  'question',
+  'headline',
+  'cta',
+  'ctaText',
+  'buttonText',
   // Maintenance tags attached to media blocks (video / heroTitle /
   // photoCarousel). Editor-curated keywords ⇒ treated as primary so a
   // match on a tag outweighs a match buried in the body. The walker
   // already iterates arrays of strings under their parentKey, so
   // adding 'tags' to the set is enough — no other change needed.
   'tags',
+  // Manager-only labels (e.g. VideoBlock.managerTitle) — author writes them
+  // SPECIFICALLY to find / disambiguate blocks. They have to rank as high
+  // as title/subtitle in ⌘K otherwise the whole feature loses its point.
+  'managerTitle',
 ]);
 
 const SECONDARY_KEYS = new Set<string>([
@@ -48,6 +63,61 @@ const SECONDARY_KEYS = new Set<string>([
   'helpText',
   'hint',
   'message',
+  'answer',
+  'body',
+  'intro',
+  'outro',
+  'content',
+  'note',
+  'summary',
+  'quote',
+]);
+
+/**
+ * Keys whose string values are NOT user-readable content and should
+ * stay out of the search index — URLs, UUIDs, icon names, schema
+ * discriminators, logical operators. Everything else (sectionTitle,
+ * eyebrow, custom payload keys…) is indexed automatically in `full`.
+ */
+const EXCLUDED_KEYS = new Set<string>([
+  // Technical identifiers
+  'id',
+  'type',
+  'kind',
+  'variant',
+  // URLs / file paths / images (never user-friendly text)
+  'src',
+  'vimeoSrc',
+  'youtubeId',
+  'href',
+  'url',
+  'illustration',
+  'image',
+  'cover',
+  'poster',
+  'thumbnail',
+  // Schema-ish discriminators / refs
+  'icon',
+  'color',
+  'slug',
+  'key',
+  'path',
+  'tagIds',
+  'componentId',
+  // Condition / logic operators (`op`, `variable`, `value`, `all`, `any`)
+  'op',
+  'operator',
+  'variable',
+  'all',
+  'any',
+  'left',
+  'right',
+  // Layout / mode / alignment / size constants
+  'alignment',
+  'mode',
+  'size',
+  'align',
+  'position',
 ]);
 
 /**
@@ -65,14 +135,25 @@ export function stripHtml(s: string): string {
 interface Buckets {
   primary: string[];
   secondary: string[];
+  /** Exhaustive index — every text-bearing string not under an EXCLUDED_KEYS
+   *  parent. Superset of primary + secondary. Backs the chapter-level
+   *  "Filtrer les blocs" input so a query matches any field (sectionTitle,
+   *  eyebrow, question, answer, custom payload keys…). */
+  full: string[];
 }
 
 function walk(value: unknown, parentKey: string | null, buckets: Buckets): void {
   if (value == null) return;
   if (typeof value === 'string') {
     if (!parentKey) return;
+    if (EXCLUDED_KEYS.has(parentKey)) return;
     const cleaned = stripHtml(value).trim();
     if (!cleaned) return;
+    // Every searchable string lands in `full`. Then we additionally bucket
+    // it as primary / secondary when the parent key is a known label /
+    // body field — that powers the palette's ranking boost without
+    // restricting what's searchable.
+    buckets.full.push(cleaned);
     if (PRIMARY_KEYS.has(parentKey)) buckets.primary.push(cleaned);
     else if (SECONDARY_KEYS.has(parentKey)) buckets.secondary.push(cleaned);
     return;
@@ -84,6 +165,9 @@ function walk(value: unknown, parentKey: string | null, buckets: Buckets): void 
   }
   if (typeof value === 'object') {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      // Descend into EXCLUDED-keyed sub-objects — `tagIds` is excluded but
+      // `tags: [{ label: 'foo' }]` is not (the inner `label` is text-bearing).
+      // We only skip the *direct* string value under an excluded key.
       walk(v, k, buckets);
     }
   }
@@ -98,19 +182,21 @@ export interface WeightedBlockSearchText {
   primary: string;
   /** Body content — html, descriptions, alt text. Lower weight in the search. */
   secondary: string;
-  /** Concatenation of `primary` + `secondary`. Used for snippet extraction. */
+  /** Exhaustive — every text-bearing field except technical keys
+   *  (URLs, UUIDs, icons, operator names). Used by the chapter-level
+   *  block-filter so a query matches any field, including custom or
+   *  newly-added keys not in PRIMARY/SECONDARY whitelists. Snippet
+   *  extraction also runs against this string. */
   full: string;
 }
 
 export function extractBlockSearchTextWeighted(payload: unknown): WeightedBlockSearchText {
-  const buckets: Buckets = { primary: [], secondary: [] };
+  const buckets: Buckets = { primary: [], secondary: [], full: [] };
   walk(payload, null, buckets);
-  const primary = collapse(buckets.primary);
-  const secondary = collapse(buckets.secondary);
   return {
-    primary,
-    secondary,
-    full: collapse([primary, secondary]),
+    primary: collapse(buckets.primary),
+    secondary: collapse(buckets.secondary),
+    full: collapse(buckets.full),
   };
 }
 

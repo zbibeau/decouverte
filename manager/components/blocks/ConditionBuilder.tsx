@@ -58,13 +58,13 @@ export function ConditionBuilder({ condition, onChange, variables }: Props) {
 
   if (!decomposed) {
     return (
-      <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-2">
-        <p className="text-xs text-amber-900">
-          Cette condition contient une combinaison imbriquée AND/OR que l&apos;éditeur visuel ne sait
-          pas encore représenter. La donnée est conservée intacte dans la base — supprime ce bloc et
-          reconstruis-le si tu veux pouvoir l&apos;éditer ici.
+      <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-2 dark:border-amber-800/60 dark:bg-amber-950/40">
+        <p className="text-xs text-amber-900 dark:text-amber-100">
+          Cette condition contient une combinaison imbriquée AND/OR que l&apos;éditeur visuel ne sait pas encore
+          représenter. La donnée est conservée intacte dans la base — supprime ce bloc et reconstruis-le si tu veux
+          pouvoir l&apos;éditer ici.
         </p>
-        <pre className="overflow-x-auto rounded bg-white p-2 text-[10px] text-amber-900">
+        <pre className="bg-surface overflow-x-auto rounded p-2 text-[10px] text-amber-900 dark:text-amber-100">
           {JSON.stringify(condition, null, 2)}
         </pre>
       </div>
@@ -111,11 +111,9 @@ export function ConditionBuilder({ condition, onChange, variables }: Props) {
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-dashed border-border bg-white p-2">
+    <div className="border-border bg-surface space-y-2 rounded-md border border-dashed p-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Condition
-        </p>
+        <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">Condition</p>
         <ModeToggle mode={mode} onChange={setMode} />
       </div>
 
@@ -123,25 +121,16 @@ export function ConditionBuilder({ condition, onChange, variables }: Props) {
         {leaves.map((leaf, idx) => (
           <div key={idx} className="flex items-start gap-1.5">
             {leaves.length > 1 && (
-              <span className="mt-1.5 w-6 shrink-0 rounded bg-muted px-1 text-center text-[10px] font-medium uppercase text-muted-foreground">
+              <span className="bg-muted text-muted-foreground mt-1.5 w-6 shrink-0 rounded px-1 text-center text-[10px] font-medium uppercase">
                 {idx === 0 ? 'si' : mode === 'all' ? 'et' : 'ou'}
               </span>
             )}
             <div className="flex-1">
-              <LeafEditor
-                leaf={leaf}
-                onChange={(patch) => updateLeaf(idx, patch)}
-                variables={variables}
-              />
+              <LeafEditor leaf={leaf} onChange={(patch) => updateLeaf(idx, patch)} variables={variables} />
             </div>
             {leaves.length > 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                title="Supprimer cette condition"
-                onClick={() => removeLeaf(idx)}
-              >
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+              <Button variant="ghost" size="sm" title="Supprimer cette condition" onClick={() => removeLeaf(idx)}>
+                <Trash2 className="text-destructive h-3.5 w-3.5" />
               </Button>
             )}
           </div>
@@ -165,7 +154,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
     { value: 'any', label: 'OU', title: 'Au moins une condition doit être vraie' },
   ];
   return (
-    <div className="flex gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
+    <div className="border-border bg-muted/30 flex gap-0.5 rounded-md border p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -174,9 +163,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
           onClick={() => onChange(o.value)}
           className={cn(
             'rounded px-2 py-0.5 text-[10px] font-medium transition-colors',
-            mode === o.value
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-white',
+            mode === o.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-surface',
           )}
         >
           {o.label}
@@ -199,16 +186,15 @@ function LeafEditor({
 
   function updateVariable(key: string) {
     const v = variables.find((x) => x.key === key);
-    const newValue =
-      !v
-        ? ''
-        : v.type === 'boolean'
-          ? false
-          : v.type === 'enum'
-            ? (v.options[0]?.value ?? '')
-            : v.type === 'number'
-              ? 0
-              : '';
+    const newValue = !v
+      ? ''
+      : v.type === 'boolean'
+        ? false
+        : v.type === 'enum'
+          ? (v.options[0]?.value ?? '')
+          : v.type === 'number'
+            ? 0
+            : '';
     onChange({ variable: key, value: newValue });
   }
 
@@ -216,7 +202,7 @@ function LeafEditor({
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-1.5">
         <select
-          className="h-7 rounded-md border border-border bg-white px-2 text-xs"
+          className="border-border bg-surface h-7 rounded-md border px-2 text-xs"
           value={leaf.variable}
           onChange={(e) => updateVariable(e.target.value)}
         >
@@ -229,7 +215,7 @@ function LeafEditor({
         </select>
 
         <select
-          className="h-7 rounded-md border border-border bg-white px-2 text-xs"
+          className="border-border bg-surface h-7 rounded-md border px-2 text-xs"
           value={leaf.op}
           onChange={(e) => onChange({ op: e.target.value as LeafCondition['op'] })}
         >
@@ -238,15 +224,10 @@ function LeafEditor({
           <option value="in">dans</option>
         </select>
 
-        <ValueInput
-          selected={selected}
-          op={leaf.op}
-          value={leaf.value}
-          onChange={(value) => onChange({ value })}
-        />
+        <ValueInput selected={selected} op={leaf.op} value={leaf.value} onChange={(value) => onChange({ value })} />
       </div>
       {!selected && leaf.variable && (
-        <p className="text-[10px] text-destructive">
+        <p className="text-destructive text-[10px]">
           La variable <code>{leaf.variable}</code> n&apos;existe plus dans le parcours.
         </p>
       )}
@@ -267,11 +248,7 @@ function ValueInput({
 }) {
   if (!selected) {
     return (
-      <Input
-        value={String(value ?? '')}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-32 text-xs"
-      />
+      <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className="h-7 w-32 text-xs" />
     );
   }
 
@@ -299,7 +276,7 @@ function ValueInput({
       <select
         value={String(value)}
         onChange={(e) => onChange(e.target.value === 'true')}
-        className="h-7 rounded-md border border-border bg-white px-2 text-xs"
+        className="border-border bg-surface h-7 rounded-md border px-2 text-xs"
       >
         <option value="true">true</option>
         <option value="false">false</option>
@@ -312,7 +289,7 @@ function ValueInput({
       <select
         value={String(value)}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 rounded-md border border-border bg-white px-2 text-xs"
+        className="border-border bg-surface h-7 rounded-md border px-2 text-xs"
       >
         {selected.options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -334,11 +311,5 @@ function ValueInput({
     );
   }
 
-  return (
-    <Input
-      value={String(value ?? '')}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-7 w-32 text-xs"
-    />
-  );
+  return <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className="h-7 w-32 text-xs" />;
 }

@@ -101,27 +101,22 @@ export function FaqContentList({
   );
 
   return (
-    <ScopeRoot scopeId={scopeId} className="space-y-2 rounded-md p-1 -m-1">
+    <ScopeRoot scopeId={scopeId} className="-m-1 space-y-2 rounded-md p-1">
       {blocks.map((b, idx) => (
-        <div key={idx} className="rounded-md border border-border bg-white p-2">
+        <div key={idx} className="border-border bg-surface rounded-md border p-2">
           <div className="mb-1.5 flex items-center gap-1">
-            <span className="inline-flex h-5 items-center rounded bg-muted px-1.5 text-[10px] font-medium uppercase text-muted-foreground">
+            <span className="bg-muted text-muted-foreground inline-flex h-5 items-center rounded px-1.5 text-[10px] font-medium uppercase">
               {b.kind}
             </span>
             <div className="flex-1" />
             <Button variant="ghost" size="sm" onClick={() => move(idx, -1)} disabled={idx === 0}>
               <ArrowUp className="h-3 w-3" />
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => move(idx, 1)}
-              disabled={idx === blocks.length - 1}
-            >
+            <Button variant="ghost" size="sm" onClick={() => move(idx, 1)} disabled={idx === blocks.length - 1}>
               <ArrowDown className="h-3 w-3" />
             </Button>
             <Button variant="ghost" size="sm" onClick={() => remove(idx)}>
-              <Trash2 className="h-3 w-3 text-destructive" />
+              <Trash2 className="text-destructive h-3 w-3" />
             </Button>
           </div>
           <FaqContentEditor
@@ -221,7 +216,7 @@ function FaqContentEditor({
             onChange={(condition) => onChange({ ...content, condition })}
             variables={variables}
           />
-          <div className="space-y-2 rounded-md border-l-2 border-primary/40 pl-3">
+          <div className="border-primary/40 space-y-2 rounded-md border-l-2 pl-3">
             <Field label="Alors (then)">
               <FaqContentList
                 blocks={content.then}
@@ -234,7 +229,7 @@ function FaqContentEditor({
               />
             </Field>
           </div>
-          <div className="space-y-2 rounded-md border-l-2 border-muted pl-3">
+          <div className="border-muted space-y-2 rounded-md border-l-2 pl-3">
             <Field label="Sinon (else)">
               <FaqContentList
                 blocks={content.else ?? []}
@@ -255,4 +250,3 @@ function FaqContentEditor({
       return null;
   }
 }
-

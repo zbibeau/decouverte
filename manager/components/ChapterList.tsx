@@ -1,13 +1,13 @@
 'use client';
 
 import {
+  closestCenter,
   DndContext,
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useDroppable,
   useSensor,
   useSensors,
@@ -43,10 +43,10 @@ import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
-import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
+import { isTagColor, TAG_COLOR_HEX } from '@/lib/tagColors';
+import { uploadImageDirect } from '@/lib/uploadImageClient';
 import { useListKeyboardNav } from '@/lib/useListKeyboardNav';
 import { useUnsavedChangesWarning } from '@/lib/useUnsavedChangesWarning';
-import { uploadImageDirect } from '@/lib/uploadImageClient';
 import { cn } from '@/lib/utils';
 
 interface ChapterRow {
@@ -125,14 +125,14 @@ interface Props {
 function DiffBadge({ diff }: { diff?: ChapterRow['diff'] }) {
   if (diff === 'new') {
     return (
-      <span className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800">
+      <span className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800 dark:bg-sky-900/50 dark:text-sky-200">
         Nouveau
       </span>
     );
   }
   if (diff === 'modified') {
     return (
-      <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800">
+      <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
         Modifié
       </span>
     );
@@ -263,12 +263,17 @@ export function ChapterList({
         );
         toast.success(`Chapitre « ${originalTitle} » mis à jour`);
         setEditingId(null);
-        router.refresh();
       } catch (e) {
         console.error('[ChapterList] update failed', e);
         toast.error(`Échec de la mise à jour de « ${originalTitle} » — ${e instanceof Error ? e.message : String(e)}`);
       }
     });
+    // NOTE: `router.refresh()` lives OUTSIDE `startTransition` so React
+    // treats it as an urgent update. Inside the transition it got
+    // deferred behind other state updates and the user occasionally had
+    // to F5 to see other surfaces (e.g. the chapter editor page header)
+    // pick up the new title. Same pattern fix as `handleInsertSample`.
+    router.refresh();
   }
   // dnd-kit sensors — same defaults as the old SortableList (5 px
   // activation distance so a click on a button inside the row doesn't
@@ -287,6 +292,40 @@ export function ChapterList({
   const [optimisticChapters, setOptimisticChapters] = useState<ChapterRow[] | null>(null);
   const expectedOrderRef = useRef<string[] | null>(null);
   const effectiveChapters = optimisticChapters ?? chapters;
+
+  // While the inline edit form is open, overlay the in-progress field values
+  // on top of `effectiveChapters` so the section grouping (used by
+  // `groupedChapters` below) reflects what the user is typing — e.g. changing
+  // the section label moves the chapter to the right group LIVE, before they
+  // hit save. We keep `effectiveChapters` as the canonical (saved) snapshot
+  // for the dirty check + drag-drop logic, which both need the ORIGINAL.
+  const liveChapters = useMemo<ChapterRow[]>(() => {
+    if (!editingId) return effectiveChapters;
+    return effectiveChapters.map((c) =>
+      c.id === editingId
+        ? {
+            ...c,
+            title: editTitle,
+            slug: editSlug,
+            sectionLabel: editSectionLabel.trim() === '' ? null : editSectionLabel.trim(),
+            sectionOrder: editSectionOrder.trim() === '' ? null : Number(editSectionOrder),
+            cardImage: editCardImage.trim() === '' ? null : editCardImage.trim(),
+            cardShortTitle: editCardShortTitle.trim() === '' ? null : editCardShortTitle.trim(),
+            hiddenFromNav: editHiddenFromNav,
+          }
+        : c,
+    );
+  }, [
+    effectiveChapters,
+    editingId,
+    editTitle,
+    editSlug,
+    editSectionLabel,
+    editSectionOrder,
+    editCardImage,
+    editCardShortTitle,
+    editHiddenFromNav,
+  ]);
 
   // Warn before tab-close / refresh when the inline chapter edit form has
   // genuinely unsaved changes (compared field-by-field to the original, so
@@ -597,14 +636,15 @@ export function ChapterList({
     );
   }
 
-  // Group chapters by section. Uses `effectiveChapters` (optimistic
-  // override during a drag, falling back to props.chapters otherwise)
-  // so the UI updates instantly on drop without waiting for the
-  // server roundtrip + refresh.
+  // Group chapters by section. Uses `liveChapters` so the grouping reflects
+  // both (a) optimistic post-save/drag state AND (b) any in-progress edit
+  // form values — moving a chapter to a new section as the user types
+  // updates the section header chip count + visually places the row in the
+  // right group before they hit save.
   const groupedChapters = (() => {
     const groups = new Map<string, ChapterRow[]>();
     const order: string[] = [];
-    for (const c of effectiveChapters) {
+    for (const c of liveChapters) {
       const key = c.sectionLabel?.trim() || '__none__';
       if (!groups.has(key)) {
         groups.set(key, []);
@@ -642,7 +682,7 @@ export function ChapterList({
         <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2 rounded-md border p-2 text-xs">
           <span className="text-muted-foreground font-semibold">{groupedChapters.length} section(s) :</span>
           {groupedChapters.map((g, i) => (
-            <span key={i} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5">
+            <span key={i} className="bg-surface inline-flex items-center gap-1 rounded-full px-2 py-0.5">
               {g.sectionLabel ? (
                 <strong className="text-foreground">{g.sectionLabel}</strong>
               ) : (
@@ -704,7 +744,7 @@ export function ChapterList({
       >
         {groupedChapters.map((group, groupIdx) => (
           <div key={group.sectionLabel ?? '__none__'} className="space-y-0">
-            <div className="border-border bg-muted/40 text-brand-primary-700 flex items-center gap-2 rounded-t-md border border-b-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide">
+            <div className="border-border bg-surface-2 text-text-muted flex items-center gap-2 rounded-t-md border border-b-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.07em]">
               {group.sectionLabel ? (
                 <span>📁 {group.sectionLabel}</span>
               ) : (
@@ -783,8 +823,8 @@ export function ChapterList({
                               // Light brand-primary tint so the highlighted row
                               // pops without overpowering the chip / badge
                               // colors already present in the row.
-                              'hover:bg-brand-primary-50/40',
-                              isSelectedRow && 'bg-brand-primary-50',
+                              'hover:bg-primary/5',
+                              isSelectedRow && 'bg-primary-weak',
                             )}
                           >
                             <div className="flex items-center gap-2">
@@ -899,7 +939,7 @@ export function ChapterList({
                                         without having to open each one. */}
                                     {c.hiddenFromNav && (
                                       <span
-                                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+                                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
                                         title="Ce chapitre est masqué de la sidebar et du panorama de section. Reste accessible par URL directe."
                                       >
                                         <EyeOff className="h-3 w-3" />
@@ -945,7 +985,7 @@ export function ChapterList({
                                         ≈ même rendu qu'avant). */}
                                     {(c.untaggedBlockCount ?? 0) > 0 && (
                                       <span
-                                        className="ml-auto mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                                        className="ml-auto mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
                                         title={`${c.untaggedBlockCount} bloc(s) de ce chapitre n'ont pas encore de tag de maintenance`}
                                       >
                                         <span aria-hidden="true">🏷</span>
@@ -1085,7 +1125,7 @@ export function ChapterList({
                             invisible in the sidebar AND in the panorama
                             cards. Useful for "thank you" / 404 /
                             branching-only chapters. */}
-                                <label className="mt-2 flex basis-full cursor-pointer items-start gap-2 rounded-md border border-amber-300 bg-amber-50/50 px-3 py-2 text-xs">
+                                <label className="mt-2 flex basis-full cursor-pointer items-start gap-2 rounded-md border border-amber-300 bg-amber-50/50 px-3 py-2 text-xs dark:border-amber-700/60 dark:bg-amber-950/30">
                                   <input
                                     type="checkbox"
                                     checked={editHiddenFromNav}
@@ -1093,7 +1133,9 @@ export function ChapterList({
                                     className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-amber-600"
                                   />
                                   <span>
-                                    <span className="font-medium text-amber-900">Masquer de la navigation</span>
+                                    <span className="font-medium text-amber-900 dark:text-amber-200">
+                                      Masquer de la navigation
+                                    </span>
                                     <br />
                                     <span className="text-muted-foreground text-[10px] leading-snug">
                                       Le chapitre n'apparaîtra ni dans la sidebar ni dans les cartes du panorama de
@@ -1237,7 +1279,7 @@ function SectionPicker({
 
   return (
     <select
-      className="border-border h-8 flex-1 rounded-md border bg-white px-2 text-sm"
+      className="border-border bg-surface h-8 flex-1 rounded-md border px-2 text-sm"
       value={value}
       onChange={(e) => {
         const v = e.target.value;
@@ -1319,7 +1361,10 @@ function SortableChapterRow({
 function SectionDroppable({ id, children }: { id: string; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className={cn('min-h-[8px] transition-colors', isOver && 'bg-amber-50/50')}>
+    <div
+      ref={setNodeRef}
+      className={cn('min-h-[8px] transition-colors', isOver && 'bg-amber-50/50 dark:bg-amber-950/30')}
+    >
       {children}
     </div>
   );
@@ -1387,11 +1432,11 @@ function ChapterBlocksPreview({
             href={`/parcours/${parcoursSlug}/chapters/${chapterSlug}/blocks/${b.id}`}
             title="Ouvrir l'éditeur du bloc"
             className={cn(
-              'flex flex-wrap items-center gap-2 rounded border bg-white px-2 py-1.5 text-xs transition-colors',
+              'bg-surface flex flex-wrap items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors',
               // Hover + keyboard-selection treatment, matching the
               // parent chapter row.
-              'hover:bg-brand-primary-50/40',
-              isSelectedBlockRow ? 'border-brand-primary-200 bg-brand-primary-50' : 'border-border/40',
+              'hover:bg-primary/10',
+              isSelectedBlockRow ? 'border-primary-weak-border bg-primary-weak' : 'border-border/40',
             )}
           >
             <span className="text-muted-foreground w-5 shrink-0 text-right text-[10px]">{b.order}</span>
@@ -1401,7 +1446,7 @@ function ChapterBlocksPreview({
             <span className="min-w-0 flex-1 truncate font-medium">{b.summary || `Bloc ${b.type}`}</span>
             {b.tags.length === 0 ? (
               <span
-                className="mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                className="mr-3 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
                 title="Aucun tag de maintenance sur ce bloc"
               >
                 <span aria-hidden="true">⚠</span>

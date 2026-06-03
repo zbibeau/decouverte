@@ -23,14 +23,14 @@ function InlineDiffBadge({ path }: { path: string }) {
   if (blockIsNew) return null;
   if (status === 'modified') {
     return (
-      <span className="inline-flex items-center rounded bg-amber-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-900">
+      <span className="inline-flex items-center rounded bg-amber-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-900 dark:bg-amber-800/60 dark:text-amber-100">
         Modifié
       </span>
     );
   }
   if (status === 'added') {
     return (
-      <span className="inline-flex items-center rounded bg-sky-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-sky-900">
+      <span className="inline-flex items-center rounded bg-sky-200 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-sky-900 dark:bg-sky-800/60 dark:text-sky-200">
         Nouveau
       </span>
     );
@@ -71,12 +71,7 @@ type KPPayload = {
   };
 };
 
-export function KeyPointsCardEditor({
-  payload,
-  onChange,
-  variables,
-  navbarVariants,
-}: PayloadEditorProps<KPPayload>) {
+export function KeyPointsCardEditor({ payload, onChange, variables, navbarVariants }: PayloadEditorProps<KPPayload>) {
   function updateMain(patch: Partial<KPPayload['main']>) {
     onChange({ ...payload, main: { ...payload.main, ...patch } });
   }
@@ -143,7 +138,15 @@ export function KeyPointsCardEditor({
         },
       ],
     },
-    [addMainItem, addExceptionItem, addGroup, payload.exception, payload.main.items?.length, payload.exception?.items?.length, payload.groups?.length],
+    [
+      addMainItem,
+      addExceptionItem,
+      addGroup,
+      payload.exception,
+      payload.main.items?.length,
+      payload.exception?.items?.length,
+      payload.groups?.length,
+    ],
   );
   function updateGroup(idx: number, patch: Partial<Group>) {
     const next = [...(payload.groups ?? [])];
@@ -202,7 +205,7 @@ export function KeyPointsCardEditor({
   }
 
   return (
-    <ScopeRoot scopeId="keypoints-main" className="space-y-3 rounded-md p-1 -m-1">
+    <ScopeRoot scopeId="keypoints-main" className="-m-1 space-y-3 rounded-md p-1">
       <Field label="Navbar pilote" path="navbar">
         <NavbarVariantSelect
           value={payload.navbar?.variant}
@@ -218,10 +221,7 @@ export function KeyPointsCardEditor({
 
       <Section title="Sous-titre optionnel (au-dessus des paragraphes)" accentColor="rose">
         <Field label="Icône du sous-titre" path="main.icon">
-          <IconPicker
-            value={payload.main.icon ?? ''}
-            onChange={(icon) => updateMain({ icon: icon || undefined })}
-          />
+          <IconPicker value={payload.main.icon ?? ''} onChange={(icon) => updateMain({ icon: icon || undefined })} />
         </Field>
         <Field
           label="Texte du sous-titre"
@@ -238,10 +238,7 @@ export function KeyPointsCardEditor({
           />
         </Field>
         <Field label="Points" path="main.items">
-          <ItemsList
-            items={payload.main.items ?? []}
-            onChange={(items) => updateMain({ items })}
-          />
+          <ItemsList items={payload.main.items ?? []} onChange={(items) => updateMain({ items })} />
         </Field>
         <Field
           label="Paragraphes additionnels"
@@ -273,13 +270,13 @@ export function KeyPointsCardEditor({
         }
       >
         {(payload.groups ?? []).length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Aucun groupe. Utilise les groupes pour afficher plusieurs checklists avec titre et
-            branchements par item (ex : variante selon une variable).
+          <p className="text-muted-foreground text-xs">
+            Aucun groupe. Utilise les groupes pour afficher plusieurs checklists avec titre et branchements par item (ex
+            : variante selon une variable).
           </p>
         ) : (
           (payload.groups ?? []).map((group, gIdx) => (
-            <div key={gIdx} className="space-y-2 rounded-md border border-border bg-white p-2">
+            <div key={gIdx} className="border-border bg-surface space-y-2 rounded-md border p-2">
               <div className="flex items-center gap-1">
                 <Input
                   value={group.title}
@@ -289,11 +286,9 @@ export function KeyPointsCardEditor({
                 />
                 <InlineDiffBadge path={`groups[${gIdx}]`} />
                 <select
-                  className="h-8 rounded-md border border-border bg-white px-1 text-xs"
+                  className="border-border bg-surface h-8 rounded-md border px-1 text-xs"
                   value={group.variant ?? 'secondary50'}
-                  onChange={(e) =>
-                    updateGroup(gIdx, { variant: e.target.value as 'secondary50' | 'primary50' })
-                  }
+                  onChange={(e) => updateGroup(gIdx, { variant: e.target.value as 'secondary50' | 'primary50' })}
                 >
                   <option value="secondary50">secondary50</option>
                   <option value="primary50">primary50</option>
@@ -310,7 +305,7 @@ export function KeyPointsCardEditor({
                   <ArrowDown className="h-3.5 w-3.5" />
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => removeGroup(gIdx)}>
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  <Trash2 className="text-destructive h-3.5 w-3.5" />
                 </Button>
               </div>
 
@@ -318,7 +313,7 @@ export function KeyPointsCardEditor({
                 {group.items.map((item, iIdx) => {
                   const isCond = 'conditional' in item;
                   return (
-                    <div key={iIdx} className="space-y-1 rounded border border-dashed border-border bg-muted/30 p-1.5">
+                    <div key={iIdx} className="border-border bg-muted/30 space-y-1 rounded border border-dashed p-1.5">
                       {!isCond ? (
                         <div className="flex items-center gap-1">
                           <Input
@@ -336,13 +331,13 @@ export function KeyPointsCardEditor({
                             ⚡
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => removeGroupItem(gIdx, iIdx)}>
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            <Trash2 className="text-destructive h-3.5 w-3.5" />
                           </Button>
                         </div>
                       ) : (
                         <>
                           <div className="flex items-center gap-1">
-                            <p className="flex-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                            <p className="text-muted-foreground flex-1 text-[10px] font-semibold uppercase">
                               Item branché
                             </p>
                             <Button
@@ -354,7 +349,7 @@ export function KeyPointsCardEditor({
                               ⚡
                             </Button>
                             <Button variant="ghost" size="sm" onClick={() => removeGroupItem(gIdx, iIdx)}>
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              <Trash2 className="text-destructive h-3.5 w-3.5" />
                             </Button>
                           </div>
                           {(() => {
@@ -366,7 +361,7 @@ export function KeyPointsCardEditor({
                             return (
                               <div className="flex items-center gap-1">
                                 <select
-                                  className="h-8 flex-1 rounded-md border border-border bg-white px-1 text-xs"
+                                  className="border-border bg-surface h-8 flex-1 rounded-md border px-1 text-xs"
                                   value={cond.variable}
                                   onChange={(e) =>
                                     updateGroupItem(gIdx, iIdx, {
@@ -383,7 +378,7 @@ export function KeyPointsCardEditor({
                                   ))}
                                 </select>
                                 <select
-                                  className="h-8 rounded-md border border-border bg-white px-1 text-xs"
+                                  className="border-border bg-surface h-8 rounded-md border px-1 text-xs"
                                   value={cond.op}
                                   onChange={(e) =>
                                     updateGroupItem(gIdx, iIdx, {
@@ -401,7 +396,7 @@ export function KeyPointsCardEditor({
                                 </select>
                                 {selectedVar?.type === 'boolean' ? (
                                   <select
-                                    className="h-8 w-24 rounded-md border border-border bg-white px-1 text-xs"
+                                    className="border-border bg-surface h-8 w-24 rounded-md border px-1 text-xs"
                                     value={String(cond.value)}
                                     onChange={(e) =>
                                       updateGroupItem(gIdx, iIdx, {
@@ -415,7 +410,7 @@ export function KeyPointsCardEditor({
                                   </select>
                                 ) : selectedVar?.type === 'enum' && selectedVar.options.length > 0 ? (
                                   <select
-                                    className="h-8 w-24 rounded-md border border-border bg-white px-1 text-xs"
+                                    className="border-border bg-surface h-8 w-24 rounded-md border px-1 text-xs"
                                     value={String(cond.value)}
                                     onChange={(e) =>
                                       updateGroupItem(gIdx, iIdx, {
@@ -436,7 +431,13 @@ export function KeyPointsCardEditor({
                                     onChange={(e) => {
                                       const raw = e.target.value;
                                       const val: string | boolean | number =
-                                        raw === 'true' ? true : raw === 'false' ? false : isNaN(Number(raw)) || raw === '' ? raw : Number(raw);
+                                        raw === 'true'
+                                          ? true
+                                          : raw === 'false'
+                                            ? false
+                                            : isNaN(Number(raw)) || raw === ''
+                                              ? raw
+                                              : Number(raw);
                                       updateGroupItem(gIdx, iIdx, {
                                         ...item,
                                         conditional: { ...cond, value: val },
@@ -511,10 +512,7 @@ export function KeyPointsCardEditor({
               />
             </Field>
             <Field label="Titre" path="exception.title">
-              <Input
-                value={payload.exception.title}
-                onChange={(e) => updateException({ title: e.target.value })}
-              />
+              <Input value={payload.exception.title} onChange={(e) => updateException({ title: e.target.value })} />
             </Field>
             <Field label="Description" path="exception.description">
               <Textarea
@@ -524,14 +522,11 @@ export function KeyPointsCardEditor({
               />
             </Field>
             <Field label="Points" path="exception.items">
-              <ItemsList
-                items={payload.exception.items ?? []}
-                onChange={(items) => updateException({ items })}
-              />
+              <ItemsList items={payload.exception.items ?? []} onChange={(items) => updateException({ items })} />
             </Field>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">Aucun bloc exception.</p>
+          <p className="text-muted-foreground text-xs">Aucun bloc exception.</p>
         )}
       </Section>
     </ScopeRoot>

@@ -280,7 +280,7 @@ export function CommandPalette() {
           const haystack = `${(keywords ?? []).join(' ')} ${value}`.toLowerCase();
           return matchesQuery(haystack, q) ? 1 : 0;
         }}
-        className="mfm-palette border-border w-full max-w-5xl overflow-hidden rounded-xl border bg-white shadow-2xl"
+        className="mfm-palette border-border bg-surface w-full max-w-5xl overflow-hidden rounded-xl border shadow-2xl"
       >
         <div className="border-border flex items-center gap-2 border-b px-3 py-2">
           <Search className="text-muted-foreground h-4 w-4" />
@@ -319,7 +319,7 @@ export function CommandPalette() {
             <button
               type="button"
               onClick={() => setSelectedTagId(null)}
-              className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] hover:bg-white"
+              className="text-muted-foreground hover:text-foreground hover:bg-surface ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px]"
               aria-label="Retirer le filtre par tag"
             >
               <X className="h-3 w-3" />
@@ -592,9 +592,9 @@ export function CommandPalette() {
 
         <div className="border-border bg-muted/30 text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-[10px]">
           <span>
-            <kbd className="border-border rounded border bg-white px-1 py-0.5">↑↓</kbd> naviguer ·{' '}
-            <kbd className="border-border rounded border bg-white px-1 py-0.5">↵</kbd> valider ·{' '}
-            <kbd className="border-border rounded border bg-white px-1 py-0.5">esc</kbd> fermer
+            <kbd className="border-border bg-surface rounded border px-1 py-0.5">↑↓</kbd> naviguer ·{' '}
+            <kbd className="border-border bg-surface rounded border px-1 py-0.5">↵</kbd> valider ·{' '}
+            <kbd className="border-border bg-surface rounded border px-1 py-0.5">esc</kbd> fermer
           </span>
           <span className="flex items-center gap-1">
             <FileText className="h-3 w-3" />

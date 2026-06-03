@@ -129,6 +129,15 @@ interface Props {
    */
   values?: Record<string, string>;
   onValuesChange?: (next: Record<string, string>) => void;
+  /**
+   * Parent-controlled reload trigger. When its number changes, the iframe
+   * URL gets a fresh nonce → iframe remounts → Solid front re-fetches data.
+   * Used by `ChapterEditor` after inserting a new block, so the preview
+   * actually sees the freshly-created block instead of its stale snapshot.
+   * Add to the **internal** reload counter so the toolbar's "Recharger"
+   * button still works on top of external reloads.
+   */
+  reloadKey?: number;
 }
 
 export function PreviewPanel({
@@ -158,6 +167,7 @@ export function PreviewPanel({
   publishedVersionId,
   values: controlledValues,
   onValuesChange,
+  reloadKey,
 }: Props) {
   // Which version the iframe is currently displaying. Default to the draft
   // when available; the toggle (rendered below when both ids are provided)
@@ -194,6 +204,10 @@ export function PreviewPanel({
 
   // Nonce used to force iframe reload when user clicks refresh.
   const [nonce, setNonce] = useState(0);
+  // Final value baked into the iframe URL — combines the internal counter
+  // (toolbar "Recharger") with the parent-controlled `reloadKey` so both
+  // sources independently bump the URL and remount the iframe.
+  const effectiveNonce = nonce + (reloadKey ?? 0);
 
   // Iframe ref + loaded flag — used to defer postMessage until the Solid app
   // has installed its message listener.
@@ -230,7 +244,7 @@ export function PreviewPanel({
       for (const [key, value] of Object.entries(values)) {
         if (value !== '') params.set(key, value);
       }
-      params.set('_n', String(nonce));
+      params.set('_n', String(effectiveNonce));
       return `${clientUrl}/preview-block?${params.toString()}`;
     }
     params.set('step', chapterSlug);
@@ -244,7 +258,7 @@ export function PreviewPanel({
     for (const [key, value] of Object.entries(values)) {
       if (value !== '') params.set(key, value);
     }
-    params.set('_n', String(nonce));
+    params.set('_n', String(effectiveNonce));
     // Route differs per parcours: the legacy `demo-ventes` parcours lives at
     // `/`; every other slug uses the dynamic `/parcours/<slug>` route. If no
     // slug is passed we default to `/` for back-compat.
@@ -256,7 +270,7 @@ export function PreviewPanel({
     parcoursSlug,
     values,
     clientUrl,
-    nonce,
+    effectiveNonce,
     mode,
     overrideBlockId,
     overrideBlockType,
@@ -408,22 +422,28 @@ export function PreviewPanel({
     <div
       className={
         editingActive
-          ? 'sticky top-4 flex h-[calc(100vh-2rem)] flex-col gap-3 rounded-lg border-2 border-amber-300 bg-white p-3 shadow-[0_0_0_4px_rgba(251,191,36,0.18),0_0_30px_4px_rgba(251,191,36,0.25)]'
-          : 'border-border sticky top-4 flex h-[calc(100vh-2rem)] flex-col gap-3 rounded-lg border bg-white p-3 shadow-sm'
+          ? // Mode édition active : halo amber autour du panneau pour matérialiser
+            // « on regarde la chose en train d'être éditée ». Garde la même
+            // structure que le mode neutre, juste un anneau coloré en plus.
+            'rounded-app border-app bg-surface sticky top-4 flex h-[calc(100vh-2rem)] flex-col gap-3 border-2 border-amber-300 p-3 shadow-[0_0_0_4px_rgba(251,191,36,0.18),0_0_30px_4px_rgba(251,191,36,0.25)] dark:border-amber-700/60'
+          : 'rounded-app border-border shadow-app bg-surface sticky top-4 flex h-[calc(100vh-2rem)] flex-col gap-3 border p-3'
       }
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Preview</h3>
+        <h3 className="text-text text-sm font-semibold">Preview</h3>
         <div className="flex items-center gap-1">
           {showVersionToggle && (
-            <div className="border-border mr-2 inline-flex overflow-hidden rounded-md border text-[11px]">
+            // Segmented brouillon/publié — ambre pour brouillon, émeraude
+            // pour publié. Conteneur surface-2 (cohérent avec les onglets
+            // pill), pilule active dans la couleur de l'état.
+            <div className="bg-surface-2 rounded-app-sm mr-1 inline-flex gap-0.5 p-0.5 text-[11px]">
               <button
                 type="button"
                 onClick={() => setPreviewTarget('draft')}
                 className={
                   previewTarget === 'draft'
-                    ? 'bg-amber-100 px-2 py-1 text-amber-900'
-                    : 'text-muted-foreground hover:bg-muted bg-white px-2 py-1'
+                    ? 'shadow-app-sm rounded-[6px] bg-amber-100 px-2 py-1 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100'
+                    : 'text-text-muted hover:text-text rounded-[6px] px-2 py-1 transition-colors'
                 }
                 title="Afficher le brouillon"
               >
@@ -434,8 +454,8 @@ export function PreviewPanel({
                 onClick={() => setPreviewTarget('published')}
                 className={
                   previewTarget === 'published'
-                    ? 'bg-emerald-100 px-2 py-1 text-emerald-900'
-                    : 'text-muted-foreground hover:bg-muted bg-white px-2 py-1'
+                    ? 'shadow-app-sm rounded-[6px] bg-emerald-100 px-2 py-1 font-medium text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200'
+                    : 'text-text-muted hover:text-text rounded-[6px] px-2 py-1 transition-colors'
                 }
                 title="Afficher la version publiée (live)"
               >
@@ -475,7 +495,7 @@ export function PreviewPanel({
         </div>
       )}
 
-      <div className="border-border relative flex-1 overflow-hidden rounded-md border bg-black">
+      <div className="border-border rounded-app-sm relative flex-1 overflow-hidden border bg-[#08070b]">
         <iframe
           key={iframeUrl}
           ref={iframeRef}
@@ -569,7 +589,7 @@ export function PreviewPanel({
                   <button
                     type="button"
                     onClick={() => onGoToChapter(prevChapter.slug)}
-                    className="border-border text-foreground inline-flex max-w-[150px] items-center gap-1 rounded-full border bg-white/95 px-2.5 py-1 text-xs font-medium shadow-md transition hover:bg-white"
+                    className="border-border text-foreground bg-surface/95 hover:bg-surface inline-flex max-w-[150px] items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium shadow-md transition"
                     title={`Éditer le chapitre précédent : ${prevChapter.title}`}
                   >
                     <span className="leading-none">←</span>
@@ -580,7 +600,7 @@ export function PreviewPanel({
                   <button
                     type="button"
                     onClick={() => onGoToChapter(nextChapter.slug)}
-                    className="border-border text-foreground inline-flex max-w-[150px] items-center gap-1 rounded-full border bg-white/95 px-2.5 py-1 text-xs font-medium shadow-md transition hover:bg-white"
+                    className="border-border text-foreground bg-surface/95 hover:bg-surface inline-flex max-w-[150px] items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium shadow-md transition"
                     title={`Éditer le chapitre suivant : ${nextChapter.title}`}
                   >
                     <span className="truncate">{nextChapter.title}</span>
@@ -622,7 +642,7 @@ function VariableControl({
           <select
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="border-border h-7 max-w-[180px] rounded-md border bg-white px-2 text-xs"
+            className="border-border bg-surface text-text h-7 max-w-[180px] rounded-md border px-2 text-xs"
           >
             {variable.options.map((opt) => (
               <option key={opt.value} value={opt.value}>

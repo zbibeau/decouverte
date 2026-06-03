@@ -1,14 +1,7 @@
 'use client';
 
-import {
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Hash,
-  List,
-  ToggleLeft,
-  Type,
-} from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Hash, List, ToggleLeft, Type } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState, useTransition } from 'react';
 
 import { useToast } from '@/components/Toaster';
@@ -46,10 +39,7 @@ function camelCaseKey(input: string): string {
     .map((w) => w.toLowerCase());
   if (words.length === 0) return '';
   const [first, ...rest] = words;
-  return (
-    first +
-    rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-  );
+  return first + rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('');
 }
 
 const TYPE_OPTIONS: Array<{
@@ -91,6 +81,7 @@ const TYPE_OPTIONS: Array<{
 
 export function AddVariableForm({ createAction }: Props) {
   const toast = useToast();
+  const router = useRouter();
   const [type, setType] = useState<VariableType>('boolean');
   const [label, setLabel] = useState('');
   // The technical key (camelCase code name). Auto-synced from the label
@@ -110,7 +101,7 @@ export function AddVariableForm({ createAction }: Props) {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!label.trim()) {
-      toast.error('Donne d\'abord un nom à ta variable (champ « Question »).');
+      toast.error("Donne d'abord un nom à ta variable (champ « Question »).");
       return;
     }
     if (!effectiveKey) {
@@ -135,11 +126,14 @@ export function AddVariableForm({ createAction }: Props) {
         setType('boolean');
         formRef.current?.reset();
       } catch (err) {
-        toast.error(
-          `Création échouée : ${err instanceof Error ? err.message : String(err)}`,
-        );
+        toast.error(`Création échouée : ${err instanceof Error ? err.message : String(err)}`);
       }
     });
+    // `router.refresh()` hors du `startTransition` (= update urgent) sinon
+    // React le défère derrière les setState ci-dessus et la liste des
+    // variables ne se met à jour qu'au prochain F5 manuel — même pattern
+    // de fix que `handleInsertSample` côté ChapterEditor.
+    router.refresh();
   }
 
   return (
@@ -147,7 +141,7 @@ export function AddVariableForm({ createAction }: Props) {
       {/* Step 1 — pick the type. Beginner-friendly cards with icons,
            use-case labels and a concrete example. */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <label className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
           1. Quelle sorte de réponse veux-tu stocker&nbsp;?
         </label>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -162,8 +156,8 @@ export function AddVariableForm({ createAction }: Props) {
                 className={cn(
                   'group flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
                   selected
-                    ? 'border-brand-primary-500 bg-brand-primary-50 ring-1 ring-brand-primary-200'
-                    : 'border-border bg-white hover:border-brand-primary-300 hover:bg-brand-primary-50/40',
+                    ? 'border-brand-primary-500 bg-brand-primary-50 ring-brand-primary-200 ring-1'
+                    : 'border-border bg-surface hover:border-brand-primary-300 hover:bg-brand-primary-50/40',
                 )}
               >
                 <span
@@ -179,14 +173,10 @@ export function AddVariableForm({ createAction }: Props) {
                 <div className="flex-1 space-y-0.5">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold">{opt.title}</span>
-                    {selected && (
-                      <Check className="h-3.5 w-3.5 text-brand-primary-600" />
-                    )}
+                    {selected && <Check className="text-brand-primary-600 h-3.5 w-3.5" />}
                   </div>
-                  <p className="text-xs text-muted-foreground">{opt.description}</p>
-                  <p className="text-[11px] italic text-muted-foreground/80">
-                    {opt.example}
-                  </p>
+                  <p className="text-muted-foreground text-xs">{opt.description}</p>
+                  <p className="text-muted-foreground/80 text-[11px] italic">{opt.example}</p>
                 </div>
               </button>
             );
@@ -200,7 +190,7 @@ export function AddVariableForm({ createAction }: Props) {
            the camelCasing or pick a different name without hunting for a
            hidden toggle. */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <label className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
           2. Quelle est ta question, en français&nbsp;?
         </label>
         <Input
@@ -210,7 +200,7 @@ export function AddVariableForm({ createAction }: Props) {
           autoFocus
         />
         <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
-          <label className="flex items-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="text-muted-foreground flex items-center text-[11px] font-medium uppercase tracking-wide">
             Clé technique
           </label>
           <div className="space-y-1">
@@ -228,10 +218,9 @@ export function AddVariableForm({ createAction }: Props) {
               placeholder="statutDuPatient"
               className="h-8 font-mono text-xs"
             />
-            <p className="text-[11px] text-muted-foreground">
-              Utilisée dans les blocs conditionnels et dans le code
-              ({'{'}variable{'}'} dans les templates). Auto-générée depuis ton
-              label, mais tu peux la changer manuellement.
+            <p className="text-muted-foreground text-[11px]">
+              Utilisée dans les blocs conditionnels et dans le code ({'{'}variable{'}'} dans les templates).
+              Auto-générée depuis ton label, mais tu peux la changer manuellement.
               {keyTouched && (
                 <>
                   {' · '}
@@ -255,39 +244,35 @@ export function AddVariableForm({ createAction }: Props) {
       {/* Step 3 — options (only for enum) */}
       {type === 'enum' && (
         <div className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <label className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
             3. Quelles sont les options possibles&nbsp;?
           </label>
           <OptionsListInput name="options" />
-          <p className="text-[11px] text-muted-foreground">
-            Une ligne par option. « Valeur » = identifiant interne (sans accent),
-            « Label » = ce que les utilisateurs voient.
+          <p className="text-muted-foreground text-[11px]">
+            Une ligne par option. « Valeur » = identifiant interne (sans accent), « Label » = ce que les utilisateurs
+            voient.
           </p>
         </div>
       )}
 
       {/* Advanced — Hubspot mapping. Collapsed by default. */}
-      <div className="rounded-md border border-border/60">
+      <div className="border-border/60 rounded-md border">
         <button
           type="button"
           onClick={() => setAdvancedOpen((o) => !o)}
-          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
+          className="text-muted-foreground hover:bg-muted/50 flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium transition-colors"
         >
           <span>Options avancées (Hubspot)</span>
-          {advancedOpen ? (
-            <ChevronUp className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" />
-          )}
+          {advancedOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </button>
         {advancedOpen && (
-          <div className="space-y-3 border-t border-border/60 bg-muted/20 p-3">
-            <p className="text-[11px] text-muted-foreground">
-              Optionnel. Sert à synchroniser la valeur saisie avec une propriété
-              Hubspot existante. Laisse vide si tu n'utilises pas Hubspot.
+          <div className="border-border/60 bg-muted/20 space-y-3 border-t p-3">
+            <p className="text-muted-foreground text-[11px]">
+              Optionnel. Sert à synchroniser la valeur saisie avec une propriété Hubspot existante. Laisse vide si tu
+              n'utilises pas Hubspot.
             </p>
             <div className="space-y-1">
-              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <label className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
                 Hubspot property
               </label>
               <Input
@@ -298,7 +283,7 @@ export function AddVariableForm({ createAction }: Props) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <label className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
                 Mapping valeur → label Hubspot
               </label>
               <ValueMapInput name="hsValueMap" />
@@ -311,9 +296,7 @@ export function AddVariableForm({ createAction }: Props) {
         <Button type="submit" disabled={isPending || !label.trim()}>
           {isPending ? 'Création…' : 'Créer la variable'}
         </Button>
-        <span className="text-[11px] text-muted-foreground">
-          Tu pourras toujours la modifier ensuite.
-        </span>
+        <span className="text-muted-foreground text-[11px]">Tu pourras toujours la modifier ensuite.</span>
       </div>
     </form>
   );

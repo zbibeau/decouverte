@@ -100,17 +100,14 @@ export function CreateParcoursDialog({ createAction }: Props) {
             if (e.target === e.currentTarget && !isPending) setOpen(false);
           }}
         >
-          <form
-            onSubmit={handleSubmit}
-            className="w-full max-w-md overflow-hidden rounded-lg bg-white shadow-2xl"
-          >
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-5 py-3">
+          <form onSubmit={handleSubmit} className="bg-surface w-full max-w-md overflow-hidden rounded-lg shadow-2xl">
+            <div className="border-border bg-muted/30 flex items-center justify-between border-b px-5 py-3">
               <h2 className="text-sm font-semibold">Créer un nouveau parcours</h2>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={isPending}
-                className="rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md p-1 transition"
                 aria-label="Fermer"
               >
                 <X className="h-4 w-4" />
@@ -119,7 +116,7 @@ export function CreateParcoursDialog({ createAction }: Props) {
 
             <div className="space-y-4 p-5">
               <div className="space-y-1.5">
-                <label htmlFor="parcours-name" className="text-xs font-medium text-foreground">
+                <label htmlFor="parcours-name" className="text-foreground text-xs font-medium">
                   Nom du parcours
                 </label>
                 <Input
@@ -130,17 +127,17 @@ export function CreateParcoursDialog({ createAction }: Props) {
                   autoFocus
                   disabled={isPending}
                 />
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-muted-foreground text-[10px]">
                   Affiché dans la liste des parcours et dans le header.
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="parcours-slug" className="text-xs font-medium text-foreground">
+                <label htmlFor="parcours-slug" className="text-foreground text-xs font-medium">
                   Slug (URL publique)
                 </label>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">/parcours/</span>
+                  <span className="text-muted-foreground text-xs">/parcours/</span>
                   <Input
                     id="parcours-slug"
                     value={slug}
@@ -153,31 +150,25 @@ export function CreateParcoursDialog({ createAction }: Props) {
                     className="flex-1 font-mono text-xs"
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-muted-foreground text-[10px]">
                   Suggéré automatiquement à partir du nom. Lettres, chiffres et tirets uniquement.
                 </p>
               </div>
 
               {error && (
-                <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <p className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-3 py-2 text-xs">
                   {error}
                 </p>
               )}
 
-              <p className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                Le parcours est créé en <strong>brouillon</strong>. Tu pourras ajouter les chapitres
-                ensuite, puis le publier.
+              <p className="bg-muted/40 text-muted-foreground rounded-md px-3 py-2 text-[11px]">
+                Le parcours est créé en <strong>brouillon</strong>. Tu pourras ajouter les chapitres ensuite, puis le
+                publier.
               </p>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/20 px-5 py-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setOpen(false)}
-                disabled={isPending}
-              >
+            <div className="border-border bg-muted/20 flex items-center justify-end gap-2 border-t px-5 py-3">
+              <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)} disabled={isPending}>
                 Annuler
               </Button>
               <Button type="submit" size="sm" disabled={isPending || !name.trim() || !slug}>
