@@ -78,8 +78,11 @@ const SECONDARY_KEYS = new Set<string>([
  * stay out of the search index — URLs, UUIDs, icon names, schema
  * discriminators, logical operators. Everything else (sectionTitle,
  * eyebrow, custom payload keys…) is indexed automatically in `full`.
+ *
+ * Re-exported so the Search & Replace logic in `blockReplace.ts` can
+ * apply the same exclusion rule without duplicating the list.
  */
-const EXCLUDED_KEYS = new Set<string>([
+export const EXCLUDED_KEYS = new Set<string>([
   // Technical identifiers
   'id',
   'type',

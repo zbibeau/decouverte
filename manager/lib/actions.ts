@@ -1349,6 +1349,44 @@ export async function updateBlockPayload(
   return draftBlockId;
 }
 
+/**
+ * Batch-apply a Search & Replace pass across multiple blocks of a
+ * parcours. Each edit already carries its new payload (computed by
+ * `replaceOccurrencesInPayload` on the client), so this action is
+ * just a fan-out of `updateBlockPayload`.
+ *
+ * The first call is awaited on its own to ensure the draft version
+ * is materialized exactly once before the remaining writes run in
+ * parallel — `ensureDraftBlockId` is normally race-safe (the
+ * codebase already calls it in `Promise.all` elsewhere) but a fresh
+ * draft creation is sensitive enough that we keep the first call
+ * serialised. Subsequent calls land on an already-existing draft
+ * and can run concurrently.
+ *
+ * Returns the number of blocks actually written to (excludes any
+ * that failed individually so the caller can surface a precise toast
+ * count). Errors from individual blocks are NOT swallowed silently
+ * for the v1 — the whole batch throws on first failure, the caller
+ * shows an error toast and the partial work survives in the draft
+ * (which the editor can undo via "Jeter le brouillon").
+ */
+export async function replaceAcrossBlocks(
+  parcoursSlug: string,
+  edits: ReadonlyArray<{
+    blockId: string;
+    chapterSlug: string;
+    payload: Record<string, unknown>;
+  }>,
+): Promise<{ blocksTouched: number }> {
+  if (edits.length === 0) return { blocksTouched: 0 };
+  // First write — materializes the draft if needed.
+  const [first, ...rest] = edits;
+  await updateBlockPayload(parcoursSlug, first.chapterSlug, first.blockId, first.payload);
+  // Remaining writes can fan out freely.
+  await Promise.all(rest.map((e) => updateBlockPayload(parcoursSlug, e.chapterSlug, e.blockId, e.payload)));
+  return { blocksTouched: edits.length };
+}
+
 export async function deleteBlock(parcoursSlug: string, chapterSlug: string, blockId: string) {
   const supabase = await createClient();
   const draftBlockId = await ensureDraftBlockId(parcoursSlug, blockId);

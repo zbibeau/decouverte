@@ -29,9 +29,8 @@ export function DraftBlockDiffPanel({ status, currentPayload, sourcePayload }: P
 
   if (status === 'new') {
     return (
-      <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-200">
-        🔵 <strong>Nouveau bloc</strong> — il n'existe pas encore dans la version publiée. Tout son contenu partira en
-        prod au prochain publish.
+      <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs text-sky-900 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-200">
+        🔵 <strong>Nouveau bloc</strong> · part en prod au prochain publish.
       </div>
     );
   }

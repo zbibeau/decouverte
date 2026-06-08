@@ -1,22 +1,24 @@
 'use client';
 
 import { Command } from 'cmdk';
-import { FileText, Search, Tag, X } from 'lucide-react';
+import { FileText, Replace, Search, Tag, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, useTransition } from 'react';
 
+import { useAddActionScopes, useSelectedScopeId } from '@/components/blocks/AddActionsContext';
 import { PaletteItem } from '@/components/palette/PaletteItem';
 import { PreviewPane } from '@/components/palette/PreviewPane';
+import { ReplacePanel, type ReplaceRow } from '@/components/palette/ReplacePanel';
 import { useToast } from '@/components/Toaster';
-import { useAddActionScopes, useSelectedScopeId } from '@/components/blocks/AddActionsContext';
-import { loadPaletteData, insertSampleBlock, type PaletteData } from '@/lib/actions';
-import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
+import { insertSampleBlock, loadPaletteData, type PaletteData, replaceAcrossBlocks } from '@/lib/actions';
+import { BLOCK_TYPE_LABELS, BLOCK_TYPES_ORDER } from '@/lib/blockDefaults';
+import { findOccurrencesInPayload, replaceOccurrencesInPayload } from '@/lib/blockReplace';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { extractSnippet } from '@/lib/blockSearch';
 import { FamilyIcon } from '@/lib/familyIcons';
 import { parsePathContext } from '@/lib/palette/parsePathContext';
 import { useCommandPaletteHotkeys } from '@/lib/palette/useCommandPaletteHotkeys';
-import { TAG_COLOR_HEX, isTagColor } from '@/lib/tagColors';
+import { isTagColor, TAG_COLOR_HEX } from '@/lib/tagColors';
 
 /**
  * Match `haystack` against a user-typed `query`.
@@ -88,6 +90,24 @@ export function CommandPalette() {
   // "🏷 Tags" section. Cleared via the chip's × button (kept separate
   // from `setOpen` so Esc still closes the whole palette).
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  // Search vs Replace mode. Toggled via the <Replace> button in the
+  // input row OR via the local ⌘⇧H hotkey (only active while the
+  // palette is open). State INTENTIONALLY persists across close/reopen
+  // matching the existing `search` behaviour — the editor expects the
+  // palette to "remember" what they were doing.
+  const [mode, setMode] = useState<'search' | 'replace'>('search');
+  const [replaceQuery, setReplaceQuery] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
+  // Opt-out set : rows are CHECKED by default ; this set carries the
+  // keys (`${blockId}|${path}|${index}`) the editor explicitly
+  // unchecked. Cleared after each successful apply.
+  const [excludedKeys, setExcludedKeys] = useState<Set<string>>(new Set());
+  const [isApplyingReplace, startReplaceTransition] = useTransition();
+  // Deferred `search` so the per-keystroke walk over every block of
+  // the parcours stays cheap. React lets the input update immediately
+  // while the occurrence list reconciles on idle. Only consulted in
+  // replace mode — search mode renders against the raw `search`.
+  const deferredSearch = useDeferredValue(search);
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
@@ -213,12 +233,145 @@ export function CommandPalette() {
     return ids;
   }, [search, data, filteredChapters, filteredBlocks]);
 
+  // === Search & Replace : occurrences across the parcours' blocks ===
+  // Computed only in replace mode and only when there's a query.
+  // useDeferredValue debounces the walk to React's idle slot so typing
+  // stays smooth even on a 150-block parcours.
+  const replaceRows = useMemo<ReplaceRow[]>(() => {
+    if (mode !== 'replace' || !data || !deferredSearch.trim()) return [];
+    const out: ReplaceRow[] = [];
+    for (const b of data.blocks) {
+      const occurrences = findOccurrencesInPayload(b.payload, deferredSearch, { matchCase });
+      for (const occ of occurrences) {
+        out.push({
+          ...occ,
+          key: `${b.id}|${occ.path}|${occ.index}`,
+          blockId: b.id,
+          blockSummary: b.summary,
+          chapterTitle: b.chapterTitle,
+          chapterSlug: b.chapterSlug,
+          blockType: b.type,
+        });
+      }
+    }
+    return out;
+  }, [mode, data, deferredSearch, matchCase]);
+
+  // Toggle a single occurrence's checked state. Rows are CHECKED by
+  // default ; storing the OPT-OUT (rather than the inclusions) means
+  // a fresh search starts with everything selected, which matches
+  // typical Find-and-Replace expectations.
+  const toggleOccurrence = useCallback((key: string) => {
+    setExcludedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // "Tout cocher" → clear the opt-out set ; "Tout décocher" → mark
+  // every replaceable row as opted-out. Non-replaceable rows are
+  // skipped either way since their checkbox is disabled.
+  const toggleAllOccurrences = useCallback(() => {
+    const replaceable = replaceRows.filter((r) => r.replaceable);
+    const allChecked = replaceable.every((r) => !excludedKeys.has(r.key));
+    if (allChecked) {
+      setExcludedKeys(new Set(replaceable.map((r) => r.key)));
+    } else {
+      setExcludedKeys(new Set());
+    }
+  }, [replaceRows, excludedKeys]);
+
+  // Apply : group selected occurrences by block, compute each block's
+  // new payload via `replaceOccurrencesInPayload`, batch the writes
+  // via `replaceAcrossBlocks`, then toast + reset + close.
+  const handleApplyReplace = useCallback(() => {
+    if (!ctx.parcoursSlug || replaceQuery === '' || !data) return;
+    const selected = replaceRows.filter((r) => r.replaceable && !excludedKeys.has(r.key));
+    if (selected.length === 0) return;
+
+    const byBlock = new Map<string, ReplaceRow[]>();
+    for (const r of selected) {
+      const arr = byBlock.get(r.blockId) ?? [];
+      arr.push(r);
+      byBlock.set(r.blockId, arr);
+    }
+
+    const edits: { blockId: string; chapterSlug: string; payload: Record<string, unknown> }[] = [];
+    let totalApplied = 0;
+    for (const [blockId, rows] of byBlock) {
+      const block = data.blocks.find((b) => b.id === blockId);
+      if (!block) continue;
+      const hits = rows.map((r) => ({ path: r.path, index: r.index, length: r.length, isHtml: r.isHtml }));
+      const { payload: nextPayload, appliedCount } = replaceOccurrencesInPayload(block.payload, hits, replaceQuery);
+      if (appliedCount === 0) continue;
+      edits.push({
+        blockId,
+        chapterSlug: block.chapterSlug,
+        payload: nextPayload as Record<string, unknown>,
+      });
+      totalApplied += appliedCount;
+    }
+
+    if (edits.length === 0) return;
+
+    startReplaceTransition(async () => {
+      try {
+        const result = await replaceAcrossBlocks(ctx.parcoursSlug!, edits);
+        toast.success(
+          `${totalApplied} occurrence${totalApplied > 1 ? 's' : ''} remplacée${totalApplied > 1 ? 's' : ''} dans ${
+            result.blocksTouched
+          } bloc${result.blocksTouched > 1 ? 's' : ''}`,
+        );
+        // Reset replace state and close. `data` is intentionally set
+        // to null so the next palette open re-fetches with the fresh
+        // payloads from the draft.
+        setReplaceQuery('');
+        setExcludedKeys(new Set());
+        setData(null);
+        setOpen(false);
+      } catch (e) {
+        toast.error(`Échec du remplacement : ${(e as Error).message}`);
+      }
+    });
+  }, [ctx.parcoursSlug, replaceQuery, replaceRows, excludedKeys, data, toast]);
+
+  // Local hotkey ⌘⇧H — only active while the palette is open. We
+  // bind here rather than in `useCommandPaletteHotkeys` because the
+  // shortcut is palette-scoped (no point of letting the editor fire
+  // it on a random page where it'd just open the palette to replace
+  // mode — surprising and the global hook is for "open/close" only).
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      const k = e.key?.toLowerCase();
+      if (!k) return;
+      if (k === 'h' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        setMode((m) => (m === 'search' ? 'replace' : 'search'));
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // When the user edits the search query in replace mode, clear the
+  // opt-out set — keys reference specific (blockId, path, index)
+  // triplets and become stale as soon as the occurrence list shifts.
+  useEffect(() => {
+    setExcludedKeys(new Set());
+  }, [deferredSearch, matchCase, mode]);
+
   function go(href: string) {
     setOpen(false);
     // Append the current search query as `?q=<encoded>` so the
-    // destination page can highlight the matching block(s) and tell
-    // the user where their term actually appears. Skipped when the
-    // query is empty so we don't pollute URLs with `?q=`.
+    // destination page can apply the in-block / in-field highlights
+    // (the editor wants to SEE where their term matched without
+    // re-typing). The SearchHighlightBanner and the filter input
+    // pre-fill have been suppressed downstream — only the silent
+    // highlight survives. Skipped when the query is empty so we
+    // don't pollute URLs with `?q=`.
     const q = search.trim();
     const final = q ? `${href}${href.includes('?') ? '&' : '?'}q=${encodeURIComponent(q)}` : href;
     router.push(final);
@@ -288,13 +441,68 @@ export function CommandPalette() {
             autoFocus
             value={search}
             onValueChange={setSearch}
-            placeholder={ctx.parcoursSlug ? 'Cherche un chapitre, un bloc, une variable…' : 'Cherche un parcours…'}
+            placeholder={
+              mode === 'replace'
+                ? 'Cherche le texte à remplacer…'
+                : ctx.parcoursSlug
+                  ? 'Cherche un chapitre, un bloc, une variable…'
+                  : 'Cherche un parcours…'
+            }
             className="placeholder:text-muted-foreground h-9 flex-1 bg-transparent text-sm outline-none"
           />
+          {/* Mode toggle — surfaces the Replace mode in a discoverable
+              place. Local hotkey ⌘⇧H does the same thing for keyboard
+              users. Hidden when no parcours is in context : Replace
+              only makes sense inside a parcours (the search index is
+              parcours-scoped). */}
+          {ctx.parcoursSlug && (
+            <button
+              type="button"
+              onClick={() => setMode((m) => (m === 'search' ? 'replace' : 'search'))}
+              aria-pressed={mode === 'replace'}
+              title={mode === 'replace' ? 'Mode recherche (⌘⇧H)' : 'Mode remplacer (⌘⇧H)'}
+              className={`inline-flex h-7 items-center gap-1 rounded px-1.5 text-[11px] ${
+                mode === 'replace'
+                  ? 'bg-primary/15 text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <Replace className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Remplacer</span>
+            </button>
+          )}
           <kbd className="border-border bg-muted text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]">
             esc
           </kbd>
         </div>
+
+        {/* Replace mode — second input row : "Remplacer par…" + Match
+            Case toggle. Tab order : search → replace → matchCase. */}
+        {mode === 'replace' && ctx.parcoursSlug && (
+          <div className="border-border bg-surface-2/30 flex items-center gap-2 border-b px-3 py-2">
+            <Replace className="text-muted-foreground h-4 w-4" />
+            <input
+              type="text"
+              value={replaceQuery}
+              onChange={(e) => setReplaceQuery(e.target.value)}
+              placeholder="Remplacer par…"
+              className="placeholder:text-muted-foreground h-9 flex-1 bg-transparent text-sm outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setMatchCase((v) => !v)}
+              aria-pressed={matchCase}
+              title={matchCase ? 'Désactiver la sensibilité à la casse' : 'Activer la sensibilité à la casse'}
+              className={`inline-flex h-7 items-center justify-center rounded px-2 text-[11px] font-medium ${
+                matchCase
+                  ? 'bg-primary/15 text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground border-border border'
+              }`}
+            >
+              Aa
+            </button>
+          </div>
+        )}
 
         {/* Active-tag filter indicator. Only rendered when the editor has
             picked a tag from the "🏷 Tags" section below — clicking the
@@ -331,72 +539,77 @@ export function CommandPalette() {
         {/* Split layout : Command.List on the left (results), PreviewPane
               on the right (schematic preview of the currently-highlighted row).
               Below md the preview pane is hidden — the palette remains
-              fully functional on narrow screens. */}
-        <div className="grid h-[60vh] md:grid-cols-2">
-          <Command.List className="border-border overflow-y-auto border-r p-2">
-            {loading && !data ? (
-              <div className="text-muted-foreground px-3 py-6 text-center text-sm">Chargement…</div>
-            ) : (
-              <>
-                <Command.Empty className="text-muted-foreground px-3 py-6 text-center text-sm">
-                  Aucun résultat.
-                </Command.Empty>
+              fully functional on narrow screens.
 
-                {/* === Add actions registered by nested editors (deepest first) ===
+              In Replace mode the whole grid is swapped for <ReplacePanel>
+              which owns its own header / list / footer — the PreviewPane
+              isn't useful there since each row already shows full context. */}
+        {mode === 'search' ? (
+          <div className="grid h-[60vh] md:grid-cols-2">
+            <Command.List className="border-border overflow-y-auto border-r p-2">
+              {loading && !data ? (
+                <div className="text-muted-foreground px-3 py-6 text-center text-sm">Chargement…</div>
+              ) : (
+                <>
+                  <Command.Empty className="text-muted-foreground px-3 py-6 text-center text-sm">
+                    Aucun résultat.
+                  </Command.Empty>
+
+                  {/* === Add actions registered by nested editors (deepest first) ===
                     The user is editing somewhere — these are the most local
                     actions ("Ajouter un point" in the open list, "Ajouter une
                     question" in the FAQ, etc.). Always shown first. */}
-                {registeredScopes.map((scope) => (
-                  <Command.Group
-                    key={scope.id}
-                    heading={scope.id === selectedScopeId ? `★ ${scope.label} (sélection)` : scope.label}
-                  >
-                    {scope.actions.map((a) => (
-                      <PaletteItem
-                        key={`${scope.id}-${a.id}`}
-                        icon={<FamilyIcon family="add" />}
-                        label={a.label}
-                        hint={a.description}
-                        value={`scope-${scope.id}-${a.id}`}
-                        keywords={[scope.label, a.label, a.description ?? '', 'ajouter', 'add']}
-                        onSelect={async () => {
-                          await a.run();
-                          setOpen(false);
-                        }}
-                      />
-                    ))}
-                  </Command.Group>
-                ))}
+                  {registeredScopes.map((scope) => (
+                    <Command.Group
+                      key={scope.id}
+                      heading={scope.id === selectedScopeId ? `★ ${scope.label} (sélection)` : scope.label}
+                    >
+                      {scope.actions.map((a) => (
+                        <PaletteItem
+                          key={`${scope.id}-${a.id}`}
+                          icon={<FamilyIcon family="add" />}
+                          label={a.label}
+                          hint={a.description}
+                          value={`scope-${scope.id}-${a.id}`}
+                          keywords={[scope.label, a.label, a.description ?? '', 'ajouter', 'add']}
+                          onSelect={async () => {
+                            await a.run();
+                            setOpen(false);
+                          }}
+                        />
+                      ))}
+                    </Command.Group>
+                  ))}
 
-                {/* === Ajouter un bloc au chapitre ===
+                  {/* === Ajouter un bloc au chapitre ===
                     On chapter list pages this is the natural insert target.
                     On block edit pages we still show it but only when no
                     nested-scope action was registered (avoids confusing the
                     user with two competing "Add a block" entry points). */}
-                {ctx.parcoursSlug && ctx.chapterSlug && (!onBlockEditPage || registeredScopes.length === 0) && (
-                  <Command.Group heading="Ajouter un bloc au chapitre">
-                    {BLOCK_TYPES_ORDER.filter((t) => SAMPLE_PAYLOADS[t]).map((t) => (
-                      <PaletteItem
-                        key={`add-${t}`}
-                        icon={<FamilyIcon family="add" />}
-                        label={`+ ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}`}
-                        hint="Insère dans le chapitre courant avec l'exemple"
-                        value={`add-${t}`}
-                        keywords={[
-                          t,
-                          (BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t,
-                          'ajouter',
-                          'add',
-                          'insert',
-                        ]}
-                        disabled={isPending}
-                        onSelect={() => void handleInsertBlock(t)}
-                      />
-                    ))}
-                  </Command.Group>
-                )}
+                  {ctx.parcoursSlug && ctx.chapterSlug && (!onBlockEditPage || registeredScopes.length === 0) && (
+                    <Command.Group heading="Ajouter un bloc au chapitre">
+                      {BLOCK_TYPES_ORDER.filter((t) => SAMPLE_PAYLOADS[t]).map((t) => (
+                        <PaletteItem
+                          key={`add-${t}`}
+                          icon={<FamilyIcon family="add" />}
+                          label={`+ ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}`}
+                          hint="Insère dans le chapitre courant avec l'exemple"
+                          value={`add-${t}`}
+                          keywords={[
+                            t,
+                            (BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t,
+                            'ajouter',
+                            'add',
+                            'insert',
+                          ]}
+                          disabled={isPending}
+                          onSelect={() => void handleInsertBlock(t)}
+                        />
+                      ))}
+                    </Command.Group>
+                  )}
 
-                {/* === Tags (current parcours) ===
+                  {/* === Tags (current parcours) ===
                       Browse the maintenance-tag vocabulary actually used in
                       this parcours. Selecting a row sets `selectedTagId`,
                       which scopes the Chapitres / Blocs sections below to
@@ -405,190 +618,207 @@ export function CommandPalette() {
                       Hidden when a filter is already active (the editor
                       doesn't need to pick again) and when the parcours has
                       no tags yet (empty section would just be noise). */}
-                {!selectedTagId && (data?.tags?.length ?? 0) > 0 && (
-                  <Command.Group heading="Tags">
-                    {data!.tags.map((t) => {
-                      const hex = isTagColor(t.color) ? TAG_COLOR_HEX[t.color] : TAG_COLOR_HEX.amber;
-                      return (
-                        <PaletteItem
-                          key={`tag-${t.id}`}
-                          icon={<Tag className="h-3.5 w-3.5" style={{ color: hex.dot }} />}
-                          label={t.label}
-                          hint={`${t.usageCount} bloc${t.usageCount > 1 ? 's' : ''} / chapitre${
-                            t.usageCount > 1 ? 's' : ''
-                          }`}
-                          value={`tag-${t.id}`}
-                          // Surface the section via natural French/English
-                          // synonyms in addition to the label itself, so
-                          // typing "filtre", "label", "etiquette" or "tag"
-                          // brings the rows up even when the editor doesn't
-                          // remember a specific tag name.
-                          keywords={[t.label, 'tag', 'label', 'filtre', 'étiquette', 'etiquette', 'maintenance']}
-                          onSelect={() => {
-                            setSelectedTagId(t.id);
-                            setSearch('');
-                          }}
-                        />
-                      );
-                    })}
-                  </Command.Group>
-                )}
+                  {!selectedTagId && (data?.tags?.length ?? 0) > 0 && (
+                    <Command.Group heading="Tags">
+                      {data!.tags.map((t) => {
+                        const hex = isTagColor(t.color) ? TAG_COLOR_HEX[t.color] : TAG_COLOR_HEX.amber;
+                        return (
+                          <PaletteItem
+                            key={`tag-${t.id}`}
+                            icon={<Tag className="h-3.5 w-3.5" style={{ color: hex.dot }} />}
+                            label={t.label}
+                            hint={`${t.usageCount} bloc${t.usageCount > 1 ? 's' : ''} / chapitre${
+                              t.usageCount > 1 ? 's' : ''
+                            }`}
+                            value={`tag-${t.id}`}
+                            // Surface the section via natural French/English
+                            // synonyms in addition to the label itself, so
+                            // typing "filtre", "label", "etiquette" or "tag"
+                            // brings the rows up even when the editor doesn't
+                            // remember a specific tag name.
+                            keywords={[t.label, 'tag', 'label', 'filtre', 'étiquette', 'etiquette', 'maintenance']}
+                            onSelect={() => {
+                              setSelectedTagId(t.id);
+                              setSearch('');
+                            }}
+                          />
+                        );
+                      })}
+                    </Command.Group>
+                  )}
 
-                {/* === Chapitres (current parcours) ===
+                  {/* === Chapitres (current parcours) ===
                       Reads `filteredChapters` (= data.chapters restricted
                       to the active tag if any), then strips out the rows
                       considered redundant with a matching block row
                       (see `redundantChapterIds` above). */}
-                {filteredChapters.length > 0 && (
-                  <Command.Group heading="Chapitres">
-                    {filteredChapters
-                      .filter((c) => !redundantChapterIds.has(c.id))
-                      .map((c) => {
-                        // Tags on the chapter that themselves match the
-                        // query — rendered as colored pills on the row so
-                        // the user sees the match comes from a tag.
+                  {filteredChapters.length > 0 && (
+                    <Command.Group heading="Chapitres">
+                      {filteredChapters
+                        .filter((c) => !redundantChapterIds.has(c.id))
+                        .map((c) => {
+                          // Tags on the chapter that themselves match the
+                          // query — rendered as colored pills on the row so
+                          // the user sees the match comes from a tag.
+                          const q = search.trim().toLowerCase();
+                          const matchingTags = q ? c.tags.filter((t) => t.label.toLowerCase().includes(q)) : [];
+                          // Snippet under the title when the query matched
+                          // inside an *aggregated* block (and not in the
+                          // title itself — that's already visible above).
+                          // Skipped when a tag matches : the colored chip
+                          // already conveys the match cleanly, the snippet
+                          // would just duplicate / clutter the row.
+                          const titleMatches = c.title.toLowerCase().includes(q);
+                          const snippet =
+                            q && !titleMatches && matchingTags.length === 0
+                              ? (extractSnippet(c.searchText, search, 32) ?? undefined)
+                              : undefined;
+                          return (
+                            <PaletteItem
+                              key={c.id}
+                              icon={<FamilyIcon family="chapter" />}
+                              label={c.title}
+                              hint={c.slug}
+                              snippet={snippet}
+                              highlight={search}
+                              matchChips={matchingTags}
+                              value={`chapter-${c.id}`}
+                              keywords={[c.title, c.title, c.slug, c.searchText]}
+                              onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`)}
+                            />
+                          );
+                        })}
+                    </Command.Group>
+                  )}
+
+                  {/* === Blocs (current parcours, full-text searchable) === */}
+                  {filteredBlocks.length > 0 && (
+                    <Command.Group heading="Blocs">
+                      {filteredBlocks.map((b) => {
+                        // Tags on the block that themselves match the
+                        // query — surfaced as colored pills inline on the
+                        // row so the user sees the match comes from a tag.
                         const q = search.trim().toLowerCase();
-                        const matchingTags = q ? c.tags.filter((t) => t.label.toLowerCase().includes(q)) : [];
-                        // Snippet under the title when the query matched
-                        // inside an *aggregated* block (and not in the
-                        // title itself — that's already visible above).
-                        // Skipped when a tag matches : the colored chip
-                        // already conveys the match cleanly, the snippet
-                        // would just duplicate / clutter the row.
-                        const titleMatches = c.title.toLowerCase().includes(q);
+                        const matchingTags = q ? b.tags.filter((t) => t.label.toLowerCase().includes(q)) : [];
+                        // Snippet rendered only when the query matched
+                        // deep in the payload — if it matched the summary
+                        // OR a tag, we already convey that elsewhere (the
+                        // summary is the row label ; the tag is its own
+                        // colored pill). Doubling with a snippet would
+                        // just clutter.
+                        const summaryMatches = b.summary.toLowerCase().includes(q);
                         const snippet =
-                          q && !titleMatches && matchingTags.length === 0
-                            ? (extractSnippet(c.searchText, search, 32) ?? undefined)
+                          q && !summaryMatches && matchingTags.length === 0
+                            ? (extractSnippet(b.searchText, search, 32) ?? undefined)
                             : undefined;
                         return (
                           <PaletteItem
-                            key={c.id}
-                            icon={<FamilyIcon family="chapter" />}
-                            label={c.title}
-                            hint={c.slug}
+                            key={b.id}
+                            icon={<FamilyIcon family="block" />}
+                            label={b.summary || `Bloc ${b.type}`}
+                            hint={`${(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type} · ${b.chapterTitle}`}
                             snippet={snippet}
                             highlight={search}
                             matchChips={matchingTags}
-                            value={`chapter-${c.id}`}
-                            keywords={[c.title, c.title, c.slug, c.searchText]}
-                            onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`)}
+                            value={`block-${b.id}`}
+                            // primaryText duplicated so cmdk's fuzzy matcher
+                            // weighs a hit on titles/labels above one buried
+                            // in the body. summary is also high-signal so it
+                            // stays at the front. secondaryText is the long
+                            // body content — present but unweighted.
+                            //
+                            // `chapterTitle` and `chapterSlug` were
+                            // intentionally removed : including them made
+                            // every block of a chapter match whenever the
+                            // chapter's name contained the query (e.g.
+                            // searching "patient" on the chapter "Copie —
+                            // création du dossier patient" surfaced ALL its
+                            // blocks, even those whose own content had
+                            // nothing to do with "patient"). The chapter
+                            // itself still appears as its own row in the
+                            // Chapitres section if its title matches.
+                            keywords={[b.summary, b.summary, b.primaryText, b.primaryText, b.type, b.secondaryText]}
+                            onSelect={() =>
+                              go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`)
+                            }
                           />
                         );
                       })}
-                  </Command.Group>
-                )}
+                    </Command.Group>
+                  )}
 
-                {/* === Blocs (current parcours, full-text searchable) === */}
-                {filteredBlocks.length > 0 && (
-                  <Command.Group heading="Blocs">
-                    {filteredBlocks.map((b) => {
-                      // Tags on the block that themselves match the
-                      // query — surfaced as colored pills inline on the
-                      // row so the user sees the match comes from a tag.
-                      const q = search.trim().toLowerCase();
-                      const matchingTags = q ? b.tags.filter((t) => t.label.toLowerCase().includes(q)) : [];
-                      // Snippet rendered only when the query matched
-                      // deep in the payload — if it matched the summary
-                      // OR a tag, we already convey that elsewhere (the
-                      // summary is the row label ; the tag is its own
-                      // colored pill). Doubling with a snippet would
-                      // just clutter.
-                      const summaryMatches = b.summary.toLowerCase().includes(q);
-                      const snippet =
-                        q && !summaryMatches && matchingTags.length === 0
-                          ? (extractSnippet(b.searchText, search, 32) ?? undefined)
-                          : undefined;
-                      return (
-                        <PaletteItem
-                          key={b.id}
-                          icon={<FamilyIcon family="block" />}
-                          label={b.summary || `Bloc ${b.type}`}
-                          hint={`${(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type} · ${b.chapterTitle}`}
-                          snippet={snippet}
-                          highlight={search}
-                          matchChips={matchingTags}
-                          value={`block-${b.id}`}
-                          // primaryText duplicated so cmdk's fuzzy matcher
-                          // weighs a hit on titles/labels above one buried
-                          // in the body. summary is also high-signal so it
-                          // stays at the front. secondaryText is the long
-                          // body content — present but unweighted.
-                          //
-                          // `chapterTitle` and `chapterSlug` were
-                          // intentionally removed : including them made
-                          // every block of a chapter match whenever the
-                          // chapter's name contained the query (e.g.
-                          // searching "patient" on the chapter "Copie —
-                          // création du dossier patient" surfaced ALL its
-                          // blocks, even those whose own content had
-                          // nothing to do with "patient"). The chapter
-                          // itself still appears as its own row in the
-                          // Chapitres section if its title matches.
-                          keywords={[b.summary, b.summary, b.primaryText, b.primaryText, b.type, b.secondaryText]}
-                          onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`)}
-                        />
-                      );
-                    })}
-                  </Command.Group>
-                )}
-
-                {/* === Variables (current parcours) ===
+                  {/* === Variables (current parcours) ===
                     Hidden while a tag filter is active : variables carry no
                     maintenance tag, so they can't be scoped by one — showing
                     the full list under an active tag filter is just noise
                     (the user expects to see only what's tagged). Same
                     `!selectedTagId` guard as the Tags section above. */}
-                {!selectedTagId && (data?.variables?.length ?? 0) > 0 && (
-                  <Command.Group heading="Variables">
-                    {data!.variables.map((v) => (
-                      <PaletteItem
-                        key={v.id}
-                        icon={<FamilyIcon family="variable" />}
-                        label={v.key}
-                        hint={`${v.label} · ${v.type}`}
-                        value={`var-${v.id}`}
-                        keywords={[v.key, v.label, v.type]}
-                        onSelect={() => go(`/parcours/${ctx.parcoursSlug}/variables`)}
-                      />
-                    ))}
-                  </Command.Group>
-                )}
+                  {!selectedTagId && (data?.variables?.length ?? 0) > 0 && (
+                    <Command.Group heading="Variables">
+                      {data!.variables.map((v) => (
+                        <PaletteItem
+                          key={v.id}
+                          icon={<FamilyIcon family="variable" />}
+                          label={v.key}
+                          hint={`${v.label} · ${v.type}`}
+                          value={`var-${v.id}`}
+                          keywords={[v.key, v.label, v.type]}
+                          onSelect={() => go(`/parcours/${ctx.parcoursSlug}/variables`)}
+                        />
+                      ))}
+                    </Command.Group>
+                  )}
 
-                {/* === Parcours ===
+                  {/* === Parcours ===
                     Like Variables, hidden while a tag filter is active —
                     parcours rows carry no maintenance tag, so they're
                     irrelevant to a tag-scoped view (that's why two parcours
                     were wrongly showing under the « vue agenda » filter).
                     Shown normally otherwise, including plain text search. */}
-                {!selectedTagId && (data?.parcours?.length ?? 0) > 0 && (
-                  <Command.Group heading="Parcours">
-                    {data!.parcours.map((p) => (
-                      <PaletteItem
-                        key={p.id}
-                        icon={<FamilyIcon family="parcours" />}
-                        label={p.name}
-                        hint={p.slug}
-                        value={`parcours-${p.id}`}
-                        keywords={[p.name, p.slug]}
-                        onSelect={() => go(`/parcours/${p.slug}`)}
-                      />
-                    ))}
-                  </Command.Group>
-                )}
-              </>
-            )}
-          </Command.List>
-          <div className="hidden overflow-hidden md:block">
-            <PreviewPane
-              value={highlightedValue}
-              data={data}
-              currentParcoursSlug={ctx.parcoursSlug ?? null}
-              currentChapterTitle={currentChapterTitle}
-              scopes={registeredScopes}
-              search={search}
+                  {!selectedTagId && (data?.parcours?.length ?? 0) > 0 && (
+                    <Command.Group heading="Parcours">
+                      {data!.parcours.map((p) => (
+                        <PaletteItem
+                          key={p.id}
+                          icon={<FamilyIcon family="parcours" />}
+                          label={p.name}
+                          hint={p.slug}
+                          value={`parcours-${p.id}`}
+                          keywords={[p.name, p.slug]}
+                          onSelect={() => go(`/parcours/${p.slug}`)}
+                        />
+                      ))}
+                    </Command.Group>
+                  )}
+                </>
+              )}
+            </Command.List>
+            <div className="hidden overflow-hidden md:block">
+              <PreviewPane
+                value={highlightedValue}
+                data={data}
+                currentParcoursSlug={ctx.parcoursSlug ?? null}
+                currentChapterTitle={currentChapterTitle}
+                scopes={registeredScopes}
+                search={search}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="h-[60vh] overflow-hidden">
+            <ReplacePanel
+              rows={replaceRows}
+              searchQuery={search}
+              replaceQuery={replaceQuery}
+              excludedKeys={excludedKeys}
+              onToggle={toggleOccurrence}
+              onToggleAll={toggleAllOccurrences}
+              onApply={handleApplyReplace}
+              isApplying={isApplyingReplace}
+              loading={loading && !data}
             />
           </div>
-        </div>
+        )}
 
         <div className="border-border bg-muted/30 text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-[10px]">
           <span>

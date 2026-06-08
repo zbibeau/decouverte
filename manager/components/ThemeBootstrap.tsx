@@ -25,11 +25,19 @@ export function ThemeBootstrap() {
         __html: `
           (function () {
             try {
+              // Direction C (Lot 5) — dark mode FORCÉ par défaut :
+              // le manager est désormais un Studio sombre. La clé
+              // 'manager:theme' = 'light' reste respectée pour les
+              // éditeurs qui veulent explicitement basculer ; tout
+              // le reste (absent / 'dark' / null) → dark.
               var stored = localStorage.getItem('manager:theme');
-              var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-              var dark = stored ? stored === 'dark' : prefersDark;
+              var dark = stored !== 'light';
               if (dark) document.documentElement.classList.add('dark');
-            } catch (e) { /* localStorage indisponible — fallback clair */ }
+            } catch (e) {
+              // localStorage indisponible → dark forcé quand même,
+              // pour rester cohérent avec la direction Studio.
+              document.documentElement.classList.add('dark');
+            }
           })();
         `,
       }}

@@ -45,9 +45,7 @@ export function CardEditor({
       toast.success('Image uploadée.');
     } catch (e) {
       console.error('[CardEditor] image upload failed', e);
-      toast.error(
-        `Upload échoué : ${e instanceof Error ? e.message : String(e)}`,
-      );
+      toast.error(`Upload échoué : ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -69,11 +67,7 @@ export function CardEditor({
         />
       </Field>
 
-      <Field
-        label="Image de couverture"
-        path="image"
-        hint="Optionnelle. Affichée arrondie en haut de la carte (même style que la carte de transition de chapitre)."
-      >
+      <Field label="Image de couverture" path="image" hint="Image de couverture, arrondie en haut.">
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={payload.image ?? ''}
@@ -108,7 +102,7 @@ export function CardEditor({
               <img
                 src={payload.image}
                 alt={payload.imageAlt ?? 'Aperçu image carte'}
-                className="mt-1 h-32 w-auto rounded-lg border border-border object-cover"
+                className="border-border mt-1 h-32 w-auto rounded-lg border object-cover"
               />
             </div>
           )}
@@ -116,11 +110,7 @@ export function CardEditor({
       </Field>
 
       {payload.image && (
-        <Field
-          label="Texte alternatif (alt)"
-          path="imageAlt"
-          hint="Décris l'image pour l'accessibilité et le SEO. Laisse vide si purement décorative."
-        >
+        <Field label="Texte alternatif (alt)" path="imageAlt" hint="Décris pour l'accessibilité. Vide = décorative.">
           <Input
             value={payload.imageAlt ?? ''}
             onChange={(e) => onChange({ ...payload, imageAlt: e.target.value || undefined })}

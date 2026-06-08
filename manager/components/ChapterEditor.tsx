@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
-import { AddBlockForm } from '@/components/AddBlockForm';
+import { AddGallery } from '@/components/blocks/AddGallery';
+import { BlockThumb } from '@/components/blocks/BlockThumb';
 import type { NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
@@ -14,7 +15,6 @@ import { InlineBlockEditor } from '@/components/InlineBlockEditor';
 import { InPageSearchInput } from '@/components/InPageSearchInput';
 import { MoveIntoBlockMenu } from '@/components/MoveIntoBlockMenu';
 import { PreviewPanel } from '@/components/PreviewPanel';
-import { SearchHighlightBanner } from '@/components/SearchHighlightBanner';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
@@ -208,11 +208,11 @@ export function ChapterEditor(props: Props) {
   // keep showing its pre-insert snapshot, and the `preview:scrollToBlock`
   // sent for the new id would have nothing to target.
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
-  // Disclosure du panneau « Ajouter un bloc » (la liste des types : HERO,
-  // VIDÉO, …). Le CTA vit désormais dans le header de la card « Blocs »
-  // (coin haut-droit) au lieu d'un panneau pleine largeur au-dessus — la
-  // liste de blocs reste le focus tant que l'utilisateur ne déplie pas.
-  const [addBlockOpen, setAddBlockOpen] = useState(false);
+  // Direction C (Lot 5) — le CTA « Ajouter un bloc » dans le header
+  // de la card ouvre désormais DIRECTEMENT la galerie modale (au
+  // lieu d'un panneau replié contenant un autre bouton qui ouvre
+  // la galerie — redondance héritée de la migration Lot 2).
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   const [isPending, startTransition] = useTransition();
   const draftEnsuredRef = useRef(false);
@@ -241,11 +241,19 @@ export function ChapterEditor(props: Props) {
   }, [props.variables]);
 
   // ---- ⌘K search context ----
-  const urlQuery = searchParams.get('q')?.trim() ?? '';
-  const [localSearch, setLocalSearch] = useState(urlQuery);
-  useEffect(() => {
-    setLocalSearch(urlQuery);
-  }, [urlQuery]);
+  // At the CHAPTER level we deliberately ignore `urlQuery` — when
+  // the editor arrives from the palette we want a clean folded list,
+  // not an auto-expanded match with a snippet line and a centered
+  // scroll. The visible "Filtrer les blocs" input keeps its own
+  // state and starts empty ; only what the editor explicitly types
+  // here drives `matchedBlockIds` / `snippetByBlockId` / the auto-
+  // scroll effect below.
+  //
+  // Field-level highlights inside an OPENED block still consume
+  // `?q=` (see InlineBlockEditor) — so the editor's palette query
+  // surfaces the matching field the moment they click into the row,
+  // without polluting the chapter list on arrival.
+  const [localSearch, setLocalSearch] = useState('');
   const searchQuery = localSearch.trim();
   const matchedBlockIds = useMemo(() => {
     if (!searchQuery) return new Set<string>();
@@ -706,8 +714,13 @@ export function ChapterEditor(props: Props) {
     [createNavbarVariantAction, router],
   );
 
+  // Direction C (Lot 5) — grid 3-col implicite : Sidebar (rail,
+  // 210 px géré au niveau layout (app)/layout.tsx) | canvas éditeur
+  // (1fr, prend l'espace) | device preview (380 px, taille d'un
+  // phone confortable). L'ancien split 50/50 sous-utilisait le
+  // canvas et obligeait la preview à des cards démesurées.
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-6">
         <div>
           <Link href={`/parcours/${props.parcoursSlug}`}>
@@ -722,7 +735,11 @@ export function ChapterEditor(props: Props) {
           </p>
         </div>
 
-        <SearchHighlightBanner matchCount={matchedBlockIds.size} />
+        {/* Le bandeau jaune "Recherche : X" a été retiré : quand le
+            user arrive ici depuis ⌘K, urlQuery pilote les highlights
+            dans les blocs ci-dessous, mais la barre de filtre reste
+            vide et silencieuse — il peut taper à tout moment pour
+            affiner. */}
         <InPageSearchInput
           value={localSearch}
           onChange={setLocalSearch}
@@ -762,23 +779,26 @@ export function ChapterEditor(props: Props) {
               </div>
               <button
                 type="button"
-                onClick={() => setAddBlockOpen((o) => !o)}
-                aria-expanded={addBlockOpen}
+                onClick={() => setGalleryOpen(true)}
                 className="bg-brand-primary-600 hover:bg-brand-primary-700 shadow-brand inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors"
               >
                 <Plus className="h-4 w-4" />
                 Ajouter un bloc
-                <ChevronDown className={cn('h-4 w-4 transition-transform', addBlockOpen && 'rotate-180')} />
               </button>
             </div>
-            {/* Panneau de choix des types de blocs. Déplié uniquement quand
-                l'utilisateur clique le CTA — sinon le focus reste sur la
-                liste existante. Encadré pour matérialiser visuellement
-                qu'il est un sous-niveau du header. */}
-            {addBlockOpen && (
-              <div className="border-border bg-muted/30 mt-3 rounded-lg border p-4">
-                <AddBlockForm insertSampleAction={handleInsertSample} />
-              </div>
+            {/* La galerie d'ajout (modale) — montée juste sous le CTA
+                pour rester proche du déclencheur dans le tree React.
+                Plus de panneau replié intermédiaire : le CTA ouvre
+                directement la modale. */}
+            {galleryOpen && (
+              <AddGallery
+                insertTarget="chapter"
+                onPick={async (t) => {
+                  setGalleryOpen(false);
+                  await handleInsertSample(t);
+                }}
+                onClose={() => setGalleryOpen(false)}
+              />
             )}
           </CardHeader>
           <CardContent ref={listRef} className="max-h-[calc(100vh-280px)] overflow-y-auto">
@@ -841,31 +861,34 @@ export function ChapterEditor(props: Props) {
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         title="Éditer ce bloc (déplie l'éditeur + centre la preview)"
                       >
-                        <span className="text-muted-foreground w-6 shrink-0 font-mono text-xs">{b.order}</span>
-                        <span className="bg-muted text-muted-foreground inline-flex h-6 shrink-0 items-center rounded px-2 text-[11px] font-medium uppercase tracking-wide">
-                          {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
-                        </span>
-                        <span
-                          className={cn(
-                            'min-w-0 flex-1 truncate text-sm',
-                            // Hero titles are the chapter's anchor lines — give
-                            // them more visual weight in the row list so the
-                            // user can scan a chapter's structure at a glance.
-                            b.type === 'heroTitle' && 'font-semibold',
-                          )}
-                        >
-                          {summarizeBlock(
-                            b.type,
-                            // Use the live (unsaved) payload of the active
-                            // editor when it matches this row, so editing
-                            // e.g. a hero's title immediately updates the row
-                            // summary above instead of waiting for autosave +
-                            // refresh. Falls back to the server-side payload
-                            // for any inactive row.
-                            isActive && activeBlock?.block
-                              ? (activeBlock.block.payload as Record<string, unknown>)
-                              : b.payload,
-                          )}
+                        <span className="text-text-faint w-5 shrink-0 font-mono text-xs">{b.order}</span>
+                        <BlockThumb type={b.type as ContentBlock['type']} />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="text-text-faint font-mono text-[9px] uppercase tracking-[0.12em]">
+                            {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
+                          </span>
+                          <span
+                            className={cn(
+                              'min-w-0 truncate text-sm',
+                              // Hero titles are the chapter's anchor lines — give
+                              // them more visual weight in the row list so the
+                              // user can scan a chapter's structure at a glance.
+                              b.type === 'heroTitle' && 'font-semibold',
+                            )}
+                          >
+                            {summarizeBlock(
+                              b.type,
+                              // Use the live (unsaved) payload of the active
+                              // editor when it matches this row, so editing
+                              // e.g. a hero's title immediately updates the row
+                              // summary above instead of waiting for autosave +
+                              // refresh. Falls back to the server-side payload
+                              // for any inactive row.
+                              isActive && activeBlock?.block
+                                ? (activeBlock.block.payload as Record<string, unknown>)
+                                : b.payload,
+                            )}
+                          </span>
                         </span>
                         {(() => {
                           const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
@@ -901,15 +924,19 @@ export function ChapterEditor(props: Props) {
                         onMove={(destContainerId, destField) => handleMoveInto(b.id, destContainerId, destField)}
                         onHoverDestination={setMoveHoverDestId}
                       />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Supprimer"
+                      {/* Direction C — picto suppression discret (icbtn) :
+                          monochrome gris au repos, fond rouge translucide
+                          au hover. Le rouge plein-temps de Trash2 attirait
+                          l'œil en permanence. */}
+                      <button
+                        type="button"
                         disabled={isPending}
+                        title="Supprimer ce bloc"
                         onClick={() => handleDelete(b.id)}
+                        className="text-text-muted inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
                       >
-                        <Trash2 className="text-destructive h-4 w-4" />
-                      </Button>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                     {snippet && (
                       <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">

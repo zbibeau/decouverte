@@ -70,17 +70,29 @@
   }
 
   .dark {
-    --bg: 13 16 22; /* #0d1016 */
-    --surface: 21 25 34; /* #151922 */
-    --surface-2: 27 32 42; /* #1b202a */
-    --surface-3: 35 42 53; /* #232a35 */
-    --border: 39 45 57; /* #272d39 */
-    --border-strong: 54 61 76; /* #363d4c */
-    --text: 233 235 240; /* #e9ebf0 */
-    --text-muted: 151 160 175; /* #97a0af */
-    --text-faint: 100 109 124; /* #646d7c */
+    /* Direction C — graphite Studio.
+       Les valeurs sont alignées sur le prototype `Manager C - Studio.html` :
+       canvas = `--graphite` (#0e1117), surfaces = `--g2` / `--g3`
+       (#161b24 / #1d242f), bordures = `--gline` / `--gline2`
+       (#262d39 / #323b49), texte = `--gtext` / `--gmut` / `--gfaint`
+       (#d3d9e3 / #8b94a3 / #5d6675). Le rail (#11141b) garde sa
+       valeur existante — il reste légèrement plus clair que le
+       canvas, ce qui crée la stratification voulue rail panel ←
+       canvas (le plus profond) → blocs (les plus clairs). */
+    --bg: 14 17 23; /* #0e1117 — Direction C `--graphite` */
+    --surface: 22 27 36; /* #161b24 — Direction C `--g2` */
+    --surface-2: 29 36 47; /* #1d242f — Direction C `--g3` */
+    --surface-3: 35 42 53; /* #232a35 — non-utilisé en proto, conservé pour les usages internes */
+    --border: 38 45 57; /* #262d39 — Direction C `--gline` */
+    --border-strong: 50 59 73; /* #323b49 — Direction C `--gline2` */
+    --text: 211 217 227; /* #d3d9e3 — Direction C `--gtext` */
+    --text-muted: 139 148 163; /* #8b94a3 — Direction C `--gmut` */
+    --text-faint: 93 102 117; /* #5d6675 — Direction C `--gfaint` */
 
-    --primary: 179 136 255; /* #b388ff */
+    /* Violet de marque — l'usage reste chirurgical (sélection,
+       actions primaires). `--primary-on` est légèrement adouci
+       pour rester lisible sur la nouvelle base graphite. */
+    --primary: 179 136 255; /* #b388ff — Direction C `--accent` */
     --primary-strong: 200 168 255; /* #c8a8ff */
     --primary-on: 203 176 255; /* #cbb0ff */
     --on-primary: 36 11 64; /* #240b40 */
@@ -97,6 +109,14 @@
     --c-violet: 167 139 250;
     --c-sky: 56 189 248;
     --c-slate: 148 163 184;
+
+    /* Canvas wash — la signature visuelle Direction C : un radial
+       gradient subtil au sommet du plan de travail qui éclaire la
+       zone d'édition sans tirer l'œil. Appliqué via la classe utility
+       `.studio-canvas-wash` ci-dessous (cf. `@layer components`) ;
+       l'opacité reste cohérente avec un dégradé linéaire de 1 vers
+       transparent sur 60% de la hauteur. */
+    --canvas-wash: radial-gradient(120% 80% at 50% -10%, #131925 0%, transparent 60%);
 
     /* rail graphite inchangé en sombre — pas de redéfinition. */
   }
@@ -121,5 +141,19 @@
 
   .mfm-palette [cmdk-group]:not(:first-child) {
     @apply border-border mt-1.5 border-t pt-1.5;
+  }
+
+  /* Direction C — canvas wash. Étend l'esthétique graphite du rail
+     vers le plan de travail en dark mode via un radial-gradient subtil
+     (#131925 → transparent) ancré au sommet du conteneur. No-op en
+     mode clair : `--canvas-wash` n'est défini que sous `.dark`, donc
+     `background-image: var(--canvas-wash)` résout à `none` ailleurs.
+     À appliquer sur le wrapper le plus haut du plan de travail (le
+     `<body>` est trop large, ça interfère avec le rail). */
+  .studio-canvas-wash {
+    background-image: var(--canvas-wash);
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: 100% 60vh;
   }
 }

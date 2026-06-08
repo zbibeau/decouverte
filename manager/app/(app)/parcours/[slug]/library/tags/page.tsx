@@ -18,13 +18,13 @@ export default async function LibraryTagsPage({ params }: { params: Promise<{ sl
   const slug = decodeURIComponent(raw.slug);
   return (
     <div className="space-y-4">
-      <LibrarySectionTabs slug={slug} />
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
             <FamilyIcon family="tag" className="h-4 w-4" />
             Tags
           </CardTitle>
+          <LibrarySectionTabs slug={slug} />
         </CardHeader>
         <CardContent>
           <p className="text-text-muted mb-4 text-xs">

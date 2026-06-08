@@ -4,12 +4,12 @@ import type { ContentBlock } from '@shared/content-schema';
 import { Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { AddBlockButton } from '@/components/AddBlockButton';
+import { BlockTypeSelector } from '@/components/BlockTypeSelector';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
-import { BLOCK_TYPES_ORDER, BLOCK_TYPE_LABELS, blankBlock } from '@/lib/blockDefaults';
+import { blankBlock } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
 import { uploadImageDirect } from '@/lib/uploadImageClient';
@@ -102,26 +102,11 @@ export function TextEditor({
             Ajouter un sous-bloc transformera ce bloc texte en <strong>card</strong> contenant ton texte + le nouveau
             sous-bloc.
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {BLOCK_TYPES_ORDER.filter((t) => t !== 'heroTitle' && t !== 'componentRef').map((t) => {
-              const sample = SAMPLE_PAYLOADS[t];
-              const safeSample = sample ?? {
-                description: `Sous-bloc « ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t} ».`,
-                whenToUse: 'À utiliser comme sous-bloc imbriqué.',
-                payload: blankBlock(t).payload as Record<string, unknown>,
-              };
-              return (
-                <AddBlockButton
-                  key={t}
-                  type={t}
-                  label={(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}
-                  sample={safeSample}
-                  insertTarget="children"
-                  onInsert={() => promoteToCardWith(t)}
-                />
-              );
-            })}
-          </div>
+          <BlockTypeSelector
+            onInsert={(t) => promoteToCardWith(t)}
+            excludeTypes={new Set(['heroTitle', 'componentRef'])}
+            insertTarget="children"
+          />
         </Section>
       )}
     </div>
@@ -154,7 +139,7 @@ export function VideoEditor({ payload, onChange, navbarVariants, depth = 0 }: Pa
       <Field
         label="Titre interne (manager)"
         path="managerTitle"
-        hint="Affiché uniquement dans la liste des blocs et dans ⌘K — jamais rendu en front. Sert à distinguer plusieurs vidéos d'un même chapitre (ex. « Présentation », « Cas patient A »)."
+        hint="Affiché dans la liste + ⌘K seulement, jamais en front."
       >
         <Input
           value={payload.managerTitle ?? ''}
@@ -165,7 +150,7 @@ export function VideoEditor({ payload, onChange, navbarVariants, depth = 0 }: Pa
       <Field
         label="Source vidéo"
         path="vimeoSrc"
-        hint="Colle une URL Vimeo (vimeo/<id>?hash=<hash>), une URL MP4/WebM/MOV directe, OU upload un fichier depuis ton disque (.mp4 / .webm / .mov, 200 MB max)."
+        hint="URL Vimeo / MP4 / WebM / MOV, ou upload (.mp4 / .webm / .mov, 200 MB)."
       >
         <div className="space-y-2">
           <Input
@@ -474,7 +459,7 @@ export function HeroTitleEditor({ payload, onChange, depth = 0 }: PayloadEditorP
       <Field
         label="Sur-titre (section)"
         path="sectionTitle"
-        hint="Petite étiquette affichée au-dessus du titre. Sert souvent à rappeler le nom de la section / partie."
+        hint="Étiquette affichée au-dessus du titre (nom de section)."
       >
         <Input
           value={payload.sectionTitle ?? ''}
@@ -487,12 +472,13 @@ export function HeroTitleEditor({ payload, onChange, depth = 0 }: PayloadEditorP
           type="number"
           value={payload.number ?? 1}
           onChange={(e) => onChange({ ...payload, number: Number(e.target.value) })}
+          className="max-w-[80px]"
         />
       </Field>
       <Field
         label="Illustration"
         path="illustration"
-        hint="URL externe, chemin public (ex. /illustrations/toolbox1-header.webp) ou upload d'une image (.jpg, .png, .webp, .gif — 5 MB max)."
+        hint="URL ou upload d'image (.jpg / .png / .webp / .gif, 5 MB max)."
       >
         <div className="flex flex-wrap items-center gap-2">
           <Input
@@ -704,11 +690,7 @@ function ComponentRefPropsEditor({
   }
 
   return (
-    <Field
-      label="Props (JSON)"
-      path="props"
-      hint="Forwarded as additional props to the Solid component. Laisser vide si aucun."
-    >
+    <Field label="Props (JSON)" path="props" hint="Props JSON passées au composant. Vide = aucune.">
       <textarea
         value={draft}
         onChange={(e) => handleChange(e.target.value)}

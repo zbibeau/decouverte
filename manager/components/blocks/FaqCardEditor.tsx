@@ -1,16 +1,15 @@
 'use client';
 
 import type { FAQQuestion } from '@shared/content-schema';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useCallback } from 'react';
 
-import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
 import { ScopeRoot, useRegisterAddScope } from './AddActionsContext';
 import { FaqContentList } from './FaqContentList';
-import { Field, Section } from './Field';
+import { Field } from './Field';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
+import { TabbedItemList } from './TabbedItemList';
 import type { PayloadEditorProps } from './editor-types';
 
 type FaqPayload = {
@@ -18,12 +17,7 @@ type FaqPayload = {
   questions: FAQQuestion[];
 };
 
-export function FaqCardEditor({
-  payload,
-  onChange,
-  variables,
-  navbarVariants,
-}: PayloadEditorProps<FaqPayload>) {
+export function FaqCardEditor({ payload, onChange, variables, navbarVariants }: PayloadEditorProps<FaqPayload>) {
   function updateQuestion(idx: number, patch: Partial<FAQQuestion>) {
     const copy = payload.questions.slice();
     copy[idx] = { ...copy[idx], ...patch };
@@ -67,7 +61,7 @@ export function FaqCardEditor({
   );
 
   return (
-    <ScopeRoot scopeId="faq-questions" className="space-y-3 rounded-md p-1 -m-1">
+    <ScopeRoot scopeId="faq-questions" className="-m-1 space-y-3 rounded-md p-1">
       <Field label="Navbar pilote" path="navbar">
         <NavbarVariantSelect
           value={payload.navbar?.variant}
@@ -81,48 +75,35 @@ export function FaqCardEditor({
         />
       </Field>
 
-      {payload.questions.map((q, idx) => (
-        <Section
-          key={idx}
-          accentColor="sky"
-          title={`Question ${idx + 1}`}
-          action={
-            <div className="flex gap-1">
-              <Button variant="ghost" size="sm" onClick={() => moveQuestion(idx, -1)} disabled={idx === 0}>
-                <ArrowUp className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => moveQuestion(idx, 1)}
-                disabled={idx === payload.questions.length - 1}
-              >
-                <ArrowDown className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => removeQuestion(idx)}>
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-              </Button>
-            </div>
-          }
-        >
-          <Field label="Titre" path={`questions[${idx}].title`}>
-            <Input value={q.title} onChange={(e) => updateQuestion(idx, { title: e.target.value })} />
-          </Field>
-          <Field label="Contenu" path={`questions[${idx}].blocks`}>
-            <FaqContentList
-              blocks={q.blocks}
-              onChange={(blocks) => updateQuestion(idx, { blocks })}
-              variables={variables}
-              questionIdx={idx}
-            />
-          </Field>
-        </Section>
-      ))}
-
-      <Button variant="outline" size="sm" onClick={addQuestion}>
-        <Plus className="h-3.5 w-3.5" />
-        Ajouter une question
-      </Button>
+      {/* Direction C — questions en onglets horizontaux (au lieu du
+          stack vertical de Sections). Cohérent avec PhotoCarousel /
+          FormEditor qui utilisent déjà TabbedItemList. Réduit la
+          hauteur de l'éditeur quand il y a 4-5 questions. */}
+      <TabbedItemList
+        items={payload.questions}
+        title="Questions"
+        addLabel="Ajouter une question"
+        emptyText="Aucune question. Clique sur « Ajouter » pour en créer une."
+        getLabel={(_q, idx) => `Question ${idx + 1}`}
+        onAdd={addQuestion}
+        onRemove={removeQuestion}
+        onMove={moveQuestion}
+        renderItem={(q, idx) => (
+          <>
+            <Field label="Titre" path={`questions[${idx}].title`}>
+              <Input value={q.title} onChange={(e) => updateQuestion(idx, { title: e.target.value })} />
+            </Field>
+            <Field label="Contenu" path={`questions[${idx}].blocks`}>
+              <FaqContentList
+                blocks={q.blocks}
+                onChange={(blocks) => updateQuestion(idx, { blocks })}
+                variables={variables}
+                questionIdx={idx}
+              />
+            </Field>
+          </>
+        )}
+      />
     </ScopeRoot>
   );
 }

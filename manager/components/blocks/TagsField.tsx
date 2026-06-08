@@ -53,7 +53,18 @@ export type TagsFieldTarget =
    *  inline in the parent block's payload as `tagIds: string[]`. */
   | { kind: 'controlled'; valueIds: string[]; onChange: (next: string[]) => void };
 
-export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
+export function TagsField({
+  target,
+  onCurrentTagsChange,
+}: {
+  target?: TagsFieldTarget;
+  /** Fires whenever the LOADED set of tags on this target changes —
+   *  initial fetch, add, remove, server roundtrip. Lets the parent
+   *  (e.g. the InlineBlockEditor) reflect the current tag pills in
+   *  its own header without re-fetching them. Fires once with `[]`
+   *  during loading too. */
+  onCurrentTagsChange?: (tags: Tag[]) => void;
+} = {}) {
   const pathname = usePathname();
   const resolvedTarget = useMemo<
     | { kind: 'block'; blockId: string | null }
@@ -154,6 +165,14 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetKey, resolvedTarget.kind, controlledIdsKey, allTags]);
+
+  // Broadcast `currentTags` to the parent (when interested) so it
+  // can render its own surface — typically the collapsed Section
+  // header showing the existing pills at a glance.
+  useEffect(() => {
+    if (!onCurrentTagsChange) return;
+    onCurrentTagsChange(currentTags);
+  }, [currentTags, onCurrentTagsChange]);
 
   // Persist `next` to the server (block/chapter) OR to the parent's
   // onChange (controlled). Optimistic with rollback in DB modes.
@@ -409,20 +428,31 @@ export function TagsField({ target }: { target?: TagsFieldTarget } = {}) {
 }
 
 /**
- * Static help banner shown above every `<TagsField>`. Reminds the editor
- * that tags are a maintenance tool only — they don't render on the
- * parcours and shouldn't be repurposed for UX / SEO / etc.
+ * Collapsible help banner shown above every `<TagsField>`. Reminds
+ * the editor that tags are a maintenance tool only — they don't
+ * render on the parcours and shouldn't be repurposed for UX / SEO /
+ * etc.
+ *
+ * The reminder is now collapsed by default (`<details>`) because the
+ * editor only needs it the first few times — after that, the constant
+ * 3-line blue banner above every TagsField becomes pure noise. Click
+ * the summary to expand it on demand.
  */
 export function TagsHelpBanner({ contextHint }: { contextHint?: string }) {
   return (
-    <div className="border-border bg-muted/30 text-muted-foreground flex items-start gap-2 rounded-md border px-3 py-2 text-xs">
-      <Info className="text-primary mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <p className="leading-relaxed">
+    <details className="border-border bg-muted/30 text-muted-foreground group rounded-md border px-3 py-2 text-xs">
+      <summary className="flex cursor-pointer select-none list-none items-center gap-2">
+        <Info className="text-primary h-3.5 w-3.5 shrink-0" />
+        <span className="flex-1">À quoi servent ces tags&nbsp;?</span>
+        <span className="text-muted-foreground/70 text-[10px] group-open:hidden">Afficher l&apos;aide</span>
+        <span className="text-muted-foreground/70 hidden text-[10px] group-open:inline">Masquer</span>
+      </summary>
+      <p className="mt-2 leading-relaxed">
         Ces tags servent <strong>uniquement à la maintenance</strong> — ils t&apos;aident à retrouver ce média via ⌘K
         quand une fonctionnalité du produit évolue. Ils n&apos;ont <strong>aucun impact visuel ou navigationnel</strong>{' '}
         sur le parcours, et sont sauvegardés immédiatement (pas besoin de publier).
         {contextHint && <span className="mt-0.5 block italic">{contextHint}</span>}
       </p>
-    </div>
+    </details>
   );
 }

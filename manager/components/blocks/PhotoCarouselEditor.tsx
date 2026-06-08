@@ -192,7 +192,7 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
         <Field
           label="Défilement automatique (ms)"
           path="autoplayMs"
-          hint="0 ou vide pour désactiver. 4000 = défile toutes les 4 secondes. Pause au survol."
+          hint="0 = off. 4000 = défile toutes les 4 s. Pause au survol."
         >
           <Input
             type="number"
@@ -206,6 +206,7 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
               })
             }
             placeholder="0"
+            className="max-w-[110px]"
           />
         </Field>
       </Section>
@@ -304,7 +305,7 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
           onRemove={removePhoto}
           onMove={movePhoto}
           addLabel="URL manuelle"
-          emptyText="Aucune photo. Glisse une image dans la zone ci-dessus, ou clique sur « URL manuelle » pour saisir une URL."
+          emptyText="Aucune photo. Glisse une image ou ajoute une URL manuelle."
           renderItem={(photo, idx) => (
             <>
               {/* Action photo-spécifique : remplacer l'image en place via
@@ -338,11 +339,7 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
                 />
               </Field>
 
-              <Field
-                label="Titre (facultatif)"
-                path={`photos[${idx}].title`}
-                hint="Affiché en bas de la photo, en surimpression sur un fond translucide."
-              >
+              <Field label="Titre (facultatif)" path={`photos[${idx}].title`} hint="Surimpression en bas de la photo.">
                 <Input
                   value={photo.title ?? ''}
                   onChange={(e) => updatePhoto(idx, { title: e.target.value })}
@@ -367,7 +364,7 @@ export function PhotoCarouselEditor({ payload, onChange, navbarVariants, depth =
               <Field
                 label="Texte alternatif (alt) — accessibilité"
                 path={`photos[${idx}].alt`}
-                hint="Lu par les lecteurs d'écran. Si vide, le titre sera utilisé."
+                hint="Lecteur d'écran. Vide = fallback sur le titre."
               >
                 <Input
                   value={photo.alt ?? ''}

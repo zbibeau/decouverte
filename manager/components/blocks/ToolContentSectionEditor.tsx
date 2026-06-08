@@ -69,15 +69,12 @@ export function ToolContentSectionEditor({
           Les anciens payloads continuent de fonctionner — la valeur est
           simplement ignorée. */}
       <Section title="Ancre HTML (facultative)" accentColor="slate">
-        <Field
-          label="Anchor ID"
-          path="anchorId"
-          hint="Identifiant pour les liens internes (ex. #section-message). Laisse vide si tu n'utilises pas d'ancres."
-        >
+        <Field label="Anchor ID" path="anchorId" hint="Ancre HTML pour liens internes (ex. #section-message).">
           <Input
             value={payload.anchorId ?? ''}
             onChange={(e) => onChange({ ...payload, anchorId: e.target.value })}
             placeholder="section-message"
+            className="max-w-xs"
           />
         </Field>
       </Section>
@@ -142,7 +139,7 @@ export function ToolContentSectionEditor({
           <Field
             label="Tags de maintenance pour cette vidéo"
             path="video.tagIds"
-            hint="Utiles pour retrouver cette vidéo via ⌘K quand la fonctionnalité illustrée évolue."
+            hint="Aide à retrouver cette vidéo via ⌘K."
           >
             <TagsField
               target={{

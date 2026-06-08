@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -52,31 +53,46 @@ export function LibrarySectionTabs({ slug }: { slug: string }) {
   ];
 
   return (
-    <nav
-      // Pilule Studio identique aux onglets top-level (cohérence visuelle) :
-      // `surface-2` + `p-[3px]` + `rounded-[11px]`, onglet actif sur surface
-      // blanche + shadow douce + violet.
-      className="bg-surface-2 inline-flex gap-0.5 rounded-[11px] p-[3px]"
-      role="tablist"
-      aria-label="Sections de la bibliothèque"
-    >
-      {tabs.map((t) => (
-        <Link
-          key={t.href}
-          href={t.href}
-          role="tab"
-          aria-selected={t.active}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-[8px] px-3 py-[7px] text-[13px] transition-colors',
-            t.active
-              ? 'bg-surface text-primary-on shadow-app-sm font-medium'
-              : 'text-text-muted hover:text-text hover:bg-surface-3/60',
-          )}
-        >
-          <FamilyIcon family={t.family} className="h-4 w-4" />
-          {t.label}
-        </Link>
-      ))}
-    </nav>
+    <div className="flex flex-wrap items-center gap-2">
+      {/* Retour vers la vue Chapitres — remplace l'ancienne bande
+          ParcoursTabs supprimée. Visuellement distinct des tabs
+          (chevron + label, pas de pilule, hover discret) pour ne pas
+          se confondre avec un onglet de la même section. */}
+      <Link
+        href={base}
+        className="text-text-muted hover:text-text hover:bg-surface-3/60 inline-flex items-center gap-1.5 rounded-[8px] px-2 py-[7px] text-[13px] transition-colors"
+        title="Retour aux chapitres"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Chapitres
+      </Link>
+      <span className="bg-border h-4 w-px shrink-0" aria-hidden="true" />
+      <nav
+        // Pilule Studio identique aux onglets top-level (cohérence visuelle) :
+        // `surface-2` + `p-[3px]` + `rounded-[11px]`, onglet actif sur surface
+        // blanche + shadow douce + violet.
+        className="bg-surface-2 inline-flex gap-0.5 rounded-[11px] p-[3px]"
+        role="tablist"
+        aria-label="Sections de la bibliothèque"
+      >
+        {tabs.map((t) => (
+          <Link
+            key={t.href}
+            href={t.href}
+            role="tab"
+            aria-selected={t.active}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-[8px] px-3 py-[7px] text-[13px] transition-colors',
+              t.active
+                ? 'bg-surface text-primary-on shadow-app-sm font-medium'
+                : 'text-text-muted hover:text-text hover:bg-surface-3/60',
+            )}
+          >
+            <FamilyIcon family={t.family} className="h-4 w-4" />
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+    </div>
   );
 }

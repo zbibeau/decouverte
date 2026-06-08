@@ -1,7 +1,9 @@
+import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+
 import { ChapterList } from '@/components/ChapterList';
 import { CreateChapterForm } from '@/components/CreateChapterForm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
+import { CardWithCreateAction } from '@/components/ui/CardWithCreateAction';
 import {
   createChapter,
   deleteChapter,
@@ -214,63 +216,73 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
 
   return (
     <div className="space-y-6">
-      {/* CTA de création en tête de liste (cohérent avec Variables / Blocs) :
-          bouton pleine largeur qui déplie le formulaire d'ajout de chapitre. */}
-      <ExpandableCreatePanel label="Ajouter un chapitre">
-        <CreateChapterForm
-          createAction={createChapterAction}
-          existingSlugs={(chapters ?? []).map((c) => c.slug)}
-          ensureDraftAction={ensureDraftFromCreateChapter}
-        />
-      </ExpandableCreatePanel>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      {/* "Ajouter un chapitre" est maintenant rendu inline dans le header
+          de la card Chapitres ci-dessous — la liste reste en haut du
+          viewport, le CTA est à portée de clic à droite du titre. */}
+      <CardWithCreateAction
+        title={
+          <span className="flex items-center gap-2">
             <FamilyIcon family="chapter" className="h-4 w-4" />
-            Chapitres
-          </CardTitle>
-          <p className="text-muted-foreground text-xs">
-            {(chapters ?? []).length} chapitre(s)
-            {totalUntaggedBlocks > 0 && (
-              <>
-                {' · '}
-                <span className="font-medium text-amber-700 dark:text-amber-300">
-                  🏷 {totalUntaggedBlocks} bloc{totalUntaggedBlocks > 1 ? 's' : ''} sans tag
-                </span>
-              </>
-            )}
-          </p>
-        </CardHeader>
-        <CardContent>
-          <ChapterList
-            parcoursSlug={slug}
-            chapters={(chapters ?? []).map((c) => ({
-              id: c.id,
-              slug: c.slug,
-              title: c.title,
-              order: c.order,
-              sectionLabel: c.section_label,
-              sectionOrder: c.section_order,
-              cardImage: (c as { card_image?: string | null }).card_image,
-              cardShortTitle: (c as { card_short_title?: string | null }).card_short_title,
-              hiddenFromNav: (c as { hidden_from_nav?: boolean | null }).hidden_from_nav ?? false,
-              diff: diffs.get(c.id),
-              navbars: (navbarUsageByChapter.get(c.id) ?? []).map((key) => {
-                const v = navbarVariantByKey.get(key);
-                return { key, title: v?.title ?? key, color: v?.color };
-              }),
-              untaggedBlockCount: untaggedBlockCountByChapter.get(c.id) ?? 0,
-              blocksPreview: blocksPreviewByChapter.get(c.id) ?? [],
-            }))}
-            reorderAction={reorderChaptersAction}
-            deleteAction={deleteChapterAction}
-            duplicateAction={duplicateChapterAction}
-            updateAction={updateChapterAction}
-            moveSectionAction={moveSectionAction}
+            Chapitres <span className="text-muted-foreground font-normal">{(chapters ?? []).length}</span>
+          </span>
+        }
+        subtitle={
+          totalUntaggedBlocks > 0 ? (
+            <span className="font-medium text-amber-700 dark:text-amber-300">
+              🏷 {totalUntaggedBlocks} bloc{totalUntaggedBlocks > 1 ? 's' : ''} sans tag
+            </span>
+          ) : undefined
+        }
+        headerExtra={
+          /* Lien sortant vers la Bibliothèque — remplace l'ancienne
+             bande ParcoursTabs. Bouton secondaire (pas une pilule
+             violette) pour ne pas concurrencer le CTA primaire
+             « Ajouter un chapitre » à droite. */
+          <Link
+            href={`/parcours/${slug}/library`}
+            className="text-text-muted hover:text-text border-border hover:bg-muted/50 inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-colors"
+            title="Voir la bibliothèque (Blocs / Top bar / Variables / Tags)"
+          >
+            Bibliothèque
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        }
+        buttonLabel="Ajouter un chapitre"
+        createForm={
+          <CreateChapterForm
+            createAction={createChapterAction}
+            existingSlugs={(chapters ?? []).map((c) => c.slug)}
+            ensureDraftAction={ensureDraftFromCreateChapter}
           />
-        </CardContent>
-      </Card>
+        }
+      >
+        <ChapterList
+          parcoursSlug={slug}
+          chapters={(chapters ?? []).map((c) => ({
+            id: c.id,
+            slug: c.slug,
+            title: c.title,
+            order: c.order,
+            sectionLabel: c.section_label,
+            sectionOrder: c.section_order,
+            cardImage: (c as { card_image?: string | null }).card_image,
+            cardShortTitle: (c as { card_short_title?: string | null }).card_short_title,
+            hiddenFromNav: (c as { hidden_from_nav?: boolean | null }).hidden_from_nav ?? false,
+            diff: diffs.get(c.id),
+            navbars: (navbarUsageByChapter.get(c.id) ?? []).map((key) => {
+              const v = navbarVariantByKey.get(key);
+              return { key, title: v?.title ?? key, color: v?.color };
+            }),
+            untaggedBlockCount: untaggedBlockCountByChapter.get(c.id) ?? 0,
+            blocksPreview: blocksPreviewByChapter.get(c.id) ?? [],
+          }))}
+          reorderAction={reorderChaptersAction}
+          deleteAction={deleteChapterAction}
+          duplicateAction={duplicateChapterAction}
+          updateAction={updateChapterAction}
+          moveSectionAction={moveSectionAction}
+        />
+      </CardWithCreateAction>
     </div>
   );
 }

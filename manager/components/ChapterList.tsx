@@ -623,15 +623,11 @@ export function ChapterList({
     // the CreateChapterForm right here turns the empty state into the
     // landing CTA — one click and the author is off.
     return (
-      <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
-        <div className="text-3xl" aria-hidden="true">
-          📖
-        </div>
-        <p className="text-sm font-medium">Aucun chapitre pour l&apos;instant</p>
-        <p className="text-muted-foreground max-w-md text-xs">
-          Un chapitre regroupe les blocs (texte, vidéo, formulaire…) qu&apos;un visiteur va parcourir. Crée le premier
-          ci-dessous.
+      <div className="border-border bg-muted/30 flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-6 py-6 text-center">
+        <p className="text-sm font-medium">
+          <span aria-hidden="true">📖</span> Aucun chapitre
         </p>
+        <p className="text-muted-foreground text-xs">Crée le premier avec le bouton ci-dessus.</p>
       </div>
     );
   }

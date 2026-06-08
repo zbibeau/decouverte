@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import { useBlockIsNew, useFieldDiff } from './DiffContext';
@@ -149,10 +150,15 @@ const ACCENT_CLASSES: Record<AccentColor, { border: string; title: string }> = {
   sky: { border: 'border-l-sky-400', title: 'text-sky-700 dark:text-sky-300' },
 };
 
+type SectionTone = 'neutral' | 'warning';
+
 export function Section({
   title,
   action,
   accentColor = 'slate',
+  tone = 'neutral',
+  collapsible = false,
+  defaultOpen = true,
   children,
 }: {
   title: string;
@@ -163,13 +169,64 @@ export function Section({
    * preview (e.g. "Bloc avantages" → amber matches the rendered card).
    */
   accentColor?: AccentColor;
+  /**
+   * `'warning'` switches the WHOLE body to amber — used when the
+   * section needs to demand attention (e.g. the maintenance tags
+   * section when at least one tag slot is empty). Overrides
+   * `accentColor` visually so the warning state stays unambiguous.
+   */
+  tone?: SectionTone;
+  /**
+   * When `true`, the section renders as a native `<details>` element
+   * so the editor can fold / unfold its body. The title row stays
+   * visible (incl. tone-driven amber styling) — only the body content
+   * collapses. Used by sections whose content is secondary or only
+   * occasionally edited (e.g. maintenance tags).
+   */
+  collapsible?: boolean;
+  /**
+   * Initial open state when `collapsible`. Defaults to `true` so
+   * existing callers that opt in don't see their content disappear
+   * unexpectedly ; callers that want a quiet default explicitly pass
+   * `defaultOpen={false}`.
+   */
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
   const accent = ACCENT_CLASSES[accentColor];
+  const isWarning = tone === 'warning';
+  const bodyClass = isWarning
+    ? 'border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30'
+    : 'border-border bg-muted/20';
+  const leftBorderClass = isWarning ? 'border-l-amber-500 dark:border-l-amber-600' : accent.border;
+  const titleClass = isWarning ? 'text-amber-800 dark:text-amber-200' : accent.title;
+  const containerClass = `space-y-2 rounded-md border border-l-4 p-3 ${bodyClass} ${leftBorderClass}`;
+
+  if (collapsible) {
+    // Native <details> for accessible toggle (keyboard, screen readers).
+    // `group` + `group-open:` on the chevron lets us rotate it via CSS
+    // without any extra state. The "Afficher / Masquer" hint mirrors
+    // the pattern used by <TagsHelpBanner>.
+    return (
+      <details open={defaultOpen} className={`group ${containerClass}`}>
+        <summary className="flex cursor-pointer select-none list-none items-center justify-between gap-2">
+          <p className={`text-[11px] font-semibold uppercase tracking-wide ${titleClass}`}>{title}</p>
+          <div className="text-muted-foreground/70 flex items-center gap-2 text-[10px]">
+            {action}
+            <span className="group-open:hidden">Afficher</span>
+            <span className="hidden group-open:inline">Masquer</span>
+            <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+          </div>
+        </summary>
+        <div className="mt-2 space-y-2">{children}</div>
+      </details>
+    );
+  }
+
   return (
-    <div className={`border-border bg-muted/20 space-y-2 rounded-md border border-l-4 p-3 ${accent.border}`}>
+    <div className={containerClass}>
       <div className="flex items-center justify-between">
-        <p className={`text-[11px] font-semibold uppercase tracking-wide ${accent.title}`}>{title}</p>
+        <p className={`text-[11px] font-semibold uppercase tracking-wide ${titleClass}`}>{title}</p>
         {action}
       </div>
       {children}

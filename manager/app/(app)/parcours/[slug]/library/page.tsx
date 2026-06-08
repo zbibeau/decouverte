@@ -43,19 +43,17 @@ export default async function LibraryPage({ params }: { params: Promise<{ slug: 
 
   return (
     <div className="space-y-4">
-      <LibrarySectionTabs slug={slug} />
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
             <FamilyIcon family="block" className="h-4 w-4" />
             Blocs
           </CardTitle>
+          <LibrarySectionTabs slug={slug} />
         </CardHeader>
         <CardContent>
           <p className="text-text-muted mb-4 text-xs">
-            Tous les types de blocs disponibles avec un aperçu live. Pour chaque carte tu peux voir ce que le bloc rend,
-            et l&apos;insérer dans le chapitre de ton choix avec un contenu d&apos;exemple. Tes modifications passent
-            par le brouillon (rien n&apos;est publié jusqu&apos;à ce que tu cliques « Publier »).
+            Aperçu live de chaque type de bloc. Insère dans un chapitre avec un exemple — passe par le brouillon.
           </p>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
             {BLOCK_TYPES_ORDER.map((type) => (

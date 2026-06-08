@@ -226,7 +226,7 @@ export function KeyPointsCardEditor({ payload, onChange, variables, navbarVarian
         <Field
           label="Texte du sous-titre"
           path="main.title"
-          hint="Laisse vide pour ne pas afficher de sous-titre. Le bandeau “💡 Les points clés” reste affiché quoi qu'il arrive."
+          hint="Vide = pas de sous-titre. Le bandeau « 💡 Les points clés » reste."
         >
           <Input value={payload.main.title} onChange={(e) => updateMain({ title: e.target.value })} />
         </Field>
@@ -271,8 +271,7 @@ export function KeyPointsCardEditor({ payload, onChange, variables, navbarVarian
       >
         {(payload.groups ?? []).length === 0 ? (
           <p className="text-muted-foreground text-xs">
-            Aucun groupe. Utilise les groupes pour afficher plusieurs checklists avec titre et branchements par item (ex
-            : variante selon une variable).
+            Aucun groupe. Ajoute-en pour des checklists avec branchement par variable.
           </p>
         ) : (
           (payload.groups ?? []).map((group, gIdx) => (

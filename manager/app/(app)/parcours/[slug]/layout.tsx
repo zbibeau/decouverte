@@ -1,9 +1,9 @@
-import { ExternalLink } from 'lucide-react';
+import { ChevronDown, ExternalLink } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 
 import { DraftStatusBar } from '@/components/DraftStatusBar';
-import { ParcoursTabs } from '@/components/ParcoursTabs';
+import { DockedPreviewLayout } from '@/components/preview/DockedPreviewLayout';
 import { Badge } from '@/components/ui/Badge';
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog';
 import { getDraftStatus, listVersions, restoreVersionAsDraft } from '@/lib/actions';
@@ -110,7 +110,7 @@ export default async function ParcoursLayout({
           sont PLUS à l'intérieur — ils vivent juste sous le header, dans
           une bande dédiée centrée (voir bloc <nav /> ci-dessous). */}
       <div className="bg-surface border-border border-b">
-        <div className="mx-auto max-w-[1400px] px-[30px] pb-4 pt-[18px]">
+        <div className="mx-auto max-w-[1400px] px-[30px] pb-3 pt-[18px]">
           <div className="flex items-center gap-2">
             <h1 className="text-text text-[21px] font-semibold leading-tight">{parcours.name}</h1>
             {parcours.published_version_id ? (
@@ -118,44 +118,51 @@ export default async function ParcoursLayout({
             ) : (
               <Badge tone="warning">brouillon</Badge>
             )}
-            <div className="ml-auto">
-              {/* Streamed so the version/draft queries don't delay the shell
-                  (and thus the loading.tsx) on navigation. */}
-              <Suspense fallback={null}>
-                <HistoryButton slug={slug} loadVersions={loadVersionsAction} restoreAction={restoreAction} />
-              </Suspense>
-            </div>
+            {/* Détails techniques (slug + URL publique) — derrière un
+                <details> natif rendu comme un dropdown overlay. Plié
+                par défaut pour rendre le header plus léger : la barre
+                de titre garde uniquement nom + badge + historique
+                visibles ; le slug + URL se déplient en popover quand
+                l'éditeur en a besoin. Pas d'état React = Server
+                Component, zéro deps. */}
+            <details className="group relative ml-auto">
+              <summary
+                className="text-text-muted hover:text-text border-border hover:bg-muted/50 inline-flex h-7 cursor-pointer select-none list-none items-center gap-1 rounded-md border px-2 text-[11px] font-medium"
+                title="Slug + URL publique"
+              >
+                Détails
+                <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="bg-surface border-border absolute right-0 top-full z-20 mt-1 flex w-max max-w-[600px] flex-col gap-1 rounded-md border p-3 text-xs shadow-md">
+                <p className="text-text-muted font-mono">
+                  slug : <code className="text-text font-mono">{parcours.slug}</code>
+                </p>
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-text-muted hover:text-primary-on inline-flex items-center gap-1 font-mono transition-colors"
+                  title="Ouvrir ce parcours sur le front public (nouvel onglet)"
+                >
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                  <code className="font-mono">{publicUrl}</code>
+                </a>
+              </div>
+            </details>
+            <Suspense fallback={null}>
+              <HistoryButton slug={slug} loadVersions={loadVersionsAction} restoreAction={restoreAction} />
+            </Suspense>
           </div>
-          <p className="text-text-muted mt-1 font-mono text-xs">
-            slug : <code className="font-mono">{parcours.slug}</code>
-          </p>
-          {/* URL publique de ce parcours sur le front (varie selon le slug
-              + NEXT_PUBLIC_CLIENT_URL). Clic = ouvre dans un nouvel onglet. */}
-          <a
-            href={publicUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-text-faint hover:text-primary-on mt-0.5 inline-flex items-center gap-1 font-mono text-xs transition-colors"
-            title="Ouvrir ce parcours sur le front public (nouvel onglet)"
-          >
-            <ExternalLink className="h-3 w-3 shrink-0" />
-            <code className="font-mono">{publicUrl}</code>
-          </a>
         </div>
       </div>
-      {/* Onglets sortis de la barre du haut, centrés en bande indépendante
-          sous le header. Sélecteur positif `has-[nav]:block` : la bande
-          n'est rendue QUE quand `ParcoursTabs` émet réellement un `<nav>`.
-          Sur l'écran éditeur de chapitre, le composant renvoie `null` →
-          aucun `<nav>` descendant → la bande reste `hidden` (par défaut).
-          Le `:has(:empty)` qu'on avait avant matchait aussi les `<path>`
-          internes des SVG lucide-react (qui sont sans enfants), du coup
-          la bande était masquée même avec les tabs présents. */}
-      <div className="bg-surface border-border hidden border-b has-[nav]:block">
-        <div className="mx-auto flex max-w-[1400px] justify-center px-[30px] py-3">
-          <ParcoursTabs slug={slug} />
-        </div>
-      </div>
+      {/* La bande ParcoursTabs (Chapitres / Bibliothèque) a été
+          supprimée : la nav entre Chapitres et la sous-section
+          bibliothèque se fait maintenant via un bouton « →
+          Bibliothèque » dans le header de la card Chapitres, et un
+          retour « ← Chapitres » prepended dans le LibrarySectionTabs.
+          La bande indépendante représentait ~44 px de chrome sur
+          toutes les pages parcours non-chapter, pour ne montrer que
+          2 onglets — l'audit UX a tranché en faveur du retrait. */}
       <div className="mx-auto max-w-[1400px] space-y-4 px-[30px] py-6">
         {/* DraftStatusBar pinned to the top of the viewport while the
             visitor scrolls long chapter / block lists. Without sticky,
@@ -175,7 +182,11 @@ export default async function ParcoursLayout({
             <DraftStatusBar parcoursSlug={slug} />
           </Suspense>
         </div>
-        {children}
+        {/* DockedPreviewLayout wraps the page content with a sticky
+            right-side parcours preview on every sub-page EXCEPT the
+            chapter editor (which already owns a richer PreviewPanel).
+            See the component's docstring for the routing rule. */}
+        <DockedPreviewLayout slug={slug}>{children}</DockedPreviewLayout>
       </div>
     </div>
   );

@@ -1,14 +1,11 @@
 'use client';
 
 import type { ContentBlock } from '@shared/content-schema';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 
-import { AddBlockButton } from '@/components/AddBlockButton';
-import {
-  BLOCK_TYPES_ORDER,
-  BLOCK_TYPE_LABELS,
-  blankBlock,
-} from '@/lib/blockDefaults';
-import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
+import { AddGallery } from '@/components/blocks/AddGallery';
+import { Button } from '@/components/ui/Button';
 
 interface Props {
   /** Called when a block type is picked. Receives the slug. */
@@ -17,46 +14,51 @@ interface Props {
    *  contexts hide `heroTitle` and `componentRef` which only make sense at
    *  the top level of a chapter. */
   excludeTypes?: Set<ContentBlock['type']>;
-  /** Visual hint forwarded to AddBlockButton. */
+  /** Visual hint forwarded to AddGallery (drives the modal's header copy). */
   insertTarget?: 'chapter' | 'children';
 }
 
 /**
- * Shared row of "+ <type>" pickers used by :
- *   - `AddBlockForm` (top-level, end-of-chapter)
- *   - `ChildBlockList` (nested, inside card/conditional/toolContentSection)
+ * Single "+ Ajouter un bloc" CTA that opens the `<AddGallery>` modal.
  *
- * Centralises the BLOCK_TYPES_ORDER iteration + the safeSample fallback so
- * we don't drift between the two usages.
+ * Lot 2 of the Direction C refonte replaces the previous row of 11
+ * `<AddBlockButton>` (each with its own popover + iframe preview) by
+ * one button → one categorised modal. Faster to scan, lighter to
+ * render, and the insertion flow is unchanged (the new block opens +
+ * selects via the caller's `onInsert` callback).
+ *
+ * The picker copy adapts via `insertTarget` :
+ *   - `'chapter'` → "Ajouter un bloc" (root)
+ *   - `'children'` → "Ajouter un sous-bloc" (nested)
  */
-export function BlockTypeSelector({
-  onInsert,
-  excludeTypes,
-  insertTarget,
-}: Props) {
-  const types = BLOCK_TYPES_ORDER.filter((t) => !excludeTypes?.has(t));
+export function BlockTypeSelector({ onInsert, excludeTypes, insertTarget = 'chapter' }: Props) {
+  const [open, setOpen] = useState(false);
+  const label = insertTarget === 'children' ? 'Ajouter un sous-bloc' : 'Ajouter un bloc';
   return (
-    <div className="flex flex-wrap gap-2">
-      {types.map((t) => {
-        const curated = SAMPLE_PAYLOADS[t];
-        // Fall back to a minimal stub when no curated sample exists, so the
-        // popover preview always renders something (even if blank).
-        const safeSample = curated ?? {
-          description: `Bloc « ${BLOCK_TYPE_LABELS[t] ?? t} ».`,
-          whenToUse: 'À utiliser comme bloc dans un chapitre.',
-          payload: blankBlock(t).payload as Record<string, unknown>,
-        };
-        return (
-          <AddBlockButton
-            key={t}
-            type={t}
-            label={BLOCK_TYPE_LABELS[t] ?? t}
-            sample={safeSample}
-            insertTarget={insertTarget}
-            onInsert={() => Promise.resolve(onInsert(t))}
-          />
-        );
-      })}
-    </div>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="text-[11px] font-medium"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {label}
+      </Button>
+      {open && (
+        <AddGallery
+          insertTarget={insertTarget}
+          excludeTypes={excludeTypes}
+          onPick={async (t) => {
+            // Close BEFORE awaiting the insertion : feels snappier and
+            // the parent handles the post-insert focus / scroll.
+            setOpen(false);
+            await onInsert(t);
+          }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
   );
 }

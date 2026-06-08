@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit & refonte — Manager MadeForMed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="audit.css">
+</head>
+<body>
+
+<!-- ============================ COVER ============================ -->
+<header class="cover">
+  <div class="wrap">
+    <div class="cover-mark">
+      <span class="mfm-square">M</span>
+      <span class="mfm-mark-label">Manager · MadeForMed / Odaiji</span>
+    </div>
+    <p class="eyebrow">Audit UX/UI &amp; direction visuelle</p>
+    <h1>Éditer un parcours<br>sans éditer <em>à l'aveugle</em>.</h1>
+    <p class="lead">Audit complet du CMS de parcours et trois directions de rupture pour que créer du contenu redevienne un geste visuel — pas un formulaire à remplir en espérant que le rendu suive.</p>
+    <dl class="cover-meta">
+      <div><dt>Périmètre</dt><dd>Manager CMS (Next.js)</dd></div>
+      <div><dt>Cible</dt><dd>Auteur non-expert</dd></div>
+      <div><dt>Contrainte</dt><dd>Front &amp; schéma intacts</dd></div>
+      <div><dt>Livrable</dt><dd>Audit + 3 directions</dd></div>
+      <div><dt>Date</dt><dd>Juin 2026</dd></div>
+    </dl>
+  </div>
+</header>
+
+<!-- ============================ 00 CADRE ============================ -->
+<section id="cadre">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">00</span><h2>Le cadre</h2></div>
+    <p class="sec-intro">Le manager sert à composer des parcours pédagogiques destinés aux médecins. Un chapitre = une pile de <em>blocs</em> (hero, vidéo, texte, formulaire, condition…), certains pouvant contenir des <em>sous-blocs</em>. Le front public restitue tout ça en scroll plein écran.</p>
+    <div class="cols-2-7-5">
+      <div>
+        <p class="muted" style="margin-bottom:18px">J'ai lu l'architecture réelle : <span class="code-chip">ChapterEditor</span> (l'écran de travail), <span class="code-chip">ChildBlockList</span> (les sous-blocs), <span class="code-chip">AddBlockButton</span> (l'ajout) et les tokens « D·Studio ». L'audit qui suit ne juge pas le code — il juge ce que <em>vit l'auteur</em> face à l'écran.</p>
+        <p class="muted">Trois faits structurent tout le reste : l'édition se fait dans des <strong>champs à gauche</strong>, le rendu dans une <strong>iframe à droite</strong> ; un « bloc » <strong>ne se comporte pas pareil</strong> selon sa profondeur ; et l'interface <strong>s'explique en prose</strong> au lieu de se montrer.</p>
+      </div>
+      <div class="dir-meta" style="grid-template-columns:1fr;margin-top:0">
+        <div class="box">
+          <h5>Ce qui marche déjà</h5>
+          <ul>
+            <li>Un brouillon vivant + publication par revue : solide.</li>
+            <li>Le popover d'ajout montre un aperçu live du bloc — bonne intuition.</li>
+            <li>Recherche exhaustive ⌘K, tags de maintenance, dark mode.</li>
+          </ul>
+        </div>
+        <div class="box watch">
+          <h5>Ce qui coince</h5>
+          <ul>
+            <li>L'auteur ne sait pas à quoi ressemblera son chapitre.</li>
+            <li>Le geste « ajouter un sous-bloc » est confus et incohérent.</li>
+            <li>Densité de texte et de jargon qui noie la décision.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 01 SYNTHÈSE ============================ -->
+<section id="synthese">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Trois problèmes racines</h2></div>
+    <p class="sec-intro">Tout le reste découle de ces trois-là. Les régler, c'est régler 80 % du ressenti « je suis un peu perdu ».</p>
+    <div class="problems">
+
+      <article class="problem">
+        <div class="problem-num">01</div>
+        <div>
+          <h3>L'auteur édite à l'aveugle</h3>
+          <p>On tape dans des champs de formulaire à gauche ; le rendu vit dans une iframe séparée à droite, qu'il faut garder synchronisée à la main. Le code en dit long : des minuteries (<span class="code-chip">1,2 s</span>, <span class="code-chip">900 ms</span>) et trois drapeaux de garde empêchent les deux panneaux de « se battre » au scroll. Quand on règle ça par des minuteries, c'est que le modèle est faux : <em>édition</em> et <em>rendu</em> sont deux endroits au lieu d'un.</p>
+          <p class="quote">« Quand je crée du contenu, je reste un peu perdu sur le rendu final projeté. »</p>
+          <span class="impact">● Conséquence : pas de confiance dans le résultat</span>
+        </div>
+      </article>
+
+      <article class="problem">
+        <div class="problem-num">02</div>
+        <div>
+          <h3>Le même objet, trois comportements</h3>
+          <p>Un « bloc » se manipule différemment selon où il est. <strong>À la racine</strong> : glisser-déposer, tags, dupliquer, déplacer, badges. <strong>En sous-bloc</strong> : flèches ↑↓ (pas de drag), pas de tags, pas de dupliquer, et un accordéon qui n'ouvre qu'un élément à la fois. <strong>À l'ajout</strong>, encore un autre motif. L'auteur doit réapprendre les règles à chaque niveau de profondeur.</p>
+          <span class="impact">● Conséquence : charge mentale, gestes ratés</span>
+        </div>
+      </article>
+
+      <article class="problem">
+        <div class="problem-num">03</div>
+        <div>
+          <h3>Tout se lit, rien ne se voit</h3>
+          <p>Chaque ligne de bloc empile jusqu'à <strong>neuf signaux</strong> (numéro, chip de type en majuscules, résumé, pastille navbar, tags ou « ⚠ Sans tag », badge de diff, plus quatre boutons). Le vocabulaire est technique — « Tool content section », « Conditionnel », « Composant custom » — et chaque surface se double d'un paragraphe d'explication. On déchiffre l'interface au lieu de la parcourir.</p>
+          <p class="quote">« Trop de texte + une UX sortie de ma tête, et je ne suis pas un expert. »</p>
+          <span class="impact">● Conséquence : lenteur, hésitation, erreurs</span>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 02 AUDIT ANNOTÉ ============================ -->
+<section id="audit">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Audit annoté de l'écran actuel</h2></div>
+    <p class="sec-intro">Reconstitution fidèle de l'éditeur de chapitre tel qu'il est aujourd'hui. Les pastilles renvoient aux constats détaillés sous la figure.</p>
+
+    <figure class="figure">
+      <figcaption class="figure-cap">Éditeur de chapitre — état actuel <span class="tag-state">tel quel</span></figcaption>
+      <div class="scaler">
+      <div class="mock-shell">
+        <!-- pins -->
+        <div class="pin" style="top:26px;left:610px">1</div>
+        <div class="pin" style="top:123px;left:612px">2</div>
+        <div class="pin" style="top:260px;left:227px">3</div>
+        <div class="pin" style="top:404px;left:227px">4</div>
+        <div class="pin" style="top:26px;left:1048px">5</div>
+
+        <div class="win">
+          <!-- graphite rail -->
+          <aside class="win-rail">
+            <div class="rail-top"><span class="rail-sq">M</span><span style="font-weight:600;font-size:13px">Manager</span></div>
+            <div class="rail-sec">Parcours</div>
+            <div class="rail-item active"><span class="rail-dot" style="background:#c6a8f5">D</span><span>Démo ventes</span></div>
+            <div class="rail-item"><span class="rail-dot" style="background:#ffd8a5">O</span><span>Onboarding</span></div>
+            <div class="rail-item"><span class="rail-dot" style="background:#bdd9ff">T</span><span>Téléconsult</span></div>
+            <div style="margin-top:auto;padding:12px 14px;border-top:1px solid var(--graphite-line);font-size:10px;color:#6a7382;font-family:var(--ff-mono)">vivien@madeformed.fr</div>
+          </aside>
+
+          <!-- main: list + preview -->
+          <div class="win-main">
+            <!-- left card: blocks -->
+            <div class="win-card" style="align-self:start">
+              <div class="win-card-head">
+                <div>
+                  <div class="win-card-title">▦ Blocs</div>
+                  <div class="win-card-sub">7 bloc(s). Clique sur un bloc pour l'éditer ici ; le panneau de droite suit.</div>
+                  <div class="win-card-sub" style="color:var(--ocre)">🏷 3 blocs sans tag dans ce chapitre</div>
+                </div>
+                <button class="btn-primary">+ Ajouter un bloc ⌄</button>
+              </div>
+              <div>
+                <div class="blk-row sel">
+                  <span class="blk-grip">⠿</span><span class="blk-chev">▾</span><span class="blk-order">0</span>
+                  <span class="blk-type">Hero</span><span class="blk-sum" style="font-weight:600">Mieux gérer votre cabinet</span>
+                  <span class="blk-pill pill-tag">🏷 V1</span><span class="blk-act">⧉</span><span class="blk-act">⤵</span><span class="blk-act del">🗑</span>
+                </div>
+                <div class="blk-row">
+                  <span class="blk-grip">⠿</span><span class="blk-chev">▸</span><span class="blk-order">1</span>
+                  <span class="blk-type">Vidéo</span><span class="blk-sum">vimeo/849213…</span>
+                  <span class="blk-pill pill-warn">⚠ Sans tag</span><span class="blk-act">⧉</span><span class="blk-act">⤵</span><span class="blk-act del">🗑</span>
+                </div>
+                <div class="blk-row">
+                  <span class="blk-grip">⠿</span><span class="blk-chev">▾</span><span class="blk-order">2</span>
+                  <span class="blk-type">Card</span><span class="blk-sum">Conteneur · 2 sous-blocs</span>
+                  <span class="blk-pill pill-new">Nouveau</span><span class="blk-act">⧉</span><span class="blk-act">⤵</span><span class="blk-act del">🗑</span>
+                </div>
+                <!-- nested sub-block region -->
+                <div class="subwrap">
+                  <div class="subwrap-head">children · sous-blocs</div>
+                  <div class="sub-row">
+                    <span class="blk-chev">▸</span><span class="blk-type">Texte</span><span class="blk-sum">Un assistant qui décroche…</span>
+                    <span class="sub-arrows">▲ ▼</span><span class="blk-act del">🗑</span>
+                  </div>
+                  <div class="sub-row added">
+                    <span class="blk-chev">▾</span><span class="blk-type">Key points</span><span class="blk-sum">Titre principal</span>
+                    <span class="sub-arrows">▲ ▼</span><span class="blk-act del">🗑</span>
+                  </div>
+                  <div class="typebar">
+                    <span class="type-btn">+ Hero</span><span class="type-btn">+ Vidéo</span><span class="type-btn">+ Texte</span>
+                    <span class="type-btn">+ Key points</span><span class="type-btn">+ FAQ</span><span class="type-btn">+ Card</span>
+                    <span class="type-btn">+ Formulaire</span><span class="type-btn">+ Conditionnel</span><span class="type-btn">+ Tool content section</span>
+                  </div>
+                </div>
+                <div class="blk-row">
+                  <span class="blk-grip">⠿</span><span class="blk-chev">▸</span><span class="blk-order">3</span>
+                  <span class="blk-type">Formulaire</span><span class="blk-sum">Pour une démo personnalisée</span>
+                  <span class="blk-pill pill-mod">Modifié</span><span class="blk-act">⧉</span><span class="blk-act">⤵</span><span class="blk-act del">🗑</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- right card: preview iframe -->
+            <div class="win-preview" style="align-self:start;min-height:430px">
+              <div class="win-preview-bar"><span>⟳ Aperçu</span><span>· brouillon</span><span style="margin-left:auto">localhost:3100</span></div>
+              <div class="win-preview-body">
+                <div class="preview-hero">
+                  <div class="pv-num">1</div>
+                  <h4>Mieux gérer<br>votre cabinet</h4>
+                </div>
+              </div>
+              <div class="win-preview-foot"><span class="dot-iframe"><span></span><span></span><span></span></span><span>iframe distante · re-fetch au reload</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </figure>
+
+    <!-- annotations -->
+    <div class="annot-list" style="margin-top:30px">
+      <div class="annot">
+        <div class="annot-pin">1</div>
+        <div>
+          <h4>Le CTA d'ajout ouvre un panneau, qui ouvre un popover, qui contient une iframe <span class="sev sev-med">Friction</span></h4>
+          <p>Trois niveaux d'imbrication avant de poser un bloc. L'aperçu live (bonne idée) est enfoui dans une fenêtre de 420 px au lieu d'occuper la place de travail.</p>
+        </div>
+      </div>
+      <div class="annot">
+        <div class="annot-pin">2</div>
+        <div>
+          <h4>Neuf signaux par ligne, tous de même poids <span class="sev sev-high">Critique</span></h4>
+          <p>Grip, chevron, numéro, chip de type, résumé, pastille, tag/« sans tag », badge de diff, et 3-4 actions. Rien ne hiérarchise : le titre du bloc se noie au milieu de la maintenance et des emojis (🏷 ⚠ 🗑).</p>
+        </div>
+      </div>
+      <div class="annot">
+        <div class="annot-pin">3</div>
+        <div>
+          <h4>Les sous-blocs sont un sous-monde aux règles différentes <span class="sev sev-high">Critique</span></h4>
+          <p>Réordonner se fait aux flèches ↑↓ (pas de drag comme à la racine), pas de tags, pas de dupliquer, accordéon à un seul ouvert, et l'étiquette technique « children · sous-blocs » fuite à l'écran. C'est le geste que vous avez pointé — il porte le maximum d'incohérence.</p>
+        </div>
+      </div>
+      <div class="annot">
+        <div class="annot-pin">4</div>
+        <div>
+          <h4>La barre de types : un mur de 9-11 boutons en majuscules <span class="sev sev-med">Friction</span></h4>
+          <p>Aucune catégorie, aucune icône, du jargon brut. « Tool content section » et « Conditionnel » ont le même poids visuel que « Texte ». Un non-expert ne peut pas décider sans cliquer chacun.</p>
+        </div>
+      </div>
+      <div class="annot">
+        <div class="annot-pin">5</div>
+        <div>
+          <h4>L'aperçu est un écran à part, à tenir synchronisé <span class="sev sev-high">Critique</span></h4>
+          <p>Iframe distante qui ne reflète en live que le bloc <em>actif</em> ; le reste se recharge par à-coups. La relation « ce que je tape → ce que ça donne » est cassée. C'est la racine n°1.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 03 PRINCIPES ============================ -->
+<section id="principes">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Cinq principes de refonte</h2></div>
+    <p class="sec-intro">Le socle commun aux trois directions qui suivent. Indépendant du style : ce sont des règles de comportement, pas de couleur.</p>
+    <div class="principles">
+      <div class="principle">
+        <div class="p-idx">P1</div>
+        <h3>Éditer sur le rendu, pas à côté</h3>
+        <p>L'écran de travail montre le parcours tel qu'il sera. On clique un élément pour le modifier en place. L'aperçu n'est plus un second panneau à synchroniser : c'est la surface elle-même.</p>
+        <div class="versus"><span class="from">— formulaire à gauche / iframe à droite</span><span class="to">+ une seule surface, directe</span></div>
+      </div>
+      <div class="principle">
+        <div class="p-idx">P2</div>
+        <h3>Un seul modèle de bloc</h3>
+        <p>Un bloc se manipule de la même façon partout : même geste de réordonnancement, même menu, même collapse — qu'il soit à la racine ou imbriqué à trois niveaux. La profondeur se voit, elle ne se réapprend pas.</p>
+        <div class="versus"><span class="from">— drag à la racine, flèches en sous-bloc</span><span class="to">+ un geste, toutes profondeurs</span></div>
+      </div>
+      <div class="principle">
+        <div class="p-idx">P3</div>
+        <h3>Montrer, pas décrire</h3>
+        <p>Icônes, miniatures et aperçus remplacent les paragraphes d'aide et le jargon. Le type d'un bloc se reconnaît à sa forme. La maintenance (tags, diff) passe au second plan, à la demande.</p>
+        <div class="versus"><span class="from">— « Tool content section » + 2 lignes d'aide</span><span class="to">+ une vignette qui se reconnaît</span></div>
+      </div>
+      <div class="principle">
+        <div class="p-idx">P4</div>
+        <h3>Ajouter, c'est voir avant de poser</h3>
+        <p>Un seul geste d'ajout, identique à tous les niveaux : un « + » à l'endroit exact, un menu catégorisé avec aperçu, l'élément se pose là où on l'a demandé et reçoit le focus. Fini les trois motifs concurrents.</p>
+        <div class="versus"><span class="from">— panneau ▸ popover ▸ iframe</span><span class="to">+ « + » contextuel ▸ pose immédiate</span></div>
+      </div>
+      <div class="principle">
+        <div class="p-idx">P5</div>
+        <h3>Le violet ne sert qu'à agir</h3>
+        <p>On garde le <span class="code-chip">#822EEF</span> de marque, mais réservé aux actions et à la sélection. Les neutres portent la structure. Une couleur = un sens : l'œil sait toujours où cliquer.</p>
+        <div class="versus"><span class="from">— violet, ocre, ambre, emeraude partout</span><span class="to">+ violet = action, le reste = neutre</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 04 GESTE CLÉ ============================ -->
+<section id="geste">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Le geste clé, repensé</h2></div>
+    <p class="sec-intro">Ajouter un sous-bloc dans une <em>Card</em>, puis le replier — exactement le moment que vous avez pointé. Voici comment il se déroule après refonte, en quatre temps.</p>
+    <div class="story">
+
+      <div class="frame">
+        <div class="frame-stage">
+          <div class="mc mc-card" style="top:30px">
+            <div style="font-family:var(--ff-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--violet-700)">▦ Card</div>
+            <div class="mc-sub" style="margin-top:8px">Texte — « Un assistant qui décroche… »</div>
+            <div class="mc-plus" style="margin-top:8px;width:100%;justify-content:center">+ Ajouter dans cette card</div>
+          </div>
+        </div>
+        <div class="frame-cap">
+          <div class="frame-step">TEMPS 1</div>
+          <h4>Le « + » est dans la card</h4>
+          <p>Pas une barre de 11 boutons en bas de page : un seul ajout, ancré à l'intérieur du conteneur visé.</p>
+        </div>
+      </div>
+
+      <div class="frame">
+        <div class="frame-stage">
+          <div class="mc mc-card" style="top:24px">
+            <div style="font-family:var(--ff-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--violet-700)">▦ Card</div>
+            <div class="mc-sub" style="margin-top:8px">Texte</div>
+          </div>
+          <div class="mc-menu" style="top:96px;left:22px;right:22px">
+            <div style="font-family:var(--ff-mono);font-size:9px;color:var(--ink-3);padding:3px 8px">CONTENU</div>
+            <div class="mc-menu-item"><span class="mc-ico">¶</span>Texte</div>
+            <div class="mc-menu-item hi"><span class="mc-ico">◆</span>Key points</div>
+            <div class="mc-menu-item"><span class="mc-ico">▦</span>FAQ</div>
+          </div>
+        </div>
+        <div class="frame-cap">
+          <div class="frame-step">TEMPS 2</div>
+          <h4>Un menu qui se reconnaît</h4>
+          <p>Catégorisé, avec icônes et aperçu. On choisit « Key points » d'un coup d'œil, sans lire de définition.</p>
+        </div>
+      </div>
+
+      <div class="frame">
+        <div class="frame-stage">
+          <div class="mc mc-card" style="top:30px">
+            <div style="font-family:var(--ff-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--violet-700)">▦ Card</div>
+            <div class="mc-sub" style="margin-top:8px">Texte</div>
+            <div class="mc-sub" style="margin-top:6px;border-style:solid;border-color:var(--violet);background:#fff;box-shadow:0 0 0 3px rgba(130,46,239,.15)">
+              <div style="font-weight:600;color:var(--ink)">◆ Key points — sélectionné</div>
+              <div style="font-size:9px;color:var(--ink-3);margin-top:3px">Édité en place · focus auto</div>
+            </div>
+          </div>
+        </div>
+        <div class="frame-cap">
+          <div class="frame-step">TEMPS 3</div>
+          <h4>Il se pose, ouvert, sélectionné</h4>
+          <p>Le sous-bloc apparaît exactement dans la card, déjà ouvert et focalisé. Plus de chasse au « scroll + flash émeraude ».</p>
+        </div>
+      </div>
+
+      <div class="frame">
+        <div class="frame-stage">
+          <div class="mc mc-card" style="top:44px">
+            <div style="font-family:var(--ff-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--violet-700)">▦ Card · 2 éléments</div>
+            <div class="mc-sub mc-collapsed" style="margin-top:8px"><span class="mc-ico">¶</span><span style="color:var(--ink)">Texte</span><span style="margin-left:auto;color:var(--ink-3)">▸</span></div>
+            <div class="mc-sub mc-collapsed" style="margin-top:6px"><span class="mc-ico">◆</span><span style="color:var(--ink)">Key points</span><span style="margin-left:auto;color:var(--ink-3)">▸</span></div>
+          </div>
+        </div>
+        <div class="frame-cap">
+          <div class="frame-step">TEMPS 4</div>
+          <h4>Replié = une ligne nette</h4>
+          <p>Le collapse rend une barre compacte, icône + titre. La card se lit d'un coup ; on déplie ce qu'on veut, autant qu'on veut.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 05 DIRECTIONS ============================ -->
+<section id="directions">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Trois directions visuelles</h2></div>
+    <p class="sec-intro">Même écran, même geste, trois partis pris de rupture — tous ancrés sur le violet de marque. À choisir, ou à mixer (le canvas de A, la densité-type de B, la galerie d'icônes de C…).</p>
+
+    <!-- DIRECTION A -->
+    <div class="dir dirA">
+      <div class="dir-head">
+        <div class="dir-tagline"><span class="dir-letter">A</span><h3>Canvas</h3></div>
+        <p class="dir-sub">Le formulaire disparaît. L'écran de travail <em>est</em> le parcours rendu. On clique un bloc, un inspecteur léger s'ouvre à droite ; les sous-blocs sont des cartes imbriquées <em>dans</em> leur card, sur le canvas. Lumineux, aéré, le chrome s'efface.</p>
+      </div>
+      <div class="scaler">
+      <div class="mock-shell">
+        <div class="stage">
+          <div class="canvasA">
+            <div class="cA-hero">
+              <div class="badge">1</div>
+              <h4>Mieux gérer votre cabinet</h4>
+            </div>
+            <div class="cA-block selected">
+              <div class="cA-flag">Sélectionné · Card</div>
+              <div style="font-weight:600;font-size:15px">Pourquoi ça change tout</div>
+              <div class="cA-card-nest">
+                <div class="cA-nest-label">◆ Sous-blocs de la card</div>
+                <div class="cA-subcard"><span class="mc-ico">¶</span>Texte — « Un assistant qui décroche… »<span style="margin-left:auto;color:var(--ink-3)">▸</span></div>
+                <div class="cA-subcard" style="border-color:var(--violet);box-shadow:0 0 0 2px rgba(130,46,239,.12)"><span class="mc-ico">◆</span>Key points — Titre principal<span style="margin-left:auto;color:var(--ink-3)">▾</span></div>
+                <button class="cA-addnest">+ Ajouter un sous-bloc</button>
+              </div>
+            </div>
+          </div>
+          <aside class="inspectorA">
+            <div class="insp-eyebrow">Inspecteur · Key points</div>
+            <div class="insp-title">Contenu</div>
+            <div class="insp-field"><label>Titre principal</label><div class="insp-input">Titre principal</div></div>
+            <div class="insp-field"><label>Points clés</label><div class="insp-input" style="color:var(--ink-3)">+ Ajouter un point</div></div>
+            <div class="insp-field"><label>Variante</label><div class="insp-input">Par défaut ⌄</div></div>
+          </aside>
+        </div>
+      </div>
+      </div>
+      <div class="swatches" aria-hidden="true">
+        <span class="swatch" style="background:#f6f4fb"></span><span class="swatch" style="background:#fff"></span>
+        <span class="swatch" style="background:var(--violet)"></span><span class="swatch" style="background:var(--violet-900)"></span>
+        <span class="swatch" style="background:#b480ff"></span><span class="swatch" style="background:var(--ink)"></span>
+      </div>
+      <div class="dir-meta">
+        <div class="box fix">
+          <h5>Ce que ça règle</h5>
+          <ul>
+            <li><strong>Racine n°1</strong> : on édite littéralement sur le rendu.</li>
+            <li>Les sous-blocs vivent <em>dans</em> leur card, visuellement.</li>
+            <li>L'inspecteur isole un seul champ à la fois → moins de texte.</li>
+          </ul>
+        </div>
+        <div class="box watch">
+          <h5>À surveiller</h5>
+          <ul>
+            <li>Rendre les conteneurs invisibles (Conditionnel) cliquables.</li>
+            <li>Le canvas doit refléter les variables du simulateur.</li>
+            <li>Demande le plus de travail d'intégration côté front.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIRECTION B -->
+    <div class="dir dirB">
+      <div class="dir-head">
+        <div class="dir-tagline"><span class="dir-letter">B</span><h3>Outline éditorial</h3></div>
+        <p class="dir-sub">Le parcours comme un document structuré : une colonne unique, typographique. Chaque bloc est une ligne d'outline qu'on déplie au triangle, les sous-blocs s'indentent sous leur parent. Ajout par menu « / ». Papier chaud, hiérarchie portée par le <em>type</em>, pas par les badges. La cure d'amaigrissement du « trop de texte ».</p>
+      </div>
+      <div class="mock-shell">
+        <div class="stage">
+          <div class="outlineB">
+            <div class="oB-eyebrow">Chapitre 01 · Démo ventes</div>
+            <div class="oB-h">Mieux gérer votre cabinet</div>
+
+            <div class="oB-line">
+              <span class="oB-toggle">▸</span><span class="oB-tick">Hero</span>
+              <div class="oB-body"><div class="t">Mieux gérer votre cabinet</div></div>
+            </div>
+            <div class="oB-line">
+              <span class="oB-toggle">▸</span><span class="oB-tick">Vidéo</span>
+              <div class="oB-body"><div class="t">Présentation — 1 min 40</div><div class="d">vimeo/849213</div></div>
+            </div>
+            <div class="oB-line">
+              <span class="oB-toggle">▾</span><span class="oB-tick">Card</span>
+              <div class="oB-body">
+                <div class="t">Pourquoi ça change tout</div>
+                <div class="oB-nest">
+                  <div class="oB-subline"><span class="oB-toggle">▸</span><span class="oB-subtick">Texte</span><span class="oB-sub-t">Un assistant qui décroche le téléphone…</span></div>
+                  <div class="oB-subline"><span class="oB-toggle">▾</span><span class="oB-subtick">Key pts</span><span class="oB-sub-t">Titre principal</span></div>
+                  <div class="oB-slash">
+                    <div class="q">/ key…</div>
+                    <div class="oB-slash-item"><span class="oB-mini-ico">¶</span>Texte</div>
+                    <div class="oB-slash-item hi"><span class="oB-mini-ico">◆</span>Key points</div>
+                    <div class="oB-slash-item"><span class="oB-mini-ico">▦</span>FAQ</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="oB-line">
+              <span class="oB-toggle">▸</span><span class="oB-tick">Formulaire</span>
+              <div class="oB-body"><div class="t">Pour une démo personnalisée</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="swatches" aria-hidden="true">
+        <span class="swatch" style="background:#f3eee4"></span><span class="swatch" style="background:#fff"></span>
+        <span class="swatch" style="background:#2a2415"></span><span class="swatch" style="background:#a07c2e"></span>
+        <span class="swatch" style="background:var(--violet)"></span><span class="swatch" style="background:#e0d8c4"></span>
+      </div>
+      <div class="dir-meta">
+        <div class="box fix">
+          <h5>Ce que ça règle</h5>
+          <ul>
+            <li><strong>Le « trop de texte »</strong> : le type fait la hiérarchie, zéro badge superflu.</li>
+            <li>L'imbrication se lit comme un plan : indentation = profondeur.</li>
+            <li>Ajout par « / » : rapide, familier, sans quitter le clavier.</li>
+          </ul>
+        </div>
+        <div class="box watch">
+          <h5>À surveiller</h5>
+          <ul>
+            <li>L'aperçu visuel se fait dans un volet séparé (moins « WYSIWYG »).</li>
+            <li>Maintenir un repère pour tags/diff sans réimporter le bruit.</li>
+            <li>Le parti chaud s'éloigne le plus de l'actuel — assumer la rupture.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIRECTION C -->
+    <div class="dir dirC">
+      <div class="dir-head">
+        <div class="dir-tagline"><span class="dir-letter">C</span><h3>Studio dark / command</h3></div>
+        <p class="dir-sub">On assume le graphite du rail et on l'étend à tout l'espace. Outil pro, piloté au clavier (⌘K d'abord), violet luminescent en accent. Les blocs sont des « stacks » à forte typo, l'aperçu est un vrai device docké en permanence, et l'ajout passe par une galerie d'icônes — visuelle, pas textuelle.</p>
+      </div>
+      <div class="scaler">
+      <div class="mock-shell">
+        <div class="stage">
+          <div class="canvasC">
+            <div class="cC-topbar">
+              <div style="font-family:var(--ff-display);font-weight:600;color:#fff;font-size:16px">Démo ventes · Ch. 01</div>
+              <div class="cC-cmd">⌘ Ajouter, chercher, aller à…<span class="cC-kbd">⌘K</span></div>
+            </div>
+            <div class="cC-stack">
+              <div class="cC-block">
+                <div style="display:flex;gap:12px;align-items:center"><span class="cC-thumb"></span><div><div class="cC-eyebrow">Hero</div><h4>Mieux gérer votre cabinet</h4></div></div>
+              </div>
+              <div class="cC-block active">
+                <div style="display:flex;gap:12px;align-items:center"><span class="cC-thumb"></span><div><div class="cC-eyebrow">Card · active</div><h4>Pourquoi ça change tout</h4></div></div>
+                <div class="cC-nest">
+                  <div class="cC-nest-h">◆ Sous-blocs</div>
+                  <div class="cC-subrow"><span style="color:#b388ff">¶</span>Texte — « Un assistant… »<span style="margin-left:auto;color:#6a7382">▸</span></div>
+                  <div class="cC-subrow" style="border-color:#b388ff"><span style="color:#b388ff">◆</span>Key points — Titre principal<span style="margin-left:auto;color:#6a7382">▾</span></div>
+                  <button class="cC-add">+ Sous-bloc</button>
+                </div>
+              </div>
+              <div class="cC-block">
+                <div style="display:flex;gap:12px;align-items:center"><span class="cC-thumb"></span><div><div class="cC-eyebrow">Formulaire</div><h4>Pour une démo personnalisée</h4></div></div>
+              </div>
+            </div>
+          </div>
+          <aside class="deviceC">
+            <div class="deviceC-label">⟳ Aperçu live · synchronisé</div>
+            <div class="deviceC-screen">
+              <div style="text-align:center"><div class="dev-num">1</div><h5>Mieux gérer votre cabinet</h5></div>
+            </div>
+            <div style="margin-top:14px"><div class="cC-nest-h">Ajouter — galerie</div>
+              <div class="gallery" style="margin-top:8px">
+                <div class="gal-item" style="background:var(--graphite-2);border-color:var(--graphite-line)"><div class="gal-thumb" style="background:#241a36;color:#cbb0ff">¶</div><div class="gal-name" style="color:#fff">Texte</div></div>
+                <div class="gal-item" style="background:var(--graphite-2);border-color:#b388ff"><div class="gal-thumb" style="background:#241a36;color:#cbb0ff">◆</div><div class="gal-name" style="color:#fff">Key pts</div></div>
+                <div class="gal-item" style="background:var(--graphite-2);border-color:var(--graphite-line)"><div class="gal-thumb" style="background:#241a36;color:#cbb0ff">▦</div><div class="gal-name" style="color:#fff">FAQ</div></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+      </div>
+      <div class="swatches" aria-hidden="true">
+        <span class="swatch" style="background:var(--graphite)"></span><span class="swatch" style="background:var(--graphite-2)"></span>
+        <span class="swatch" style="background:#b388ff"></span><span class="swatch" style="background:var(--violet-700)"></span>
+        <span class="swatch" style="background:#cbb0ff"></span><span class="swatch" style="background:#fff"></span>
+      </div>
+      <div class="dir-meta">
+        <div class="box fix">
+          <h5>Ce que ça règle</h5>
+          <ul>
+            <li>Aperçu device <strong>toujours visible</strong> et synchronisé.</li>
+            <li>Galerie d'icônes : choisir un type sans lire de jargon.</li>
+            <li>Continuité directe avec le rail graphite « D·Studio » actuel.</li>
+          </ul>
+        </div>
+        <div class="box watch">
+          <h5>À surveiller</h5>
+          <ul>
+            <li>Contraste/accessibilité en tout-sombre (médecins, longues sessions).</li>
+            <li>Le ⌘K-first suppose un onboarding minimal des raccourcis.</li>
+            <li>Garder l'aperçu device fidèle aux breakpoints réels du front.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- comparison -->
+    <h3 style="font-size:22px;margin:48px 0 18px">D'un coup d'œil</h3>
+    <table class="cmp">
+      <thead>
+        <tr><th>Critère</th><th>A · Canvas</th><th>B · Outline</th><th>C · Studio dark</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Règle « édition à l'aveugle »</td><td class="yes">Au plus fort</td><td class="mid">Volet d'aperçu</td><td class="yes">Device docké</td></tr>
+        <tr><td>Règle « trop de texte »</td><td class="mid">Bien</td><td class="yes">Au plus fort</td><td class="yes">Bien</td></tr>
+        <tr><td>Proximité avec l'existant</td><td>Moyenne</td><td>Faible (rupture)</td><td class="yes">Forte (rail repris)</td></tr>
+        <tr><td>Effort d'intégration</td><td>Élevé</td><td class="yes">Modéré</td><td>Moyen</td></tr>
+        <tr><td>Tempérament</td><td>Clair, aéré, grand public</td><td>Chaud, rédactionnel, calme</td><td>Pro, dense, focus</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================ 06 NEXT ============================ -->
+<section id="next" style="border-bottom:0">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Prochaines étapes</h2></div>
+    <p class="sec-intro">Un chemin progressif, qui ne casse rien et se réintègre proprement dans Claude Code.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div>
+          <h4>Choisir une direction (ou un mix)</h4>
+          <p>Mon conseil : <strong>A · Canvas</strong> comme cible — c'est la réponse la plus directe à « je suis perdu sur le rendu ». On peut y greffer la <em>densité typographique</em> de B et la <em>galerie d'icônes</em> de C. Si l'on veut minimiser le risque d'intégration, démarrer par <strong>C</strong> (le rail graphite existe déjà).</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <div>
+          <h4>Unifier le modèle de bloc d'abord</h4>
+          <p>Avant tout pixel : faire converger bloc racine et sous-bloc sur <strong>un seul composant</strong> (même drag, même menu, même collapse). C'est le gain le plus rentable et il est indépendant du style retenu.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <div>
+          <h4>Prototyper le geste clé, puis l'écran</h4>
+          <p>Je peux transformer la direction choisie en <strong>prototype cliquable</strong> : ajouter un sous-bloc, le replier, le réordonner, voir le rendu suivre. On valide le ressenti avant d'écrire la moindre ligne dans le manager.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">4</div>
+        <div>
+          <h4>Réintégrer par couches, sans toucher au contrat</h4>
+          <p>La refonte est purement présentation : on remplace la couche d'UI du manager sans modifier le rendu ni les données. Du low-risk au high-impact, écran par écran.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <span class="ch">⚠ Garde-fous d'intégration</span>
+      <p>Tout est branché à un front. À <strong>ne pas toucher</strong> lors de la réintégration : le schéma partagé <span class="code-chip">shared/content-schema.ts</span> (contrat front ↔ back), le protocole d'aperçu <span class="code-chip">preview:setBlockOverride</span> &amp; consorts (postMessage), et le mécanisme brouillon/publication. La refonte vit <strong>au-dessus</strong> de ces contrats — elle ne les redéfinit pas.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap" style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;width:100%">
+    <span>Audit &amp; refonte — Manager MadeForMed / Odaiji</span>
+    <span>Document de travail · Juin 2026</span>
+  </div>
+</footer>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#822eef"/>
+    <rect x="30" y="30" width="40" height="40" rx="9" fill="#fff"/>
+    <text x="50" y="64" font-family="sans-serif" font-size="34" font-weight="700" fill="#822eef" text-anchor="middle">M</text>
+  </svg>
+</template>
+
+<script>
+  // Lock the fixed-layout mocks to their 1100px design width and scale them
+  // to fit any viewport — keeps pin coordinates and side panels valid instead
+  // of reflowing them out of place.
+  (function () {
+    function fit() {
+      document.querySelectorAll('.scaler').forEach(function (s) {
+        var inner = s.querySelector('.mock-shell');
+        if (!inner) return;
+        var dw = 1100;
+        var scale = Math.min(1, s.clientWidth / dw);
+        inner.style.transform = 'scale(' + scale + ')';
+        s.style.height = (inner.offsetHeight * scale) + 'px';
+      });
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+    fit();
+  })();
+</script>
+
+</body>
+</html>

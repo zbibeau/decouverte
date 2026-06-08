@@ -1,17 +1,13 @@
 import type { ContentBlock } from '@shared/content-schema';
-import { Trash2 } from 'lucide-react';
 
-import { ConfirmForm } from '@/components/ConfirmForm';
 import { LibrarySectionTabs } from '@/components/library/LibrarySectionTabs';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ExpandableCreatePanel } from '@/components/ui/ExpandableCreatePanel';
-import { Input } from '@/components/ui/Input';
+import { CardWithCreateAction } from '@/components/ui/CardWithCreateAction';
 import { AddVariableForm } from '@/components/variables/AddVariableForm';
-import { ValueMapInput } from '@/components/variables/ValueMapInput';
-import { VariableAccordionItem } from '@/components/variables/VariableAccordionItem';
-import { VariableHeader } from '@/components/variables/VariableHeader';
-import { VariableOptionsForm } from '@/components/variables/VariableOptionsForm';
+import {
+  VariablesListWithDrawer,
+  type UsageEntry,
+  type VariableRow,
+} from '@/components/variables/VariablesListWithDrawer';
 import {
   createVariable,
   deleteVariable,
@@ -24,43 +20,16 @@ import { FamilyIcon } from '@/lib/familyIcons';
 import { createClient } from '@/lib/supabase/server';
 import { extractUsedVariableKeys } from '@/lib/usedVariables';
 
-type VariableOption = { value: string; label: string };
-
-type VariableRow = {
-  id: string;
-  key: string;
-  label: string;
-  type: string;
-  options: unknown;
-  hubspot_mapping: { property?: string; valueMap?: Record<string, unknown> } | null;
-};
-
-/** Keys we can pre-fill / lock in the Hubspot valueMap editor. */
-function deriveLockedKeys(v: VariableRow): string[] | undefined {
-  if (v.type === 'enum') {
-    return ((v.options as VariableOption[]) ?? []).map((o) => o.value);
-  }
-  if (v.type === 'boolean') {
-    return ['true', 'false'];
-  }
-  return undefined;
-}
-
 export default async function VariablesPage({ params }: { params: Promise<{ slug: string }> }) {
   const raw = await params;
   const slug = decodeURIComponent(raw.slug);
   const supabase = await createClient();
 
   // Resolve parcoursId + active versionId in ONE call (cached via
-  // React.cache in `getParcoursVersionInfo`). Drops the previous
-  // `select parcours.id` query AND the sequential `await
-  // getEditingVersionId(slug)` further down — both are now folded
-  // into a single shared lookup.
+  // React.cache in `getParcoursVersionInfo`).
   const { parcoursId, versionId } = await resolveParcoursIds(slug);
 
-  // Variables + per-version blocks fetched in parallel (independent
-  // queries that previously ran sequentially). Halves the wall time
-  // of this page on large parcours.
+  // Variables + per-version blocks fetched in parallel.
   const [variablesRes, blocksRes] = await Promise.all([
     parcoursId
       ? supabase
@@ -76,224 +45,98 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
           .eq('chapter.version_id', versionId)
       : Promise.resolve({ data: null }),
   ]);
-  const variables = variablesRes.data;
+  const variables = (variablesRes.data ?? []) as VariableRow[];
 
-  // Aggregate variable-usage counts across the parcours's active version
-  // (draft if any, else published). For each block we walk into nested
-  // conditional / card / faqCard payloads with `extractUsedVariableKeys`
-  // and accumulate per-key counts + a sample chapter slug to deep-link
-  // the author when they hover the badge. Rendered as a small pill next
-  // to each variable header in the list below.
-  const usage = new Map<string, { count: number; sampleChapterSlug: string | null }>();
-  {
-    if (versionId) {
-      const blocks = blocksRes.data;
-      for (const row of blocks ?? []) {
-        const block: ContentBlock = {
-          type: row.type,
-          payload: (row.payload ?? {}) as never,
-        } as ContentBlock;
-        const refs = extractUsedVariableKeys([block]);
-        const chapterRaw = (row as unknown as { chapter: unknown }).chapter;
-        const chapterRef = Array.isArray(chapterRaw)
-          ? ((chapterRaw as { slug: string }[])[0]?.slug ?? null)
-          : ((chapterRaw as { slug: string } | null)?.slug ?? null);
-        for (const key of refs) {
-          const cur = usage.get(key) ?? { count: 0, sampleChapterSlug: null };
-          cur.count += 1;
-          if (!cur.sampleChapterSlug) cur.sampleChapterSlug = chapterRef;
-          usage.set(key, cur);
-        }
+  // Aggregate variable-usage counts across the active version. Walks
+  // payloads with `extractUsedVariableKeys` (conditionals, cards, FAQ)
+  // and also counts FormBlock fields whose `key` matches a variable.
+  const usage: Record<string, UsageEntry> = {};
+  if (versionId) {
+    const blocks = blocksRes.data;
+    for (const row of blocks ?? []) {
+      const block: ContentBlock = {
+        type: row.type,
+        payload: (row.payload ?? {}) as never,
+      } as ContentBlock;
+      const refs = extractUsedVariableKeys([block]);
+      const chapterRaw = (row as unknown as { chapter: unknown }).chapter;
+      const chapterRef = Array.isArray(chapterRaw)
+        ? ((chapterRaw as { slug: string }[])[0]?.slug ?? null)
+        : ((chapterRaw as { slug: string } | null)?.slug ?? null);
+      for (const key of refs) {
+        const cur = usage[key] ?? { count: 0, sampleChapterSlug: null };
+        cur.count += 1;
+        if (!cur.sampleChapterSlug) cur.sampleChapterSlug = chapterRef;
+        usage[key] = cur;
       }
-      // FormBlock fields also COLLECT variables — count them too so a
-      // form that asks for `firstName` shows usage even if no condition
-      // references it. The FormField type carries `key` matching the
-      // variable's key.
-      for (const row of blocks ?? []) {
-        if (row.type !== 'form') continue;
-        const fields = ((row.payload as { fields?: Array<{ key?: string }> }).fields ?? []) as Array<{ key?: string }>;
-        for (const f of fields) {
-          if (!f.key) continue;
-          const cur = usage.get(f.key) ?? {
-            count: 0,
-            sampleChapterSlug: null,
-          };
-          cur.count += 1;
-          usage.set(f.key, cur);
-        }
+    }
+    for (const row of blocks ?? []) {
+      if (row.type !== 'form') continue;
+      const fields = ((row.payload as { fields?: Array<{ key?: string }> }).fields ?? []) as Array<{ key?: string }>;
+      for (const f of fields) {
+        if (!f.key) continue;
+        const cur = usage[f.key] ?? { count: 0, sampleChapterSlug: null };
+        cur.count += 1;
+        usage[f.key] = cur;
       }
     }
   }
 
   const createAction = createVariable.bind(null, slug);
 
+  // ---- Server actions bound by parcoursSlug, taking variableId as
+  // first arg. Passed to the client list and re-bound per-variable
+  // when the drawer opens.
+  async function deleteAction(variableId: string) {
+    'use server';
+    await deleteVariable(slug, variableId);
+  }
+  async function renameAction(variableId: string, nextKey: string, nextLabel: string) {
+    'use server';
+    await renameVariable(slug, variableId, nextKey, nextLabel);
+  }
+  async function updateOptionsAction(variableId: string, fd: FormData) {
+    'use server';
+    await updateVariableOptions(slug, variableId, fd);
+  }
+  async function updateHubspotAction(variableId: string, fd: FormData) {
+    'use server';
+    await updateVariableHubspotMapping(slug, variableId, fd);
+  }
+
   return (
-    <div className="space-y-6">
-      <LibrarySectionTabs slug={slug} />
-      {/* Full-width call-to-action : creating a variable is the primary
-          action on this page, so it sits at the very top and spans the
-          width. Clicking it reveals the (otherwise hidden) creation form
-          right below — no more scrolling to the bottom of the page. */}
-      <ExpandableCreatePanel label="Créer une variable">
-        <p className="text-muted-foreground mb-4 text-xs">
-          Une variable, c'est une information que tu collectes auprès du visiteur du parcours (par exemple « Statut du
-          patient ») et que tu réutilises ensuite pour personnaliser le contenu (conditions, formulaires, mapping
-          Hubspot…).
-        </p>
-        <AddVariableForm createAction={createAction} />
-      </ExpandableCreatePanel>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+    <div className="space-y-4">
+      <CardWithCreateAction
+        title={
+          <span className="flex items-center gap-2">
             <FamilyIcon family="variable" className="h-4 w-4" />
-            Variables du parcours
-          </CardTitle>
-          <p className="text-muted-foreground text-xs">
-            {(variables ?? []).length} variable(s) · clique sur une variable pour déplier son détail.
-          </p>
-        </CardHeader>
-        <CardContent className="divide-border divide-y">
-          {((variables ?? []) as VariableRow[]).map((v) => {
-            const u = usage.get(v.key);
-            const usageCount = u?.count ?? 0;
-            return (
-              <VariableAccordionItem
-                key={v.id}
-                name={v.key}
-                type={v.type}
-                usageSlot={
-                  usageCount > 0 ? (
-                    <a
-                      href={
-                        u?.sampleChapterSlug ? `/parcours/${slug}/chapters/${u.sampleChapterSlug}` : `/parcours/${slug}`
-                      }
-                      title={
-                        u?.sampleChapterSlug
-                          ? `Voir un bloc qui référence cette variable (chapitre « ${u.sampleChapterSlug} »)`
-                          : 'Voir les références'
-                      }
-                      className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/50"
-                    >
-                      {usageCount} bloc{usageCount > 1 ? 's' : ''} ↗
-                    </a>
-                  ) : (
-                    <span
-                      title="Cette variable n'est référencée nulle part — sa suppression n'aura aucun impact visible."
-                      className="border-border bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                    >
-                      Non utilisée
-                    </span>
-                  )
-                }
-                deleteSlot={
-                  <ConfirmForm
-                    message={
-                      usageCount > 0
-                        ? `Supprimer la variable « ${v.key} » ?\n${usageCount} bloc(s) la référencent — ils continueront de tenter de la lire et tomberont sur "undefined".\nÉdite ces blocs avant de supprimer si tu veux éviter des silent breaks.`
-                        : `Supprimer la variable « ${v.key} » ?\nElle n'est référencée nulle part — suppression sans impact.`
-                    }
-                    action={async () => {
-                      'use server';
-                      await deleteVariable(slug, v.id);
-                    }}
-                  >
-                    <Button variant="ghost" size="sm" type="submit" title="Supprimer">
-                      <Trash2 className="text-destructive h-4 w-4" />
-                    </Button>
-                  </ConfirmForm>
-                }
-              >
-                {/* Detail (revealed on expand) : rename + enum options +
-                    Hubspot mapping. Server actions stay bound here in the
-                    page; the accordion only toggles visibility. */}
-                <div className="flex flex-wrap items-center gap-3">
-                  <VariableHeader
-                    variableId={v.id}
-                    initialKey={v.key}
-                    initialLabel={v.label}
-                    type={v.type}
-                    enumPreview={
-                      v.type === 'enum' ? ((v.options as VariableOption[]) ?? []).map((o) => o.value).join(', ') : ''
-                    }
-                    renameAction={async (variableId, nextKey, nextLabel) => {
-                      'use server';
-                      await renameVariable(slug, variableId, nextKey, nextLabel);
-                    }}
-                  />
-                </div>
-
-                {/* Options editor — enum only. Auto-save sur chaque modif
-                    (drag-and-drop, ajout, suppression, édition d'un value/
-                    label) avec toast de confirmation — plus de bouton
-                    « Enregistrer » à cliquer, l'utilisateur ne risque plus
-                    d'oublier de sauver et de perdre ses réordonnancements. */}
-                {v.type === 'enum' && (
-                  <div className="border-border/60 bg-muted/20 rounded-md border p-3">
-                    <VariableOptionsForm
-                      initial={(v.options as VariableOption[]) ?? []}
-                      saveAction={async (fd) => {
-                        'use server';
-                        await updateVariableOptions(slug, v.id, fd);
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Hubspot mapping editor */}
-                <form
-                  action={async (fd) => {
-                    'use server';
-                    await updateVariableHubspotMapping(slug, v.id, fd);
-                  }}
-                  className="border-border/60 bg-muted/30 space-y-2 rounded-md border p-3"
-                >
-                  <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
-                    <div className="space-y-1">
-                      <label className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
-                        Hubspot property
-                      </label>
-                      <Input
-                        name="hsProperty"
-                        defaultValue={v.hubspot_mapping?.property ?? ''}
-                        placeholder="ma_propriete_hs"
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
-                        Mapping valeur → label Hubspot
-                      </label>
-                      <ValueMapInput
-                        name="hsValueMap"
-                        initial={v.hubspot_mapping?.valueMap ?? {}}
-                        lockedKeys={deriveLockedKeys(v)}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="submit" size="sm" variant="outline">
-                      Enregistrer Hubspot
-                    </Button>
-                  </div>
-                </form>
-              </VariableAccordionItem>
-            );
-          })}
-          {(!variables || variables.length === 0) && (
-            <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
-              <div className="text-3xl" aria-hidden="true">
-                🧩
-              </div>
-              <p className="text-sm font-medium">Aucune variable pour ce parcours</p>
-              <p className="text-muted-foreground max-w-md text-xs">
-                Une variable est une donnée collectée auprès du visiteur (ex. « importNecessaire = oui/non ») qui pilote
-                les blocs conditionnels. Crée la première avec le bouton « Créer une variable » ci-dessus.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            Variables <span className="text-muted-foreground font-normal">{variables.length}</span>
+          </span>
+        }
+        headerExtra={<LibrarySectionTabs slug={slug} />}
+        buttonLabel="Créer une variable"
+        createForm={
+          <>
+            <p className="text-muted-foreground mb-3 text-xs">
+              Donnée collectée auprès du visiteur (ex. « statut du patient ») pour piloter conditions / formulaires /
+              Hubspot.
+            </p>
+            <AddVariableForm createAction={createAction} />
+          </>
+        }
+      >
+        <div className="-mx-5 px-5">
+          <VariablesListWithDrawer
+            parcoursSlug={slug}
+            variables={variables}
+            usage={usage}
+            deleteAction={deleteAction}
+            renameAction={renameAction}
+            updateOptionsAction={updateOptionsAction}
+            updateHubspotAction={updateHubspotAction}
+          />
+        </div>
+      </CardWithCreateAction>
     </div>
   );
 }

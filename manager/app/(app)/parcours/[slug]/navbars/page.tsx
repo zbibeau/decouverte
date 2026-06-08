@@ -24,13 +24,13 @@ export default async function NavbarsPage({ params }: { params: Promise<{ slug: 
 
   return (
     <div className="space-y-4">
-      <LibrarySectionTabs slug={slug} />
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
             <FamilyIcon family="navbar" className="h-4 w-4" />
             Top bar
           </CardTitle>
+          <LibrarySectionTabs slug={slug} />
         </CardHeader>
         <CardContent>
           <NavbarVariantsEditor parcoursSlug={slug} initial={variants} saveAction={saveAction} />

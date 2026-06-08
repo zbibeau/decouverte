@@ -18,7 +18,6 @@ import { SimulatorProvider } from '@/components/blocks/SimulatorContext';
 import { TagsField, TagsHelpBanner } from '@/components/blocks/TagsField';
 import { DraftBlockDiffPanel } from '@/components/DraftBlockDiffPanel';
 import { InPageSearchInput } from '@/components/InPageSearchInput';
-import { SearchHighlightBanner } from '@/components/SearchHighlightBanner';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
 import {
@@ -27,7 +26,7 @@ import {
   findMissingNestedTagSlots,
   harvestNestedTagIds,
 } from '@/lib/blockSearch';
-import { loadBlockTags } from '@/lib/tags';
+import { isTagColor, TAG_COLOR_HEX, type Tag } from '@/lib/tagColors';
 
 /**
  * Headless-ish block editor BODY extracted from `BlockEditor.tsx`.
@@ -119,25 +118,16 @@ export function InlineBlockEditor(props: Props) {
   const active = props.active ?? true;
 
   // ---- ⌘K search context ------------------------------------------------
+  // urlQuery drives the SILENT field-level highlight pass (so the
+  // editor sees which inputs matched their palette query without
+  // re-typing). The visible "Filtrer les champs" input keeps its own
+  // state, starting empty — we no longer auto-fill it from urlQuery
+  // because the user found that combo of pre-populated input + yellow
+  // banner too noisy. Manual input takes over the moment they type ;
+  // clear it back to empty and urlQuery rules again.
   const urlQuery = searchParams.get('q')?.trim() ?? '';
-  const [localSearch, setLocalSearch] = useState(() => {
-    if (!urlQuery) return '';
-    const matches = findMatchingFieldPaths(props.initialPayload as unknown, urlQuery);
-    return matches.length > 0 ? urlQuery : '';
-  });
-  useEffect(() => {
-    if (!urlQuery) {
-      setLocalSearch('');
-      return;
-    }
-    const matches = findMatchingFieldPaths(block.payload, urlQuery);
-    setLocalSearch(matches.length > 0 ? urlQuery : '');
-    // Only re-seed when the URL query itself changes — otherwise editing a
-    // matched field would clear the input the instant the substring goes away.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlQuery]);
-
-  const searchQuery = localSearch.trim();
+  const [localSearch, setLocalSearch] = useState('');
+  const searchQuery = localSearch.trim() || urlQuery;
   const searchMatchPaths = useMemo(() => {
     if (!searchQuery) return new Set<string>();
     return new Set(findMatchingFieldPaths(block.payload, searchQuery));
@@ -158,6 +148,21 @@ export function InlineBlockEditor(props: Props) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
+
+  // ---- Current block tags + missing-tag detection ----
+  // `currentBlockTags` is null while the fetch is in-flight (so we
+  // don't flash an amber "à ajouter" state during the first paint).
+  // The TagsField below pushes its loaded list up via
+  // `onCurrentTagsChange`, replacing the redundant `loadBlockTags`
+  // call we used to do here and giving the Section header live tag
+  // pills that follow add/remove operations without a refetch.
+  const [currentBlockTags, setCurrentBlockTags] = useState<Tag[] | null>(null);
+  const handleCurrentTagsChange = useCallback((tags: Tag[]) => {
+    setCurrentBlockTags(tags);
+  }, []);
+  const nestedMissingSlots = useMemo(() => findMissingNestedTagSlots(block.payload), [block.payload]);
+  const topLevelMissing = currentBlockTags !== null && currentBlockTags.length === 0;
+  const missingTagsCount = (topLevelMissing ? 1 : 0) + nestedMissingSlots.length;
 
   // Last payload we successfully persisted, used to skip redundant auto-saves.
   const lastSavedRef = useRef<string>(JSON.stringify(props.initialPayload));
@@ -305,19 +310,63 @@ export function InlineBlockEditor(props: Props) {
 
   return (
     <div className="space-y-4">
-      {/* ⌘K search context surfaced when arriving from the palette. */}
-      <SearchHighlightBanner />
+      {/* Le bandeau jaune "Recherche : X" a été retiré : urlQuery
+          ci-dessus pilote silencieusement les highlights de champs
+          quand on arrive depuis ⌘K, et la barre de filtre reste
+          vide. Le user peut taper à tout moment pour affiner. */}
       <InPageSearchInput
         value={localSearch}
         onChange={setLocalSearch}
         placeholder="🔍 Filtrer les champs de ce bloc…"
       />
+      {/* Central "Tags de maintenance" section — moved up here so the
+          editor sees the tag status BEFORE the payload editor. When at
+          least one tag slot is empty (top-level OR a nested
+          taggable child), the whole section turns amber via
+          `tone="warning"` and the count is reflected in the title.
+          The dedicated MissingTagsBanner that previously sat in this
+          position has been removed — its information is now folded
+          into this single visual surface. */}
       {!isCreating && (
-        <MissingTagsBanner
-          blockId={props.blockId}
-          payload={block.payload as Record<string, unknown>}
-          blockType={props.type}
-        />
+        <Section
+          title={missingTagsCount > 0 ? `Tags de maintenance — ${missingTagsCount} à ajouter` : 'Tags de maintenance'}
+          accentColor="slate"
+          tone={missingTagsCount > 0 ? 'warning' : 'neutral'}
+          collapsible
+          // Folded by default — the amber title + "N à ajouter" count
+          // (when warning) AND the inline coloured pills (when tags
+          // exist) already give the editor everything they need to
+          // scan the tag status. They unfold only when they want to
+          // act (add / remove).
+          defaultOpen={false}
+          action={
+            currentBlockTags && currentBlockTags.length > 0 ? (
+              <div className="flex items-center gap-1 whitespace-nowrap">
+                {currentBlockTags.map((t) => {
+                  const hex = isTagColor(t.color) ? TAG_COLOR_HEX[t.color] : TAG_COLOR_HEX.amber;
+                  return (
+                    <span
+                      key={t.id}
+                      className="inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                      style={{ backgroundColor: hex.chip, color: hex.text }}
+                      title={`Tag de maintenance : ${t.label}`}
+                    >
+                      {t.label}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null
+          }
+        >
+          <TagsHelpBanner contextHint="Aide à retrouver ce bloc via ⌘K quand une fonctionnalité produit évolue." />
+          {/* Explicit blockId : the unified chapter view's URL doesn't carry
+              the block id (it's `/parcours/<slug>/chapters/<chapter>?block=…`,
+              not the legacy `/blocks/<id>` route), so without this prop the
+              TagsField falls back to URL parsing → null → renders the
+              misleading "save first" placeholder for already-saved blocks. */}
+          <TagsField target={{ kind: 'block', blockId: props.blockId }} onCurrentTagsChange={handleCurrentTagsChange} />
+        </Section>
       )}
       {!isCreating && (
         <DraftBlockDiffPanel
@@ -349,18 +398,9 @@ export function InlineBlockEditor(props: Props) {
         </DiffProvider>
       </NavbarVariantCreateProvider>
 
-      {/* Central "Tags de maintenance" section — shared by every block type. */}
-      {!isCreating && (
-        <Section title="Tags de maintenance" accentColor="slate">
-          <TagsHelpBanner contextHint="Aide à retrouver ce bloc via ⌘K quand une fonctionnalité produit évolue." />
-          {/* Explicit blockId : the unified chapter view's URL doesn't carry
-              the block id (it's `/parcours/<slug>/chapters/<chapter>?block=…`,
-              not the legacy `/blocks/<id>` route), so without this prop the
-              TagsField falls back to URL parsing → null → renders the
-              misleading "save first" placeholder for already-saved blocks. */}
-          <TagsField target={{ kind: 'block', blockId: props.blockId }} />
-        </Section>
-      )}
+      {/* "Tags de maintenance" was here historically — it has been
+          relocated to the top of the form (see above) so the editor
+          sees the tag status BEFORE diving into the payload. */}
 
       <div className="border-border bg-surface/95 sticky bottom-0 flex items-center gap-3 rounded-md border p-2 shadow-sm backdrop-blur">
         {isCreating ? (
@@ -438,93 +478,8 @@ export function SaveIndicator({ status, manualSave }: { status: SaveStatus; manu
   }
 }
 
-/* --------------------------------------------------------------------- */
-/* MissingTagsBanner                                                     */
-/* --------------------------------------------------------------------- */
-
-/**
- * Banner pinned at the top of the block editor that surfaces every EMPTY
- * maintenance-tag slot in the current block (top-level via `block_tag` +
- * nested children slots). Read-only checklist ; the actual TagsField widgets
- * live in their sub-sections. Disappears once all slots are filled.
- */
-function MissingTagsBanner({
-  blockId,
-  payload,
-  blockType,
-}: {
-  blockId: string;
-  payload: Record<string, unknown>;
-  blockType: string;
-}) {
-  const [topLevelHasTag, setTopLevelHasTag] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadBlockTags(blockId)
-      .then((tags) => {
-        if (!cancelled) setTopLevelHasTag(tags.length > 0);
-      })
-      .catch(() => {
-        if (!cancelled) setTopLevelHasTag(true); // optimistic — don't nag on a transient fetch error
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [blockId, payload]);
-
-  const nestedSlots = useMemo(() => findMissingNestedTagSlots(payload), [payload]);
-  const topLevelMissing = topLevelHasTag === false;
-  const totalMissing = (topLevelMissing ? 1 : 0) + nestedSlots.length;
-  if (totalMissing === 0) return null;
-
-  const TOP_LEVEL_LABEL: Record<string, string> = {
-    video: 'Vidéo',
-    heroTitle: 'Bandeau de titre',
-    photoCarousel: 'Photo carousel',
-    toolContentSection: 'Tool section',
-    card: 'Card',
-    keyPointsCard: 'Key points',
-    faqCard: 'FAQ',
-    text: 'Texte',
-    form: 'Formulaire',
-    conditional: 'Conditionnel',
-    componentRef: 'Composant custom',
-    chapterTransition: 'Transition de chapitre',
-  };
-  const topLabel = TOP_LEVEL_LABEL[blockType] ?? blockType;
-
-  return (
-    <div
-      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
-      data-testid="missing-tags-banner"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">🏷 Tags à ajouter ({totalMissing}) —</span>
-        {topLevelMissing && (
-          <span
-            className="bg-surface inline-flex items-center gap-1 rounded-full border border-amber-300 px-2 py-0.5 text-[11px] font-medium dark:border-amber-700/60"
-            title="Le bloc lui-même n'a pas encore de tag de maintenance"
-          >
-            <span aria-hidden="true">⚠</span>
-            <span>Ce bloc ({topLabel})</span>
-          </span>
-        )}
-        {nestedSlots.map((slot, i) => (
-          <span
-            key={`${slot.path}-${i}`}
-            className="bg-surface inline-flex items-center gap-1 rounded-full border border-amber-300 px-2 py-0.5 text-[11px] font-medium dark:border-amber-700/60"
-            title={`Sous-bloc ${slot.label} sans tag (path : ${slot.path})`}
-          >
-            <span aria-hidden="true">⚠</span>
-            <span>Sous-bloc {slot.label}</span>
-          </span>
-        ))}
-      </div>
-      <p className="mt-1.5 text-[10px] italic text-amber-700/80 dark:text-amber-300/80">
-        Ces tags se renseignent dans les sous-sections « Tags de maintenance » ci-dessous. Cette zone disparaît dès que
-        tous les slots sont remplis.
-      </p>
-    </div>
-  );
-}
+/* MissingTagsBanner has been removed — its information is now folded
+ * into the central "Tags de maintenance" Section at the top of the
+ * form, which turns amber (tone="warning") with a "N à ajouter"
+ * suffix in the title when at least one tag slot is empty (top-level
+ * OR any nested taggable child). See `missingTagsCount` upstream. */

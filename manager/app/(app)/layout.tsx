@@ -63,7 +63,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex min-h-screen">
           <ScrollResetOnNavigate />
           <Sidebar email={user.email ?? ''} parcours={parcoursItems} />
-          <main className="flex-1 overflow-y-auto">{children}</main>
+          {/* `studio-canvas-wash` — Direction C : ajoute un radial-gradient
+              subtle au sommet du plan de travail en mode sombre (no-op en
+              clair). Étend l'esthétique graphite du rail vers le canvas. */}
+          <main className="studio-canvas-wash flex-1 overflow-y-auto">{children}</main>
           <CommandPalette />
         </div>
       </AddActionsProvider>

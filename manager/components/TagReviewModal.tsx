@@ -9,63 +9,148 @@ import { TagsField } from '@/components/blocks/TagsField';
 import { Button } from '@/components/ui/Button';
 import type { BrokenVariableRef, DraftTagReviewSummary } from '@/lib/actions';
 import { isTagColor, TAG_COLOR_HEX } from '@/lib/tagColors';
+import { cn } from '@/lib/utils';
 
 /**
- * Pre-publish tag review modal.
+ * Pre-publish tag review modal — Tier 3 refactor : **2-pane layout**.
  *
- * Mounted by `PublishDraftButton` when the editor clicks Publier on a
- * non-empty draft. Walks every new / modified block + chapter in the
- * draft, lets the editor either :
- *   - **Confirm** the existing tags (one click for already-tagged rows)
- *   - **Add a tag** inline when the row has none — the input is a
- *     full `TagsField` so the rest of the tag vocabulary is reachable
- *     via autocomplete, with immediate DB persistence (same flow as
- *     the regular block editor)
- *   - **Skip** the row — the editor explicitly opts out for this round
- *   - **Skip everything** in one click via a footer button — useful
- *     for emergency hotfixes when tagging coverage isn't the priority
+ * Before this refactor, the modal stacked every reviewable row
+ * vertically, which became unwieldy on drafts with >20 blocks — the
+ * editor lost context between the row they were currently editing
+ * and the rest of the queue.
  *
- * Validation / skip state is ephemeral (held in the modal's local
- * state). Closing the modal (X / Esc / clicking the backdrop) drops
- * that state — but tags the editor added inline are already persisted
- * because TagsField in `block` / `chapter` mode hits `setBlockTags` /
- * `setChapterTags` on every change. The modal just shepherds the
- * decision, it doesn't gate the persistence.
+ * The new layout splits the modal into :
+ *   - **Left pane (~35% wide)** : compact list of every row to review
+ *     (blocks + chapters interleaved, kept in their original order
+ *     per group). Each item shows its state pill (pending / validated
+ *     / skipped), type, short label, and a coloured dot indicating
+ *     "has tags" vs "no tags yet". Scrollable.
+ *   - **Right pane (~65% wide)** : full detail of the selected row :
+ *     icon + type + diff badge + title + subtitle + current tag
+ *     chips + a `TagsField` for inline tag management + the per-row
+ *     action buttons (Validate / Skip / Reset / Open in new tab).
  *
- * Publish is only enabled once every row is non-pending (validated or
- * skipped).
+ * Selection auto-advances : when the editor validates or skips a row,
+ * we jump to the next pending row so they can blow through the queue
+ * without clicking the list. The user can still click any row in the
+ * list to jump to it manually — useful for revisiting.
+ *
+ * Validation / skip state is still ephemeral. Tags added inline via
+ * `TagsField` are persisted immediately (block/chapter mode hits
+ * `setBlockTags` / `setChapterTags`). Publish enables only when every
+ * row has been tranched.
  */
 
 type RowState = 'pending' | 'validated' | 'skipped';
 
 interface Props {
   summary: DraftTagReviewSummary;
-  /** Called when the editor presses the final "Publier" button. The
-   *  parent runs the actual publish action — the modal just decides
-   *  *when* to fire it. */
   onPublish: () => void;
-  /** Called when the editor closes the modal without publishing
-   *  (X / Esc / backdrop click / explicit cancel). The parent
-   *  re-enables the Publier trigger so a fresh click reopens the
-   *  modal with up-to-date counts. */
   onClose: () => void;
-  /** Used to build chapter / block URLs in the row actions so the
-   *  editor can pop the editor open in a new tab without losing the
-   *  modal state. */
   parcoursSlug: string;
-  /** Variable keys referenced by blocks but not declared on the parcours
-   *  (pre-publish safety check). Non-blocking — surfaced as a banner. */
   brokenRefs?: BrokenVariableRef[];
 }
 
-export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brokenRefs = [] }: Props) {
-  // Per-row state — keyed by a synthetic id so we don't collide
-  // between block ids and chapter ids (both are UUIDs but
-  // theoretically could clash if a future feature reuses ids).
-  const [rowStates, setRowStates] = useState<Record<string, RowState>>({});
+/** Internal flat-list representation used by the left pane. Mixes blocks
+ *  and chapters in display order (blocks first, then chapters) so the
+ *  editor sees a unified queue. */
+interface RowEntry {
+  key: string;
+  kind: 'bloc' | 'chapitre';
+  typeLabel: string;
+  title: string;
+  subtitle?: string;
+  diff: 'new' | 'modified';
+  tags: Array<{ id: string; label: string; color: string }>;
+  editHref: string;
+  /** TagsField target for inline tag management. */
+  target: { kind: 'block'; blockId: string } | { kind: 'chapter'; chapterId: string };
+  icon: React.ReactNode;
+}
 
-  // ESC closes the modal. Native <dialog> would handle this for free
-  // but we're on a custom overlay so we wire it up manually.
+export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brokenRefs = [] }: Props) {
+  // Flatten blocks + chapters into a single row queue. Order : blocks
+  // first (as before), chapters next. Stable identity by their join
+  // key so React keys + selection survive re-renders.
+  const rows = useMemo<RowEntry[]>(() => {
+    const out: RowEntry[] = [];
+    for (const b of summary.blocks) {
+      out.push({
+        key: `block:${b.id}`,
+        kind: 'bloc',
+        typeLabel: b.type,
+        title: b.summary || `Bloc ${b.type}`,
+        subtitle: `Chapitre : ${b.chapterTitle}`,
+        diff: b.diff,
+        tags: b.tags,
+        editHref: `/parcours/${parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`,
+        target: { kind: 'block', blockId: b.id },
+        icon: <Layers className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />,
+      });
+    }
+    for (const c of summary.chapters) {
+      out.push({
+        key: `chapter:${c.id}`,
+        kind: 'chapitre',
+        typeLabel: 'chapter',
+        title: c.title,
+        subtitle: c.slug,
+        diff: c.diff,
+        tags: c.tags,
+        editHref: `/parcours/${parcoursSlug}/chapters/${c.slug}`,
+        target: { kind: 'chapter', chapterId: c.id },
+        icon: <Hash className="text-primary h-3.5 w-3.5" />,
+      });
+    }
+    return out;
+  }, [summary, parcoursSlug]);
+
+  const [rowStates, setRowStates] = useState<Record<string, RowState>>({});
+  // Initial selection : first pending row, else first row, else null.
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => {
+    if (rows.length === 0) return null;
+    return rows[0].key;
+  });
+
+  function stateOf(rowKey: string): RowState {
+    return rowStates[rowKey] ?? 'pending';
+  }
+  /** Set the state of a row and auto-advance selection to the next
+   *  pending row (so the editor doesn't have to click the list). */
+  function setStateAndAdvance(rowKey: string, next: RowState) {
+    setRowStates((prev) => ({ ...prev, [rowKey]: next }));
+    const idx = rows.findIndex((r) => r.key === rowKey);
+    if (idx < 0) return;
+    // Look forward first, then wrap around to the start.
+    for (let i = 1; i <= rows.length; i++) {
+      const candidate = rows[(idx + i) % rows.length];
+      const s = (candidate.key === rowKey ? next : rowStates[candidate.key]) ?? 'pending';
+      if (s === 'pending' && candidate.key !== rowKey) {
+        setSelectedKey(candidate.key);
+        return;
+      }
+    }
+    // No pending left — stay on the row we just validated so the
+    // editor sees the state pill update before they hit Publier.
+  }
+  function skipAll() {
+    const next: Record<string, RowState> = {};
+    for (const r of rows) next[r.key] = 'skipped';
+    setRowStates(next);
+  }
+  function validateAllTagged() {
+    setRowStates((prev) => {
+      const next = { ...prev };
+      for (const r of rows) {
+        if (r.tags.length > 0 && (next[r.key] ?? 'pending') === 'pending') {
+          next[r.key] = 'validated';
+        }
+      }
+      return next;
+    });
+  }
+
+  // ESC closes the modal.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -74,44 +159,11 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  function stateOf(rowKey: string): RowState {
-    return rowStates[rowKey] ?? 'pending';
-  }
-  function setState(rowKey: string, next: RowState) {
-    setRowStates((prev) => ({ ...prev, [rowKey]: next }));
-  }
-  function skipAll() {
-    const next: Record<string, RowState> = {};
-    for (const b of summary.blocks) next[`block:${b.id}`] = 'skipped';
-    for (const c of summary.chapters) next[`chapter:${c.id}`] = 'skipped';
-    setRowStates(next);
-  }
-  function validateAllTagged() {
-    setRowStates((prev) => {
-      const next = { ...prev };
-      for (const b of summary.blocks) {
-        if (b.tags.length > 0 && (next[`block:${b.id}`] ?? 'pending') === 'pending') {
-          next[`block:${b.id}`] = 'validated';
-        }
-      }
-      for (const c of summary.chapters) {
-        if (c.tags.length > 0 && (next[`chapter:${c.id}`] ?? 'pending') === 'pending') {
-          next[`chapter:${c.id}`] = 'validated';
-        }
-      }
-      return next;
-    });
-  }
-
-  // Footer counters — derived once per render from `rowStates`.
+  // Footer counters.
   const counts = useMemo(() => {
     let validated = 0;
     let skipped = 0;
     let pending = 0;
-    const rows: { key: string }[] = [
-      ...summary.blocks.map((b) => ({ key: `block:${b.id}` })),
-      ...summary.chapters.map((c) => ({ key: `chapter:${c.id}` })),
-    ];
     for (const r of rows) {
       const s = rowStates[r.key] ?? 'pending';
       if (s === 'validated') validated++;
@@ -119,14 +171,11 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
       else pending++;
     }
     return { validated, skipped, pending, total: rows.length };
-  }, [rowStates, summary]);
+  }, [rowStates, rows]);
 
   const allDone = counts.pending === 0;
 
-  // Auto-focus the Publier button as soon as every row is settled,
-  // so a single Enter / Space confirms publication. Triggered on the
-  // `allDone` transition, NOT every render — otherwise the button
-  // would re-steal focus while the editor is tab-ing through.
+  // Auto-focus Publier when all rows are done — one Enter to publish.
   const publishBtnRef = useRef<HTMLButtonElement | null>(null);
   const allDoneRef = useRef(allDone);
   useEffect(() => {
@@ -134,30 +183,31 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
     allDoneRef.current = allDone;
   }, [allDone]);
 
-  // Portal to <body> so the overlay escapes the parcours header's
-  // `backdrop-blur` sticky bar — a `backdrop-filter` ancestor establishes a
-  // containing block for `position: fixed`, which otherwise clipped the modal
-  // to that short bar (its top was cropped above the viewport).
+  const selectedRow = selectedKey ? (rows.find((r) => r.key === selectedKey) ?? null) : null;
+  const blockCount = summary.blocks.length;
+
+  // Portal to <body> so the overlay escapes any sticky-bar
+  // backdrop-filter ancestor (which establishes a containing block
+  // for `position: fixed` and would clip the modal).
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Revue des tags avant publication"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-md"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="border-border bg-surface flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl">
+      <div className="border-border bg-surface flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border shadow-2xl">
         {/* Header */}
-        <div className="border-border flex items-start gap-3 border-b px-5 py-4">
+        <div className="border-border flex items-start gap-3 border-b px-5 py-3">
           <div className="flex-1">
             <h2 className="text-base font-semibold">Revue des tags avant publication</h2>
-            <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-              {summary.total} {summary.total > 1 ? 'éléments' : 'élément'} new/modifié dans le brouillon. Valide les
-              tags existants, ajoute-en si besoin, ou ignore. La publication n&apos;est débloquée que lorsque chaque
-              ligne a été tranchée.
+            <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+              {summary.total} {summary.total > 1 ? 'éléments' : 'élément'} new/modifié dans le brouillon. Valide /
+              ignore chaque ligne avant de publier.
             </p>
           </div>
           <button
@@ -170,91 +220,86 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
           </button>
         </div>
 
-        {/* Rows */}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          {/* Pre-publish safety check : variables référencées mais non
-              déclarées (renommées / supprimées). Avertissement NON bloquant. */}
-          {brokenRefs.length > 0 && (
-            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 dark:border-amber-700/60 dark:bg-amber-950/40">
-              <div className="flex items-center gap-2 text-xs font-semibold text-amber-900 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                {brokenRefs.length} référence{brokenRefs.length > 1 ? 's' : ''} de variable cassée
-                {brokenRefs.length > 1 ? 's' : ''}
+        {/* 2-pane body */}
+        <div className="flex min-h-0 flex-1">
+          {/* LEFT — compact queue */}
+          <div className="border-border flex w-[320px] shrink-0 flex-col border-r">
+            {/* Broken refs banner (above the list — affects publish overall) */}
+            {brokenRefs.length > 0 && (
+              <div className="border-border border-b px-3 py-2.5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {brokenRefs.length} ref{brokenRefs.length > 1 ? 's' : ''} cassée{brokenRefs.length > 1 ? 's' : ''}
+                </div>
+                <p className="text-muted-foreground mt-1 text-[10px] leading-relaxed">
+                  Variables référencées mais non déclarées — visiteur tombe sur « undefined ».
+                </p>
+                <ul className="mt-1.5 space-y-0.5">
+                  {brokenRefs.map((r) => (
+                    <li key={r.key} className="flex items-center gap-1.5 text-[10px]">
+                      <code className="rounded bg-amber-100 px-1 py-0.5 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
+                        {r.key}
+                      </code>
+                      <span className="text-muted-foreground">×{r.count}</span>
+                      {r.sampleChapterSlug && (
+                        <Link
+                          href={`/parcours/${parcoursSlug}/chapters/${r.sampleChapterSlug}`}
+                          target="_blank"
+                          className="text-amber-800 underline underline-offset-2 dark:text-amber-200"
+                        >
+                          ↗
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
-                Ces variables sont référencées par des blocs mais ne sont plus déclarées (renommées / supprimées). Côté
-                visiteur, elles tomberont sur « undefined ». Tu peux publier quand même, mais pense à corriger les blocs
-                concernés.
-              </p>
-              <ul className="mt-2 space-y-1">
-                {brokenRefs.map((r) => (
-                  <li key={r.key} className="flex items-center gap-2 text-[11px]">
-                    <code className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
-                      {r.key}
-                    </code>
-                    <span className="text-muted-foreground">
-                      {r.count} bloc{r.count > 1 ? 's' : ''}
-                    </span>
-                    {r.sampleChapterSlug && (
-                      <Link
-                        href={`/parcours/${parcoursSlug}/chapters/${r.sampleChapterSlug}`}
-                        target="_blank"
-                        className="text-amber-800 underline underline-offset-2 dark:text-amber-200"
-                      >
-                        voir ↗
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
+            )}
+
+            <div className="flex-1 overflow-y-auto">
+              {rows.length === 0 ? (
+                <p className="text-muted-foreground px-3 py-6 text-center text-xs italic">Aucun élément.</p>
+              ) : (
+                <ul>
+                  {rows.map((r, i) => (
+                    <CompactRow
+                      key={r.key}
+                      row={r}
+                      state={stateOf(r.key)}
+                      isSelected={selectedKey === r.key}
+                      onSelect={() => setSelectedKey(r.key)}
+                      sectionLabel={
+                        // Inject sticky section dividers : Blocs (before
+                        // first block) / Chapitres (before first chapter).
+                        i === 0 && r.kind === 'bloc'
+                          ? `Blocs (${blockCount})`
+                          : i === blockCount && r.kind === 'chapitre'
+                            ? `Chapitres (${summary.chapters.length})`
+                            : null
+                      }
+                    />
+                  ))}
+                </ul>
+              )}
             </div>
-          )}
+          </div>
 
-          {summary.blocks.length === 0 && summary.chapters.length === 0 && brokenRefs.length === 0 && (
-            <p className="text-muted-foreground px-3 py-6 text-center text-sm italic">Aucun élément à revoir.</p>
-          )}
-
-          {summary.blocks.length > 0 && (
-            <section className="mb-4">
-              <h3 className="text-muted-foreground mb-2 text-[11px] font-semibold uppercase tracking-wide">
-                Blocs ({summary.blocks.length})
-              </h3>
-              <div className="space-y-2">
-                {summary.blocks.map((b) => (
-                  <BlockReviewRow
-                    key={b.id}
-                    block={b}
-                    state={stateOf(`block:${b.id}`)}
-                    onValidate={() => setState(`block:${b.id}`, 'validated')}
-                    onSkip={() => setState(`block:${b.id}`, 'skipped')}
-                    onReset={() => setState(`block:${b.id}`, 'pending')}
-                    parcoursSlug={parcoursSlug}
-                  />
-                ))}
+          {/* RIGHT — selected row detail */}
+          <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+            {selectedRow ? (
+              <DetailPane
+                row={selectedRow}
+                state={stateOf(selectedRow.key)}
+                onValidate={() => setStateAndAdvance(selectedRow.key, 'validated')}
+                onSkip={() => setStateAndAdvance(selectedRow.key, 'skipped')}
+                onReset={() => setStateAndAdvance(selectedRow.key, 'pending')}
+              />
+            ) : (
+              <div className="text-muted-foreground flex flex-1 items-center justify-center text-xs italic">
+                Sélectionne une ligne à gauche pour la traiter.
               </div>
-            </section>
-          )}
-
-          {summary.chapters.length > 0 && (
-            <section>
-              <h3 className="text-muted-foreground mb-2 text-[11px] font-semibold uppercase tracking-wide">
-                Chapitres ({summary.chapters.length})
-              </h3>
-              <div className="space-y-2">
-                {summary.chapters.map((c) => (
-                  <ChapterReviewRow
-                    key={c.id}
-                    chapter={c}
-                    state={stateOf(`chapter:${c.id}`)}
-                    onValidate={() => setState(`chapter:${c.id}`, 'validated')}
-                    onSkip={() => setState(`chapter:${c.id}`, 'skipped')}
-                    onReset={() => setState(`chapter:${c.id}`, 'pending')}
-                    parcoursSlug={parcoursSlug}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -266,10 +311,6 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
               <span className="font-medium text-amber-700 dark:text-amber-300">⚠ {counts.pending} à revoir</span>
             )}
           </div>
-          {/* Bulk actions hidden once there's nothing left to action.
-              Keeping them would offer no behaviour change (Publier is
-              already enabled) and visually crowd the footer next to
-              the now-primary "Publier" button. */}
           {!allDone && (
             <>
               <Button
@@ -297,124 +338,108 @@ export function TagReviewModal({ summary, onPublish, onClose, parcoursSlug, brok
 }
 
 /* ------------------------------------------------------------------ */
-/* Row components                                                      */
+/* Left pane — compact row                                             */
 /* ------------------------------------------------------------------ */
 
-interface RowProps<T> {
+function CompactRow({
+  row,
+  state,
+  isSelected,
+  onSelect,
+  sectionLabel,
+}: {
+  row: RowEntry;
+  state: RowState;
+  isSelected: boolean;
+  onSelect: () => void;
+  sectionLabel: string | null;
+}) {
+  const hasNoTag = row.tags.length === 0;
+  return (
+    <>
+      {sectionLabel && (
+        <li className="bg-muted/40 text-text-muted sticky top-0 z-10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider">
+          {sectionLabel}
+        </li>
+      )}
+      <li>
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-pressed={isSelected}
+          className={cn(
+            'flex w-full items-center gap-2 px-3 py-2 text-left transition-colors',
+            isSelected ? 'bg-primary/10 border-primary border-l-2' : 'hover:bg-muted/40 border-l-2 border-transparent',
+          )}
+        >
+          {/* state dot */}
+          <span
+            className={cn(
+              'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+              state === 'validated' && 'bg-emerald-500',
+              state === 'skipped' && 'bg-slate-400',
+              state === 'pending' && (hasNoTag ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-600'),
+            )}
+            aria-hidden="true"
+          />
+          {row.icon}
+          <span className="min-w-0 flex-1 truncate text-xs">{row.title}</span>
+          {/* state pill (compact) */}
+          {state === 'validated' && <span className="text-[10px] text-emerald-700 dark:text-emerald-300">✓</span>}
+          {state === 'skipped' && <span className="text-text-muted text-[10px]">↷</span>}
+          {state === 'pending' && hasNoTag && (
+            <span className="text-[10px] text-amber-700 dark:text-amber-300">⚠</span>
+          )}
+        </button>
+      </li>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Right pane — detail of the selected row                             */
+/* ------------------------------------------------------------------ */
+
+function DetailPane({
+  row,
+  state,
+  onValidate,
+  onSkip,
+  onReset,
+}: {
+  row: RowEntry;
   state: RowState;
   onValidate: () => void;
   onSkip: () => void;
   onReset: () => void;
-  parcoursSlug: string;
-}
-
-function BlockReviewRow({
-  block,
-  ...props
-}: RowProps<DraftTagReviewSummary['blocks'][number]> & {
-  block: DraftTagReviewSummary['blocks'][number];
 }) {
-  const editHref = `/parcours/${props.parcoursSlug}/chapters/${block.chapterSlug}/blocks/${block.id}`;
   return (
-    <RowShell
-      icon={<Layers className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />}
-      kind="bloc"
-      typeLabel={block.type}
-      title={block.summary || `Bloc ${block.type}`}
-      subtitle={`Chapitre : ${block.chapterTitle}`}
-      diff={block.diff}
-      tags={block.tags}
-      editHref={editHref}
-      {...props}
-    >
-      <TagsField target={{ kind: 'block', blockId: block.id }} />
-    </RowShell>
-  );
-}
+    <div className="flex flex-1 flex-col">
+      {/* Detail header */}
+      <div className="border-border space-y-2 border-b px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {row.icon}
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+            {row.typeLabel}
+          </span>
+          <DiffBadge diff={row.diff} />
+          <h3 className="text-sm font-semibold">{row.title}</h3>
+        </div>
+        {row.subtitle && <p className="text-muted-foreground text-xs">{row.subtitle}</p>}
+      </div>
 
-function ChapterReviewRow({
-  chapter,
-  ...props
-}: RowProps<DraftTagReviewSummary['chapters'][number]> & {
-  chapter: DraftTagReviewSummary['chapters'][number];
-}) {
-  const editHref = `/parcours/${props.parcoursSlug}/chapters/${chapter.slug}`;
-  return (
-    <RowShell
-      icon={<Hash className="text-primary h-3.5 w-3.5" />}
-      kind="chapitre"
-      typeLabel="chapter"
-      title={chapter.title}
-      subtitle={chapter.slug}
-      diff={chapter.diff}
-      tags={chapter.tags}
-      editHref={editHref}
-      {...props}
-    >
-      <TagsField target={{ kind: 'chapter', chapterId: chapter.id }} />
-    </RowShell>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Shared row shell                                                    */
-/* ------------------------------------------------------------------ */
-
-interface RowShellProps {
-  icon: React.ReactNode;
-  kind: 'bloc' | 'chapitre';
-  typeLabel: string;
-  title: string;
-  subtitle?: string;
-  diff: 'new' | 'modified';
-  tags: Array<{ id: string; label: string; color: string }>;
-  editHref: string;
-  state: RowState;
-  onValidate: () => void;
-  onSkip: () => void;
-  onReset: () => void;
-  children: React.ReactNode;
-}
-
-function RowShell(props: RowShellProps) {
-  const { state, tags, diff } = props;
-  const isCollapsed = state !== 'pending';
-  const hasNoTag = tags.length === 0;
-
-  // Border accent : amber when there's nothing to do, gray when
-  // settled, green when validated, slate when skipped.
-  const border =
-    state === 'validated'
-      ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800/60 dark:bg-emerald-950/30'
-      : state === 'skipped'
-        ? 'border-border bg-muted/30'
-        : hasNoTag
-          ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800/60 dark:bg-amber-950/30'
-          : 'border-border bg-surface';
-
-  return (
-    <div className={`rounded-md border ${border} px-3 py-2 transition-colors`}>
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5">{props.icon}</div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
-              {props.typeLabel}
-            </span>
-            <DiffBadge diff={diff} />
-            <span className="truncate text-sm font-medium">{props.title}</span>
-          </div>
-          {props.subtitle && <p className="text-muted-foreground mt-0.5 text-xs">{props.subtitle}</p>}
-
-          {/* Tag chips (always visible — they're the whole point) */}
-          {tags.length > 0 ? (
-            <div className="mt-2 flex flex-wrap items-center gap-1">
-              {tags.map((t) => {
+      {/* Detail body — current tags + TagsField editor */}
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <section>
+          <h4 className="text-text-muted mb-2 text-[10px] font-semibold uppercase tracking-wider">Tags posés</h4>
+          {row.tags.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {row.tags.map((t) => {
                 const hex = isTagColor(t.color) ? TAG_COLOR_HEX[t.color] : TAG_COLOR_HEX.amber;
                 return (
                   <span
                     key={t.id}
-                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
                     style={{ backgroundColor: hex.chip, color: hex.text }}
                   >
                     <span aria-hidden="true">🏷</span>
@@ -424,30 +449,43 @@ function RowShell(props: RowShellProps) {
               })}
             </div>
           ) : (
-            <p className="mt-1 text-[11px] italic text-amber-700 dark:text-amber-300">⚠ Aucun tag</p>
+            <p className="text-[11px] italic text-amber-700 dark:text-amber-300">⚠ Aucun tag — pense à en ajouter.</p>
           )}
+        </section>
 
-          {/* Inline editor : only revealed when the row is still
-              pending. Once validated or skipped the editor is hidden
-              to declutter the modal — clicking "Revoir" reopens it. */}
-          {!isCollapsed && (
-            <div className="bg-surface mt-2 rounded border border-dashed border-slate-200 p-2 dark:border-slate-700/60">
-              {props.children}
-            </div>
-          )}
-        </div>
+        <section>
+          <h4 className="text-text-muted mb-2 text-[10px] font-semibold uppercase tracking-wider">Ajouter / retirer</h4>
+          <div className="bg-surface rounded border border-dashed border-slate-200 p-2 dark:border-slate-700/60">
+            {row.target.kind === 'block' ? (
+              <TagsField target={{ kind: 'block', blockId: row.target.blockId }} />
+            ) : (
+              <TagsField target={{ kind: 'chapter', chapterId: row.target.chapterId }} />
+            )}
+          </div>
+        </section>
+      </div>
 
-        {/* Per-row action column */}
-        <div className="flex shrink-0 flex-col items-end gap-1">
+      {/* Detail footer — per-row actions */}
+      <div className="border-border bg-muted/30 flex items-center justify-between gap-2 border-t px-5 py-3">
+        <Link
+          href={row.editHref}
+          target="_blank"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 text-[11px] hover:underline"
+          title="Ouvrir l'éditeur dans un nouvel onglet"
+        >
+          Éditer le {row.kind}
+          <ChevronRight className="h-3 w-3" />
+        </Link>
+        <div className="flex items-center gap-2">
           {state === 'pending' ? (
             <>
-              <Button size="sm" variant="outline" onClick={props.onValidate}>
-                <Check className="mr-1 h-3.5 w-3.5" />
-                Valider
-              </Button>
-              <Button size="sm" variant="ghost" onClick={props.onSkip} title={`Ignorer ce ${props.kind}`}>
+              <Button size="sm" variant="ghost" onClick={onSkip} title={`Ignorer ce ${row.kind}`}>
                 <SkipForward className="mr-1 h-3.5 w-3.5" />
                 Ignorer
+              </Button>
+              <Button size="sm" onClick={onValidate}>
+                <Check className="mr-1 h-3.5 w-3.5" />
+                Valider
               </Button>
             </>
           ) : (
@@ -461,20 +499,11 @@ function RowShell(props: RowShellProps) {
               >
                 {state === 'validated' ? '✓ Validé' : '↷ Ignoré'}
               </span>
-              <Button size="sm" variant="ghost" onClick={props.onReset} title="Revoir cette ligne">
+              <Button size="sm" variant="outline" onClick={onReset} title="Repasser cette ligne en pending">
                 Revoir
               </Button>
             </>
           )}
-          <Link
-            href={props.editHref}
-            target="_blank"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 text-[10px] hover:underline"
-            title="Ouvrir l'éditeur dans un nouvel onglet"
-          >
-            Éditer
-            <ChevronRight className="h-3 w-3" />
-          </Link>
         </div>
       </div>
     </div>
