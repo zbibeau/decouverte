@@ -1,13 +1,14 @@
 'use client';
 
 import type { BranchingCondition, ContentBlock } from '@shared/content-schema';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ChildBlockList } from './ChildBlockList';
 import { ConditionBuilder } from './ConditionBuilder';
-import { ConditionSimulator } from './ConditionSimulator';
+import type { VariableMeta } from './editor-types';
 import type { PayloadEditorProps } from './editor-types';
 import { Field } from './Field';
+import { useSimulator } from './SimulatorContext';
 
 type CondPayload = {
   condition: BranchingCondition;
@@ -17,6 +18,32 @@ type CondPayload = {
 
 type Branch = 'then' | 'else';
 
+/**
+ * Conditional block editor — Direction C cleanup.
+ *
+ * Before : the editor hosted a dedicated `<ConditionSimulator>` widget
+ * with type-aware inputs for every referenced variable, plus an auto-
+ * select effect that snapped the active tab to the branch the simulator
+ * said would render. Two surfaces (simulator + tabs) competed for
+ * mental space, and the simulator was an additional render cost on a
+ * brand-new conditional.
+ *
+ * After : the simulator widget is gone. The active branch is picked
+ * SOLELY by the editor via the tabs ; clicking a tab writes a matching
+ * value to the shared `SimulatorContext`, so the preview iframe
+ * automatically renders the chosen branch. One mental model — "click
+ * Alors / Sinon to see this branch in the preview". Default tab on
+ * creation = `then` (no auto-select on mount).
+ *
+ * Limitations of the auto-sync :
+ *   - Only LEAF conditions (`variable / op / value`) are pushed to the
+ *     simulator. Composite `all` / `any` conditions are too ambiguous
+ *     to map automatically (which sub-condition do we satisfy ?). The
+ *     parcours-level simulator in the PreviewPanel still works for
+ *     those cases.
+ *   - Supports operators `=` / `!=` / `in`. Unknown operators are
+ *     ignored (no sim write, preview unchanged).
+ */
 export function ConditionalEditor({
   payload,
   onChange,
@@ -24,33 +51,29 @@ export function ConditionalEditor({
   navbarVariants,
   depth = 0,
 }: PayloadEditorProps<CondPayload>) {
-  /** Live evaluation result from the simulator. `null` = no variables yet. */
-  const [simResult, setSimResult] = useState<boolean | null>(null);
-
-  /**
-   * Active branch in the tabbed view. Previously the two branches were
-   * stacked vertically, which made the editor very tall and forced the
-   * user to scroll between them. We now show one branch at a time via
-   * tabs (Bug #1 — request: "une vue remplace une autre plutôt que l'un
-   * au-dessus de l'autre"). The "live" dot on each tab signals which
-   * branch the simulator says will render.
-   */
+  const sim = useSimulator();
   const [activeBranch, setActiveBranch] = useState<Branch>('then');
 
-  // Auto-select the live branch ONCE, on the first non-null simulator
-  // result, so the editor opens on the branch that will actually render.
-  // After that the user's manual tab choice is preserved — re-evaluating
-  // a variable won't yank them away from a branch they're editing.
-  const didAutoSelectRef = useRef(false);
-  useEffect(() => {
-    if (didAutoSelectRef.current) return;
-    if (simResult === null) return;
-    didAutoSelectRef.current = true;
-    setActiveBranch(simResult ? 'then' : 'else');
-  }, [simResult]);
+  // On tab change : push a simulator value that forces the preview
+  // iframe to render the chosen branch. No-op when the condition is a
+  // composite (`all` / `any`) or uses an unsupported operator.
+  function selectBranch(branch: Branch) {
+    setActiveBranch(branch);
+    if (!sim) return;
+    applyBranchToSimulator(payload.condition, branch, sim, variables);
+  }
 
-  const thenActive = simResult === true;
-  const elseActive = simResult === false;
+  // Apply the initial branch to the simulator on mount + whenever the
+  // condition definition changes (e.g. user picks a different variable).
+  useEffect(() => {
+    if (!sim) return;
+    applyBranchToSimulator(payload.condition, activeBranch, sim, variables);
+    // We intentionally don't depend on `activeBranch` here — it's
+    // already pushed via `selectBranch`. This effect only handles
+    // mount + condition-shape changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload.condition, variables, sim]);
+
   const thenCount = payload.then.length;
   const elseCount = payload.else?.length ?? 0;
 
@@ -64,10 +87,9 @@ export function ConditionalEditor({
         />
       </Field>
 
-      <ConditionSimulator condition={payload.condition} variables={variables} onResult={setSimResult} />
-
-      {/* Tabs header. Each tab shows: icon, label, child count, and a
-          subtle "actif" hint when the simulator picks the branch. */}
+      {/* Tabs header. Cliquer un onglet pousse une valeur de
+          simulateur correspondante via `applyBranchToSimulator`, donc
+          la preview iframe bascule sur la bonne branche. */}
       <div
         className="border-border flex items-center gap-1 border-b"
         role="tablist"
@@ -75,21 +97,17 @@ export function ConditionalEditor({
       >
         <TabButton
           isActive={activeBranch === 'then'}
-          isLive={thenActive}
-          onClick={() => setActiveBranch('then')}
+          onClick={() => selectBranch('then')}
           label="Alors (then)"
           icon="✓"
           count={thenCount}
-          tone="then"
         />
         <TabButton
           isActive={activeBranch === 'else'}
-          isLive={elseActive}
-          onClick={() => setActiveBranch('else')}
+          onClick={() => selectBranch('else')}
           label="Sinon (else)"
           icon="✗"
           count={elseCount}
-          tone="else"
         />
       </div>
 
@@ -101,16 +119,9 @@ export function ConditionalEditor({
         <div
           role="tabpanel"
           aria-label="Branche Alors"
-          className={
-            'rounded-md border-l-2 p-3 transition-all ' +
-            (thenActive
-              ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300/40 dark:border-emerald-400 dark:bg-emerald-950/40 dark:ring-emerald-700/40'
-              : simResult === null
-                ? 'border-primary/40 bg-primary/5'
-                : 'border-muted bg-muted/10')
-          }
+          className="border-primary/40 bg-primary/5 rounded-md border-l-2 p-3 transition-all"
         >
-          <Field label={`✓ Alors (then)${thenActive ? ' — actif' : ''}`} path="then">
+          <Field label="✓ Alors (then)" path="then">
             <ChildBlockList
               blocks={payload.then}
               onChange={(then) => onChange({ ...payload, then })}
@@ -125,16 +136,9 @@ export function ConditionalEditor({
         <div
           role="tabpanel"
           aria-label="Branche Sinon"
-          className={
-            'rounded-md border-l-2 p-3 transition-all ' +
-            (elseActive
-              ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300/40 dark:border-emerald-400 dark:bg-emerald-950/40 dark:ring-emerald-700/40'
-              : simResult === null
-                ? 'border-muted bg-muted/20'
-                : 'border-muted bg-muted/10')
-          }
+          className="border-muted bg-muted/10 rounded-md border-l-2 p-3 transition-all"
         >
-          <Field label={`✗ Sinon (else)${elseActive ? ' — actif' : ''}`} path="else">
+          <Field label="✗ Sinon (else)" path="else">
             <ChildBlockList
               blocks={payload.else ?? []}
               onChange={(next) => onChange({ ...payload, else: next })}
@@ -150,47 +154,123 @@ export function ConditionalEditor({
   );
 }
 
-/**
- * Single tab button. Visually distinct when active (the user-selected
- * tab) vs. live (the branch the simulator says will render). Both states
- * can coexist — they are independent signals.
- */
+/* ------------------------------------------------------------------ */
+/* Tab button                                                          */
+/* ------------------------------------------------------------------ */
+
 function TabButton({
   isActive,
-  isLive,
   onClick,
   label,
   icon,
   count,
-  tone,
 }: {
   isActive: boolean;
-  isLive: boolean;
   onClick: () => void;
   label: string;
   icon: string;
   count: number;
-  tone: 'then' | 'else';
 }) {
   const base =
     'relative -mb-px inline-flex items-center gap-1.5 rounded-t-md border border-b-0 px-3 py-1.5 text-xs font-medium transition-colors';
   const activeCls = isActive
-    ? tone === 'then'
-      ? 'border-border bg-surface text-foreground'
-      : 'border-border bg-surface text-foreground'
+    ? 'border-border bg-surface text-foreground'
     : 'border-transparent bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground';
-  const liveDot = isLive ? (
-    <span
-      className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
-      title="Branche active selon le simulateur"
-    />
-  ) : null;
   return (
     <button type="button" role="tab" aria-selected={isActive} onClick={onClick} className={`${base} ${activeCls}`}>
       <span aria-hidden>{icon}</span>
       <span>{label}</span>
       <span className="bg-muted text-muted-foreground rounded px-1 text-[10px] tabular-nums">{count}</span>
-      {liveDot}
     </button>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Branch → simulator value resolver                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Push a simulator value that makes `condition` evaluate to the
+ * requested branch. Only handles LEAF conditions ; composite ones
+ * (`all` / `any`) are skipped silently (the parcours-level simulator
+ * inside the PreviewPanel still works for those).
+ */
+function applyBranchToSimulator(
+  condition: BranchingCondition,
+  branch: Branch,
+  sim: { setValue: (key: string, value: string) => void; values: Record<string, string> },
+  variables: VariableMeta[],
+): void {
+  // Composite conditions are out of scope for the auto-sync.
+  if (!('variable' in condition) || !condition.variable) return;
+  const leaf = condition as { variable: string; op: '=' | '!=' | 'in'; value: unknown };
+  const variable = variables.find((v) => v.key === leaf.variable);
+  const wantsTrue = branch === 'then';
+
+  let targetValue: string | null = null;
+  switch (leaf.op) {
+    case '=':
+      targetValue = wantsTrue ? String(leaf.value) : pickAlternativeValue(variable, leaf.value);
+      break;
+    case '!=':
+      targetValue = wantsTrue ? pickAlternativeValue(variable, leaf.value) : String(leaf.value);
+      break;
+    case 'in': {
+      const arr = Array.isArray(leaf.value) ? (leaf.value as Array<unknown>) : [];
+      if (wantsTrue) {
+        targetValue = arr.length > 0 ? String(arr[0]) : null;
+      } else {
+        // For boolean variables this is trivially the opposite ; for
+        // enum we pick the first option NOT in the array ; otherwise
+        // empty string.
+        targetValue = pickValueOutsideArray(variable, arr);
+      }
+      break;
+    }
+    default:
+      return;
+  }
+  if (targetValue === null) return;
+  // Only write if the current value differs — avoids triggering
+  // re-renders on every tab interaction when the simulator already
+  // matches.
+  if (sim.values[leaf.variable] === targetValue) return;
+  sim.setValue(leaf.variable, targetValue);
+}
+
+/**
+ * Pick a value DIFFERENT from `currentValue` for the given variable.
+ * Boolean → the opposite. Enum → the first option whose value is not
+ * `currentValue`. Other types → empty string (often interpreted as
+ * "unset" by the front, which differs from any literal value).
+ */
+function pickAlternativeValue(variable: VariableMeta | undefined, currentValue: unknown): string {
+  const curStr = String(currentValue);
+  if (variable?.type === 'boolean') {
+    return curStr === 'true' ? 'false' : 'true';
+  }
+  if (variable?.type === 'enum') {
+    const opts = (variable as { options?: Array<{ value: string; label: string }> }).options ?? [];
+    const other = opts.find((o) => o.value !== curStr);
+    return other?.value ?? '';
+  }
+  return '';
+}
+
+/**
+ * Pick a value NOT in `array`. Boolean → the opposite of the only one
+ * present (boolean has 2 values total). Enum → the first option whose
+ * value is not in the array. Other types → empty string.
+ */
+function pickValueOutsideArray(variable: VariableMeta | undefined, array: Array<unknown>): string {
+  const asStrings = array.map((v) => String(v));
+  if (variable?.type === 'boolean') {
+    return asStrings.includes('true') ? 'false' : 'true';
+  }
+  if (variable?.type === 'enum') {
+    const opts = (variable as { options?: Array<{ value: string; label: string }> }).options ?? [];
+    const other = opts.find((o) => !asStrings.includes(o.value));
+    return other?.value ?? '';
+  }
+  return '';
 }

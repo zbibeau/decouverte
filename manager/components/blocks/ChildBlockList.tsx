@@ -19,7 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import type { ContentBlock } from '@shared/content-schema';
 import { ChevronDown, ChevronRight, GripVertical, Trash2 } from 'lucide-react';
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 import { BlockTypeSelector } from '@/components/BlockTypeSelector';
 import { BlockThumb } from '@/components/blocks/BlockThumb';
@@ -190,6 +190,15 @@ export function ChildBlockList({
 
   const scopeId = scopeLabel ? `children-${scopeLabel.replace(/\s+/g, '_')}-${depth}` : null;
 
+  // Direction C — la sub-zone qui contient les sous-blocs DOIT être
+  // plus sombre que le canvas (effet "creux/well"), pas plus claire.
+  // Avant : `bg-muted/20` (≈ surface-2 à 20%) qui était LÉGÈREMENT PLUS
+  // CLAIR que le canvas → impression que la zone "remonte" au lieu de
+  // se creuser. On utilise maintenant `bg-bg/95 dark:bg-black/30` pour
+  // forcer une teinte ~plus sombre que le canvas. + rounded-xl +
+  // padding 3 + gap 3 entre rows = breathing space.
+  const subzoneClass = 'rounded-xl border border-border bg-bg/80 dark:bg-black/40 p-3 space-y-3';
+
   // ---- dnd-kit setup ---------------------------------------------------
   // We use INDEX-based ids (`nested-${i}`) — stable per position, scoped
   // to THIS list instance. dnd-kit only needs ids unique within its own
@@ -234,19 +243,32 @@ export function ChildBlockList({
           {blocks.map((b, idx) => {
             const isOpen = openIdx === idx;
             const justAdded = focusIdx === idx;
+            // Scroll-gate divider : si le sous-bloc précédent est un
+            // FORM, on matérialise dans la liste que ce bloc-ci est
+            // "gated" (le visiteur doit valider le form pour le voir
+            // côté front). Recalculé à chaque render à partir de la
+            // liste, donc le drag-and-drop le repositionne tout seul.
+            const showGateDivider = idx > 0 && blocks[idx - 1]?.type === 'form';
             return (
-              <NestedRow
-                key={idx}
-                id={itemIds[idx]}
-                refCallback={(el) => {
-                  rowRefs.current[idx] = el;
-                }}
-                justAdded={justAdded}
-                accentClass={BLOCK_CATEGORY_ACCENT[BLOCK_CATEGORIES[b.type]]}
-              >
-                {(handle) => (
-                  <>
-                    {/*
+              <Fragment key={idx}>
+                {showGateDivider && (
+                  <div
+                    className="bg-primary/40 mx-2 my-1 h-px rounded-full"
+                    aria-hidden="true"
+                    title="Visible côté front uniquement après validation du formulaire ci-dessus."
+                  />
+                )}
+                <NestedRow
+                  id={itemIds[idx]}
+                  refCallback={(el) => {
+                    rowRefs.current[idx] = el;
+                  }}
+                  justAdded={justAdded}
+                  accentClass={BLOCK_CATEGORY_ACCENT[BLOCK_CATEGORIES[b.type]]}
+                >
+                  {(handle) => (
+                    <>
+                      {/*
                       Header row of a child block. Per UX request: clicking
                       here should NOT promote this list's scope in the
                       palette. We stop the mousedown from bubbling to the
@@ -254,55 +276,56 @@ export function ChildBlockList({
                       when isOpen) has its own ScopeRoot that handles
                       selection independently.
                     */}
-                    <div className="flex items-center gap-2.5 px-2.5 py-2" onMouseDown={(e) => e.stopPropagation()}>
-                      {handle}
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground"
-                        onClick={() => setOpenIdx(isOpen ? null : idx)}
-                        title={isOpen ? 'Replier' : 'Déplier pour éditer'}
-                        aria-expanded={isOpen}
-                      >
-                        {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                      </button>
-                      <BlockThumb type={b.type} size="nested" />
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="text-text-faint font-mono text-[9px] uppercase tracking-[0.12em]">
-                          {BLOCK_TYPE_LABELS[b.type] ?? b.type} · sous-bloc
+                      <div className="flex items-center gap-2.5 px-2.5 py-2" onMouseDown={(e) => e.stopPropagation()}>
+                        {handle}
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => setOpenIdx(isOpen ? null : idx)}
+                          title={isOpen ? 'Replier' : 'Déplier pour éditer'}
+                          aria-expanded={isOpen}
+                        >
+                          {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </button>
+                        <BlockThumb type={b.type} size="nested" />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="text-text-faint font-mono text-[9px] uppercase tracking-[0.12em]">
+                            {BLOCK_TYPE_LABELS[b.type] ?? b.type} · sous-bloc
+                          </span>
+                          <span className="text-text truncate text-[13px] font-medium">
+                            {summarizeBlock(b.type, b.payload as Record<string, unknown>)}
+                          </span>
                         </span>
-                        <span className="text-text truncate text-[13px] font-medium">
-                          {summarizeBlock(b.type, b.payload as Record<string, unknown>)}
-                        </span>
-                      </span>
-                      {/* Direction C — picto suppression discret : monochrome
+                        {/* Direction C — picto suppression discret : monochrome
                           gris par défaut, fond rouge translucide au hover. Le
                           rouge plein-temps de Lucide Trash2 attirait l'œil
                           en permanence et "lisait" comme un avertissement
                           alors que c'est une action quotidienne. */}
-                      <button
-                        type="button"
-                        onClick={() => remove(idx)}
-                        title="Supprimer ce sous-bloc"
-                        className="text-text-muted inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-rose-500/15 hover:text-rose-400"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    {isOpen && (
-                      <div className="border-border bg-muted/20 border-t p-3">
-                        <PayloadEditor
-                          block={b}
-                          onChange={(next) => update(idx, next)}
-                          variables={variables}
-                          chapters={chapters}
-                          navbarVariants={navbarVariants}
-                          depth={depth + 1}
-                        />
+                        <button
+                          type="button"
+                          onClick={() => remove(idx)}
+                          title="Supprimer ce sous-bloc"
+                          className="text-text-muted inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-rose-500/15 hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                    )}
-                  </>
-                )}
-              </NestedRow>
+                      {isOpen && (
+                        <div className="border-border bg-muted/20 border-t p-3">
+                          <PayloadEditor
+                            block={b}
+                            onChange={(next) => update(idx, next)}
+                            variables={variables}
+                            chapters={chapters}
+                            navbarVariants={navbarVariants}
+                            depth={depth + 1}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </NestedRow>
+              </Fragment>
             );
           })}
         </SortableContext>
@@ -312,11 +335,11 @@ export function ChildBlockList({
     </>
   );
   return scopeId ? (
-    <ScopeRoot scopeId={scopeId} className="-m-1 space-y-2 rounded-md p-1">
+    <ScopeRoot scopeId={scopeId} className={subzoneClass}>
       {inner}
     </ScopeRoot>
   ) : (
-    <div className="space-y-2">{inner}</div>
+    <div className={subzoneClass}>{inner}</div>
   );
 }
 

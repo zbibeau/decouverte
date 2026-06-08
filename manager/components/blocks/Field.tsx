@@ -195,9 +195,15 @@ export function Section({
 }) {
   const accent = ACCENT_CLASSES[accentColor];
   const isWarning = tone === 'warning';
+  // Direction C — la section neutre devient une "well" en dark mode :
+  // fond plus SOMBRE que le canvas (graphite). Avant le `bg-muted/20`
+  // donnait l'inverse (légèrement plus clair que canvas), ce qui faisait
+  // remonter la section et collait au reste — peu lisible. Maintenant
+  // chaque Section est un puits visuel, ses inputs/sous-blocs y
+  // "flottent" en surbrillance.
   const bodyClass = isWarning
     ? 'border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30'
-    : 'border-border bg-muted/20';
+    : 'border-border bg-bg/70 dark:bg-black/30';
   const leftBorderClass = isWarning ? 'border-l-amber-500 dark:border-l-amber-600' : accent.border;
   const titleClass = isWarning ? 'text-amber-800 dark:text-amber-200' : accent.title;
   const containerClass = `space-y-2 rounded-md border border-l-4 p-3 ${bodyClass} ${leftBorderClass}`;

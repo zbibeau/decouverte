@@ -308,17 +308,31 @@ export function InlineBlockEditor(props: Props) {
     [props.simValues, props.variables, setSimValues],
   );
 
+  // Direction C — focus-mode pour les blocs fraîchement créés.
+  // Quand le bloc est `status === 'new'` (existe dans le brouillon
+  // mais pas dans la version publiée), on masque toute la chrome
+  // méta (TAGS, DraftBlockDiffPanel banner, filtre de champs) pour
+  // que l'éditeur se concentre sur les champs essentiels à remplir.
+  // Tout réapparaît automatiquement après le premier publish (le
+  // bloc passe alors à 'pristine' ou 'modified'). La pill « NOUVEAU »
+  // du header de row suffit comme signal de status.
+  const isFreshBlock = props.draftStatus === 'new';
+
   return (
     <div className="space-y-4">
       {/* Le bandeau jaune "Recherche : X" a été retiré : urlQuery
           ci-dessus pilote silencieusement les highlights de champs
           quand on arrive depuis ⌘K, et la barre de filtre reste
-          vide. Le user peut taper à tout moment pour affiner. */}
-      <InPageSearchInput
-        value={localSearch}
-        onChange={setLocalSearch}
-        placeholder="🔍 Filtrer les champs de ce bloc…"
-      />
+          vide. Le user peut taper à tout moment pour affiner.
+          Masqué pour les blocs fraîchement créés (peu de champs,
+          pas de besoin de filtrer). */}
+      {!isFreshBlock && (
+        <InPageSearchInput
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="🔍 Filtrer les champs de ce bloc…"
+        />
+      )}
       {/* Central "Tags de maintenance" section — moved up here so the
           editor sees the tag status BEFORE the payload editor. When at
           least one tag slot is empty (top-level OR a nested
@@ -326,8 +340,11 @@ export function InlineBlockEditor(props: Props) {
           `tone="warning"` and the count is reflected in the title.
           The dedicated MissingTagsBanner that previously sat in this
           position has been removed — its information is now folded
-          into this single visual surface. */}
-      {!isCreating && (
+          into this single visual surface.
+          Masqué pour les blocs fraîchement créés — l'éditeur se
+          concentre sur le contenu d'abord, le tag sera proposé après
+          publish (le bloc passera alors à 'pristine'/'modified'). */}
+      {!isCreating && !isFreshBlock && (
         <Section
           title={missingTagsCount > 0 ? `Tags de maintenance — ${missingTagsCount} à ajouter` : 'Tags de maintenance'}
           accentColor="slate"
@@ -368,7 +385,12 @@ export function InlineBlockEditor(props: Props) {
           <TagsField target={{ kind: 'block', blockId: props.blockId }} onCurrentTagsChange={handleCurrentTagsChange} />
         </Section>
       )}
-      {!isCreating && (
+      {/* DraftBlockDiffPanel : on garde POUR LES BLOCS MODIFIÉS (le
+          diff line-by-line vs published est utile). Pour les blocs
+          fraîchement créés (status === 'new'), le banner « 🔵 Nouveau
+          bloc » est redondant avec la pill NOUVEAU du header de row
+          → on le masque. */}
+      {!isCreating && !isFreshBlock && (
         <DraftBlockDiffPanel
           status={props.draftStatus}
           currentPayload={block.payload as Record<string, unknown>}

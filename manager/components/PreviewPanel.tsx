@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, Pencil, RefreshCw } from 'lucide-react';
+import { ExternalLink, Monitor, Pencil, RefreshCw, Smartphone } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -138,6 +138,15 @@ interface Props {
    * button still works on top of external reloads.
    */
   reloadKey?: number;
+  /**
+   * Mode d'affichage de la preview : `'mobile'` = colonne 380 px
+   * (rendu phone côté front), `'desktop'` = colonne 720 px (le front
+   * Solid rend alors sa version desktop car il voit un viewport plus
+   * large). L'état est piloté par le parent qui gère la grille — on
+   * expose juste le toggle dans le header de cette panel.
+   */
+  deviceMode?: 'mobile' | 'desktop';
+  onDeviceModeChange?: (next: 'mobile' | 'desktop') => void;
 }
 
 export function PreviewPanel({
@@ -168,6 +177,8 @@ export function PreviewPanel({
   values: controlledValues,
   onValuesChange,
   reloadKey,
+  deviceMode,
+  onDeviceModeChange,
 }: Props) {
   // Which version the iframe is currently displaying. Default to the draft
   // when available; the toggle (rendered below when both ids are provided)
@@ -432,6 +443,40 @@ export function PreviewPanel({
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-text text-sm font-semibold">Preview</h3>
         <div className="flex items-center gap-1">
+          {/* Toggle Mobile / Desktop — segmented control identique
+              au toggle Brouillon/Publié. Élargit (ou rétrécit) la
+              colonne preview au niveau du parent ; le front Solid
+              s'adapte naturellement à la nouvelle largeur d'iframe. */}
+          {onDeviceModeChange && (
+            <div className="bg-surface-2 rounded-app-sm mr-1 inline-flex gap-0.5 p-0.5 text-[11px]">
+              <button
+                type="button"
+                onClick={() => onDeviceModeChange('mobile')}
+                className={
+                  deviceMode === 'mobile'
+                    ? 'shadow-app-sm bg-primary/15 text-primary-on inline-flex h-7 w-7 items-center justify-center rounded-[6px]'
+                    : 'text-text-muted hover:text-text inline-flex h-7 w-7 items-center justify-center rounded-[6px] transition-colors'
+                }
+                title="Aperçu mobile (380 px)"
+                aria-label="Aperçu mobile"
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onDeviceModeChange('desktop')}
+                className={
+                  deviceMode === 'desktop'
+                    ? 'shadow-app-sm bg-primary/15 text-primary-on inline-flex h-7 w-7 items-center justify-center rounded-[6px]'
+                    : 'text-text-muted hover:text-text inline-flex h-7 w-7 items-center justify-center rounded-[6px] transition-colors'
+                }
+                title="Aperçu desktop (720 px) — le front Solid rend sa version large"
+                aria-label="Aperçu desktop"
+              >
+                <Monitor className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           {showVersionToggle && (
             // Segmented brouillon/publié — ambre pour brouillon, émeraude
             // pour publié. Conteneur surface-2 (cohérent avec les onglets
