@@ -142,23 +142,19 @@ const RenderBlock: Component<BlockProps> = (props) => {
         const blk = b();
         switch (blk.type) {
           case 'heroTitle':
+            // Direction B : la photo n'est plus rendue à la main ici ; on
+            // passe juste `payload.illustration` en prop `image`, et c'est
+            // `HeroTitle` qui décide d'afficher (ou non) la carte photo
+            // arrondie à droite avec son ombre + ring + léger tilt. Aucun
+            // changement de schéma — l'URL vient toujours du même champ.
             return (
-              <HeroTitle title={blk.payload.title} number={blk.payload.number} sectionTitle={blk.payload.sectionTitle}>
-                <Show when={blk.payload.illustration}>
-                  {/* Square vignette with a pronounced -4° tilt, rounded
-                       corners and soft shadow. `aspect-square` forces a 1:1
-                       ratio so any source image is cropped to a uniform
-                       thumbnail. Positioned in the upper-right area (not
-                       bottom-anchored) and capped at 480px so it doesn't
-                       dominate the hero. No hover animation (the image
-                       should sit still). */}
-                  <img
-                    src={blk.payload.illustration!}
-                    class="right-0 top-1/4 aspect-square w-full -rotate-[4deg] rounded-2xl object-cover shadow-md md:absolute md:max-w-[480px]"
-                    alt="header"
-                  />
-                </Show>
-              </HeroTitle>
+              <HeroTitle
+                title={blk.payload.title}
+                number={blk.payload.number}
+                sectionTitle={blk.payload.sectionTitle}
+                image={blk.payload.illustration}
+                imageAlt="header"
+              />
             );
 
           case 'video':
