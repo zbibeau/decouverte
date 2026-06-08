@@ -133,20 +133,26 @@ export default async function ParcoursLayout({
                 Détails
                 <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
               </summary>
-              <div className="bg-surface border-border absolute right-0 top-full z-20 mt-1 flex w-max max-w-[600px] flex-col gap-1 rounded-md border p-3 text-xs shadow-md">
-                <p className="text-text-muted font-mono">
-                  slug : <code className="text-text font-mono">{parcours.slug}</code>
-                </p>
-                <a
-                  href={publicUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-text-muted hover:text-primary-on inline-flex items-center gap-1 font-mono transition-colors"
-                  title="Ouvrir ce parcours sur le front public (nouvel onglet)"
-                >
-                  <ExternalLink className="h-3 w-3 shrink-0" />
-                  <code className="font-mono">{publicUrl}</code>
-                </a>
+              <div className="bg-surface border-border absolute right-0 top-full z-40 mt-1 flex w-max max-w-[600px] flex-col gap-2 rounded-md border p-3 text-xs shadow-md">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-text-faint text-[10px] font-semibold uppercase tracking-wider">slug</span>
+                  <code className="text-text font-mono text-xs">{parcours.slug}</code>
+                </div>
+                <div className="border-border border-t pt-2">
+                  <p className="text-text-faint mb-1 text-[10px] font-semibold uppercase tracking-wider">
+                    URL publique
+                  </p>
+                  <a
+                    href={publicUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary-on hover:bg-primary/10 group inline-flex items-center gap-1.5 rounded px-1.5 py-1 font-mono text-xs transition-colors"
+                    title="Ouvrir ce parcours sur le front public (nouvel onglet)"
+                  >
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                    <code className="font-mono underline-offset-2 group-hover:underline">{publicUrl}</code>
+                  </a>
+                </div>
               </div>
             </details>
             <Suspense fallback={null}>
