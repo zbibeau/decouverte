@@ -6,7 +6,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, useTransition } from 'react';
 
 import { useAddActionScopes, useSelectedScopeId } from '@/components/blocks/AddActionsContext';
+import { PaletteContextBar } from '@/components/palette/PaletteContextBar';
 import { PaletteItem } from '@/components/palette/PaletteItem';
+import { PALETTE_SCOPES, PaletteScopeBar, type PaletteScope } from '@/components/palette/PaletteScopeBar';
 import { PreviewPane } from '@/components/palette/PreviewPane';
 import { ReplacePanel, type ReplaceRow } from '@/components/palette/ReplacePanel';
 import { useToast } from '@/components/Toaster';
@@ -16,8 +18,11 @@ import { findOccurrencesInPayload, replaceOccurrencesInPayload } from '@/lib/blo
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { extractSnippet } from '@/lib/blockSearch';
 import { FamilyIcon } from '@/lib/familyIcons';
+import { formatRelative } from '@/lib/palette/formatRelative';
 import { parsePathContext } from '@/lib/palette/parsePathContext';
+import { scoreMatch } from '@/lib/palette/scorePaletteItem';
 import { useCommandPaletteHotkeys } from '@/lib/palette/useCommandPaletteHotkeys';
+import { useRecentItems, type RecentKind } from '@/lib/palette/useRecentItems';
 import { isTagColor, TAG_COLOR_HEX } from '@/lib/tagColors';
 
 /**
@@ -103,6 +108,16 @@ export function CommandPalette() {
   // unchecked. Cleared after each successful apply.
   const [excludedKeys, setExcludedKeys] = useState<Set<string>>(new Set());
   const [isApplyingReplace, startReplaceTransition] = useTransition();
+  // Scope filter — restricts the rendered groups to a single TYPE
+  // (blocs / chapitres / variables / parcours / actions). Coexists
+  // with the tag filter (`selectedTagId`) : scope filters by type,
+  // tag filters by label, both can be active. Cyclable via Tab on
+  // the input. Default `'all'` shows every group as before.
+  const [scope, setScope] = useState<PaletteScope>('all');
+  // Persisted "recently opened" entries — populated whenever the
+  // palette navigates / inserts. Resolved against `data` below to
+  // build the « Récents » group on the empty-query landing.
+  const { recents: recentEntries, push: pushRecent } = useRecentItems();
   // Deferred `search` so the per-keystroke walk over every block of
   // the parcours stays cheap. React lets the input update immediately
   // while the occurrence list reconciles on idle. Only consulted in
@@ -196,6 +211,82 @@ export function CommandPalette() {
     if (!selectedTagId) return data.blocks;
     return data.blocks.filter((b) => b.tags.some((t) => t.id === selectedTagId));
   }, [data, selectedTagId]);
+
+  // === Récents (Direction B - point 2) ====================================
+  // Resolve persisted entries against the current `data` snapshot. Rows
+  // whose underlying object was deleted are silently dropped. Limited to
+  // the first 6 surviving entries for the empty-state view.
+  const resolvedRecents = useMemo(() => {
+    if (!data)
+      return [] as Array<{
+        kind: RecentKind;
+        id: string;
+        ts: number;
+        label: string;
+        hint?: string;
+        href: string;
+        icon: 'block' | 'chapter' | 'variable' | 'parcours';
+      }>;
+    const out: Array<{
+      kind: RecentKind;
+      id: string;
+      ts: number;
+      label: string;
+      hint?: string;
+      href: string;
+      icon: 'block' | 'chapter' | 'variable' | 'parcours';
+    }> = [];
+    for (const r of recentEntries) {
+      if (r.kind === 'block') {
+        const b = data.blocks.find((x) => x.id === r.id);
+        if (!b) continue;
+        out.push({
+          ...r,
+          label: b.summary || `Bloc ${b.type}`,
+          hint: `${(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type} · ${b.chapterTitle}`,
+          href: `/parcours/${ctx.parcoursSlug ?? ''}/chapters/${b.chapterSlug}/blocks/${b.id}`,
+          icon: 'block',
+        });
+      } else if (r.kind === 'chapter') {
+        const c = data.chapters.find((x) => x.id === r.id);
+        if (!c) continue;
+        out.push({
+          ...r,
+          label: c.title,
+          hint: c.slug,
+          href: `/parcours/${ctx.parcoursSlug ?? ''}/chapters/${c.slug}`,
+          icon: 'chapter',
+        });
+      } else if (r.kind === 'variable') {
+        const v = data.variables.find((x) => x.id === r.id);
+        if (!v) continue;
+        out.push({
+          ...r,
+          label: v.key,
+          hint: `${v.label} · ${v.type}`,
+          href: `/parcours/${ctx.parcoursSlug ?? ''}/variables`,
+          icon: 'variable',
+        });
+      } else if (r.kind === 'parcours') {
+        const p = data.parcours.find((x) => x.id === r.id);
+        if (!p) continue;
+        out.push({
+          ...r,
+          label: p.name,
+          hint: p.slug,
+          href: `/parcours/${p.slug}`,
+          icon: 'parcours',
+        });
+      }
+      if (out.length >= 6) break;
+    }
+    return out;
+  }, [data, recentEntries, ctx.parcoursSlug]);
+
+  // Empty-query landing — when `true`, the rendered list collapses to
+  // just « Récents » + « Suggestions ». A typed query brings the full
+  // scored sections back via the standard rendering path below.
+  const isEmptyQuery = search.trim() === '' && mode === 'search';
 
   // Dedup : chapters whose only reason to appear is that one of their
   // child blocks matches the search. From a maintenance-audit
@@ -337,11 +428,12 @@ export function CommandPalette() {
     });
   }, [ctx.parcoursSlug, replaceQuery, replaceRows, excludedKeys, data, toast]);
 
-  // Local hotkey ⌘⇧H — only active while the palette is open. We
-  // bind here rather than in `useCommandPaletteHotkeys` because the
-  // shortcut is palette-scoped (no point of letting the editor fire
-  // it on a random page where it'd just open the palette to replace
-  // mode — surprising and the global hook is for "open/close" only).
+  // Local palette hotkeys — only active while the palette is open.
+  //  - ⌘⇧H : toggle Search / Replace.
+  //  - Tab / Shift+Tab : cycle the scope chips. Bound on the input
+  //    so the user can keep typing then cycle without focus-jumping.
+  // We avoid `useCommandPaletteHotkeys` here because these shortcuts
+  // are palette-scoped — firing them anywhere else would be surprising.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -350,11 +442,45 @@ export function CommandPalette() {
       if (k === 'h' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
         e.preventDefault();
         setMode((m) => (m === 'search' ? 'replace' : 'search'));
+        return;
+      }
+      // Tab on the input → cycle scope (only when a parcours is in
+      // context — outside a parcours the scope bar is hidden).
+      if (e.key === 'Tab' && ctx.parcoursSlug && document.activeElement?.tagName === 'INPUT') {
+        e.preventDefault();
+        const ids = PALETTE_SCOPES.map((s) => s.id);
+        const idx = ids.indexOf(scope);
+        const dir = e.shiftKey ? -1 : 1;
+        const nextIdx = (idx + dir + ids.length) % ids.length;
+        setScope(ids[nextIdx]);
+        return;
+      }
+      // Accès direct 1-9 (Direction B - point 6). Sélectionne + valide
+      // le Nᵉ résultat visible. Ignoré tant que l'éditeur tape une
+      // requête vide ou en mode replace (où l'index 1-9 perdrait son
+      // sens — le panel ReplacePanel a ses propres affordances).
+      if (mode === 'search' && /^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && search.trim()) {
+        // Accès direct par position GLOBALE (ignore les groupes) :
+        // on collecte tous les `[cmdk-item]` visibles non-désactivés et
+        // on simule un click sur le Nᵉ. Cmdk déclenche notre `onSelect`,
+        // qui gère navigation + recents + close. Ne se déclenche que
+        // lorsque le user a tapé quelque chose (sinon les badges 1-9
+        // ne sont pas rendus, ça serait surprenant).
+        const items = Array.from(document.querySelectorAll<HTMLElement>('.mfm-palette [cmdk-item]')).filter(
+          (el) => el.getAttribute('data-disabled') !== 'true',
+        );
+        const n = Number(e.key);
+        const candidate = items[n - 1];
+        if (candidate) {
+          e.preventDefault();
+          candidate.click();
+        }
+        return;
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, ctx.parcoursSlug, scope, mode, search]);
 
   // When the user edits the search query in replace mode, clear the
   // opt-out set — keys reference specific (blockId, path, index)
@@ -363,7 +489,7 @@ export function CommandPalette() {
     setExcludedKeys(new Set());
   }, [deferredSearch, matchCase, mode]);
 
-  function go(href: string) {
+  function go(href: string, recent?: { kind: RecentKind; id: string }) {
     setOpen(false);
     // Append the current search query as `?q=<encoded>` so the
     // destination page can apply the in-block / in-field highlights
@@ -374,6 +500,7 @@ export function CommandPalette() {
     // don't pollute URLs with `?q=`.
     const q = search.trim();
     const final = q ? `${href}${href.includes('?') ? '&' : '?'}q=${encodeURIComponent(q)}` : href;
+    if (recent) pushRecent(recent);
     router.push(final);
   }
 
@@ -393,6 +520,7 @@ export function CommandPalette() {
       try {
         const { blockId, chapterSlug } = await insertSampleBlock(ctx.parcoursSlug!, chapter.id, type, sample.payload);
         toast.success(`Bloc « ${(BLOCK_TYPE_LABELS as Record<string, string>)[type] ?? type} » ajouté`);
+        pushRecent({ kind: 'block', id: blockId });
         setOpen(false);
         router.push(`/parcours/${ctx.parcoursSlug}/chapters/${chapterSlug}/blocks/${blockId}`);
       } catch (e) {
@@ -419,19 +547,19 @@ export function CommandPalette() {
         label="Palette de commandes"
         value={highlightedValue}
         onValueChange={setHighlightedValue}
-        // Override cmdk's default fuzzy matcher with the shared
-        // `matchesQuery` helper. Default fuzzy scored items whose
-        // chars appeared scattered across keywords — typing
-        // "fiche pati" was bleeding into unrelated blocks. The
-        // helper applies strict substring + a hierarchical-tag
-        // fallback (see its docstring above). Score is 0/1 so
-        // ordering falls back to natural DOM order (still grouped
-        // by section).
+        // Weighted scoring (Direction B - point 3 du handoff cmdk).
+        // Before : the filter returned 0/1 → cmdk's tie-breaker was DOM
+        // order, so a body-text match could outrank an exact-title hit.
+        // Now : `scoreMatch` reads the FIRST keyword as the row's label
+        // (every PaletteItem prepends its label to the keywords twice
+        // anyway), falls back through label-starts-with / contains /
+        // sub-contains / keywords-contains. Higher score = higher in the
+        // rendered order. Empty query returns 1 → keeps natural order
+        // when no input. Hierarchical-tag fallback via `>` segments
+        // lives inside `scoreMatch`.
         filter={(value, search, keywords) => {
-          const q = search.trim().toLowerCase();
-          if (!q) return 1;
-          const haystack = `${(keywords ?? []).join(' ')} ${value}`.toLowerCase();
-          return matchesQuery(haystack, q) ? 1 : 0;
+          const kw = keywords ?? [];
+          return scoreMatch({ label: kw[0] ?? value, sub: kw[1], keywords: kw.slice(2) }, search);
         }}
         className="mfm-palette border-border bg-surface w-full max-w-5xl overflow-hidden rounded-xl border shadow-2xl"
       >
@@ -450,31 +578,74 @@ export function CommandPalette() {
             }
             className="placeholder:text-muted-foreground h-9 flex-1 bg-transparent text-sm outline-none"
           />
-          {/* Mode toggle — surfaces the Replace mode in a discoverable
-              place. Local hotkey ⌘⇧H does the same thing for keyboard
-              users. Hidden when no parcours is in context : Replace
-              only makes sense inside a parcours (the search index is
-              parcours-scoped). */}
+          {/* Segmented control « Rechercher | Remplacer » (Direction B
+              - point 4 du handoff cmdk). Remplace l'ancien bouton 11 px
+              caché en bout de rangée par un contrôle visible dès
+              l'ouverture (uniquement si un parcours est en contexte —
+              Replace est parcours-scopé). Hotkey ⌘⇧H toujours actif. */}
           {ctx.parcoursSlug && (
-            <button
-              type="button"
-              onClick={() => setMode((m) => (m === 'search' ? 'replace' : 'search'))}
-              aria-pressed={mode === 'replace'}
-              title={mode === 'replace' ? 'Mode recherche (⌘⇧H)' : 'Mode remplacer (⌘⇧H)'}
-              className={`inline-flex h-7 items-center gap-1 rounded px-1.5 text-[11px] ${
-                mode === 'replace'
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <Replace className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Remplacer</span>
-            </button>
+            <div className="bg-surface-2 inline-flex shrink-0 gap-0.5 rounded-md p-0.5 text-[11px]">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'search'}
+                onClick={() => setMode('search')}
+                className={
+                  mode === 'search'
+                    ? 'bg-primary/15 text-primary-on shadow-app-sm inline-flex items-center gap-1 rounded-[5px] px-2 py-1 font-medium'
+                    : 'text-text-muted hover:text-text inline-flex items-center gap-1 rounded-[5px] px-2 py-1 transition-colors'
+                }
+                title="Mode recherche"
+              >
+                <Search className="h-3 w-3" />
+                <span className="hidden sm:inline">Rechercher</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'replace'}
+                onClick={() => setMode('replace')}
+                className={
+                  mode === 'replace'
+                    ? 'bg-primary/15 text-primary-on shadow-app-sm inline-flex items-center gap-1 rounded-[5px] px-2 py-1 font-medium'
+                    : 'text-text-muted hover:text-text inline-flex items-center gap-1 rounded-[5px] px-2 py-1 transition-colors'
+                }
+                title="Mode remplacer (⌘⇧H)"
+              >
+                <Replace className="h-3 w-3" />
+                <span className="hidden sm:inline">Remplacer</span>
+              </button>
+            </div>
           )}
           <kbd className="border-border bg-muted text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]">
             esc
           </kbd>
         </div>
+
+        {/* Fil d'Ariane de contexte (Direction B - point 1). Affiché
+            uniquement quand on est dans un parcours. Le placeholder
+            seul ne disambigüe pas un bloc et un chapitre portant des
+            noms proches ; ce breadcrumb dit à l'éditeur OÙ il agit.
+            Le chip à droite surface la portée / le tag actif. */}
+        {ctx.parcoursSlug && data && (
+          <PaletteContextBar
+            parcoursName={data.parcours.find((p) => p.slug === ctx.parcoursSlug)?.name ?? ctx.parcoursSlug}
+            chapterTitle={currentChapterTitle}
+            filterLabel={
+              selectedTag
+                ? `Tag : ${selectedTag.label}`
+                : scope !== 'all'
+                  ? `Portée : ${PALETTE_SCOPES.find((s) => s.id === scope)?.label}`
+                  : null
+            }
+          />
+        )}
+
+        {/* Puces de portée (Direction B - point 5). Restreint l'index
+            par TYPE (orthogonal au filtre par tag). Cyclables via
+            Tab / Shift+Tab depuis l'input — handler dans
+            `useEffect` plus bas. */}
+        {ctx.parcoursSlug && <PaletteScopeBar scope={scope} onScope={setScope} />}
 
         {/* Replace mode — second input row : "Remplacer par…" + Match
             Case toggle. Tab order : search → replace → matchCase. */}
@@ -555,6 +726,47 @@ export function CommandPalette() {
                     Aucun résultat.
                   </Command.Empty>
 
+                  {/* === Empty-query landing — Récents + Suggestions (Direction B point 2) ===
+                      Quand la palette s'ouvre sans saisie, on ne déverse plus
+                      tous les groupes (Tags + Chapitres + Blocs + Variables +
+                      Parcours). À la place : 6 dernières ouvertures + un seul
+                      groupe de Suggestions contextuelles. Dès que l'éditeur
+                      tape, on bascule sur les sections classiques. */}
+                  {isEmptyQuery && resolvedRecents.length > 0 && (
+                    <Command.Group heading="Récents">
+                      {resolvedRecents.map((r) => (
+                        <PaletteItem
+                          key={`recent-${r.kind}-${r.id}`}
+                          icon={<FamilyIcon family={r.icon} />}
+                          label={r.label}
+                          hint={r.hint}
+                          meta={formatRelative(r.ts)}
+                          actionHint="↵ Ouvrir"
+                          value={`recent-${r.kind}-${r.id}`}
+                          keywords={[r.label, r.hint ?? '', 'récent', 'historique']}
+                          onSelect={() => go(r.href, { kind: r.kind, id: r.id })}
+                        />
+                      ))}
+                    </Command.Group>
+                  )}
+                  {isEmptyQuery && ctx.chapterSlug && currentChapterTitle && (
+                    <Command.Group heading="Suggestions">
+                      <PaletteItem
+                        icon={<FamilyIcon family="chapter" />}
+                        label={`Ouvrir ${currentChapterTitle}`}
+                        hint="chapitre courant"
+                        actionHint="↵ Ouvrir"
+                        value={`suggest-current-chapter`}
+                        keywords={['chapitre', 'courant', currentChapterTitle]}
+                        onSelect={() => {
+                          const c = data?.chapters.find((x) => x.slug === ctx.chapterSlug);
+                          if (!c) return;
+                          go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`, { kind: 'chapter', id: c.id });
+                        }}
+                      />
+                    </Command.Group>
+                  )}
+
                   {/* === Add actions registered by nested editors (deepest first) ===
                     The user is editing somewhere — these are the most local
                     actions ("Ajouter un point" in the open list, "Ajouter une
@@ -585,29 +797,35 @@ export function CommandPalette() {
                     On chapter list pages this is the natural insert target.
                     On block edit pages we still show it but only when no
                     nested-scope action was registered (avoids confusing the
-                    user with two competing "Add a block" entry points). */}
-                  {ctx.parcoursSlug && ctx.chapterSlug && (!onBlockEditPage || registeredScopes.length === 0) && (
-                    <Command.Group heading="Ajouter un bloc au chapitre">
-                      {BLOCK_TYPES_ORDER.filter((t) => SAMPLE_PAYLOADS[t]).map((t) => (
-                        <PaletteItem
-                          key={`add-${t}`}
-                          icon={<FamilyIcon family="add" />}
-                          label={`+ ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}`}
-                          hint="Insère dans le chapitre courant avec l'exemple"
-                          value={`add-${t}`}
-                          keywords={[
-                            t,
-                            (BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t,
-                            'ajouter',
-                            'add',
-                            'insert',
-                          ]}
-                          disabled={isPending}
-                          onSelect={() => void handleInsertBlock(t)}
-                        />
-                      ))}
-                    </Command.Group>
-                  )}
+                    user with two competing "Add a block" entry points).
+                    Caché en empty-query landing (les Suggestions prennent
+                    le relais) et quand la portée filtre autre chose. */}
+                  {!isEmptyQuery &&
+                    (scope === 'all' || scope === 'actions') &&
+                    ctx.parcoursSlug &&
+                    ctx.chapterSlug &&
+                    (!onBlockEditPage || registeredScopes.length === 0) && (
+                      <Command.Group heading="Ajouter un bloc au chapitre">
+                        {BLOCK_TYPES_ORDER.filter((t) => SAMPLE_PAYLOADS[t]).map((t) => (
+                          <PaletteItem
+                            key={`add-${t}`}
+                            icon={<FamilyIcon family="add" />}
+                            label={`+ ${(BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t}`}
+                            hint="Insère dans le chapitre courant avec l'exemple"
+                            value={`add-${t}`}
+                            keywords={[
+                              t,
+                              (BLOCK_TYPE_LABELS as Record<string, string>)[t] ?? t,
+                              'ajouter',
+                              'add',
+                              'insert',
+                            ]}
+                            disabled={isPending}
+                            onSelect={() => void handleInsertBlock(t)}
+                          />
+                        ))}
+                      </Command.Group>
+                    )}
 
                   {/* === Tags (current parcours) ===
                       Browse the maintenance-tag vocabulary actually used in
@@ -618,7 +836,7 @@ export function CommandPalette() {
                       Hidden when a filter is already active (the editor
                       doesn't need to pick again) and when the parcours has
                       no tags yet (empty section would just be noise). */}
-                  {!selectedTagId && (data?.tags?.length ?? 0) > 0 && (
+                  {!isEmptyQuery && scope === 'all' && !selectedTagId && (data?.tags?.length ?? 0) > 0 && (
                     <Command.Group heading="Tags">
                       {data!.tags.map((t) => {
                         const hex = isTagColor(t.color) ? TAG_COLOR_HEX[t.color] : TAG_COLOR_HEX.amber;
@@ -652,11 +870,11 @@ export function CommandPalette() {
                       to the active tag if any), then strips out the rows
                       considered redundant with a matching block row
                       (see `redundantChapterIds` above). */}
-                  {filteredChapters.length > 0 && (
-                    <Command.Group heading="Chapitres">
+                  {!isEmptyQuery && (scope === 'all' || scope === 'chapters') && filteredChapters.length > 0 && (
+                    <Command.Group heading={`Chapitres · ${filteredChapters.length}`}>
                       {filteredChapters
                         .filter((c) => !redundantChapterIds.has(c.id))
-                        .map((c) => {
+                        .map((c, ci) => {
                           // Tags on the chapter that themselves match the
                           // query — rendered as colored pills on the row so
                           // the user sees the match comes from a tag.
@@ -682,9 +900,13 @@ export function CommandPalette() {
                               snippet={snippet}
                               highlight={search}
                               matchChips={matchingTags}
+                              index={ci < 9 && search.trim() ? ci + 1 : undefined}
+                              actionHint={search.trim() ? '↵ Ouvrir' : undefined}
                               value={`chapter-${c.id}`}
                               keywords={[c.title, c.title, c.slug, c.searchText]}
-                              onSelect={() => go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`)}
+                              onSelect={() =>
+                                go(`/parcours/${ctx.parcoursSlug}/chapters/${c.slug}`, { kind: 'chapter', id: c.id })
+                              }
                             />
                           );
                         })}
@@ -692,9 +914,9 @@ export function CommandPalette() {
                   )}
 
                   {/* === Blocs (current parcours, full-text searchable) === */}
-                  {filteredBlocks.length > 0 && (
-                    <Command.Group heading="Blocs">
-                      {filteredBlocks.map((b) => {
+                  {!isEmptyQuery && (scope === 'all' || scope === 'blocks') && filteredBlocks.length > 0 && (
+                    <Command.Group heading={`Blocs · ${filteredBlocks.length}`}>
+                      {filteredBlocks.map((b, bi) => {
                         // Tags on the block that themselves match the
                         // query — surfaced as colored pills inline on the
                         // row so the user sees the match comes from a tag.
@@ -720,6 +942,8 @@ export function CommandPalette() {
                             snippet={snippet}
                             highlight={search}
                             matchChips={matchingTags}
+                            index={bi < 9 && search.trim() ? bi + 1 : undefined}
+                            actionHint={search.trim() ? '↵ Ouvrir' : undefined}
                             value={`block-${b.id}`}
                             // primaryText duplicated so cmdk's fuzzy matcher
                             // weighs a hit on titles/labels above one buried
@@ -739,7 +963,10 @@ export function CommandPalette() {
                             // Chapitres section if its title matches.
                             keywords={[b.summary, b.summary, b.primaryText, b.primaryText, b.type, b.secondaryText]}
                             onSelect={() =>
-                              go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`)
+                              go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`, {
+                                kind: 'block',
+                                id: b.id,
+                              })
                             }
                           />
                         );
@@ -753,21 +980,26 @@ export function CommandPalette() {
                     the full list under an active tag filter is just noise
                     (the user expects to see only what's tagged). Same
                     `!selectedTagId` guard as the Tags section above. */}
-                  {!selectedTagId && (data?.variables?.length ?? 0) > 0 && (
-                    <Command.Group heading="Variables">
-                      {data!.variables.map((v) => (
-                        <PaletteItem
-                          key={v.id}
-                          icon={<FamilyIcon family="variable" />}
-                          label={v.key}
-                          hint={`${v.label} · ${v.type}`}
-                          value={`var-${v.id}`}
-                          keywords={[v.key, v.label, v.type]}
-                          onSelect={() => go(`/parcours/${ctx.parcoursSlug}/variables`)}
-                        />
-                      ))}
-                    </Command.Group>
-                  )}
+                  {!isEmptyQuery &&
+                    (scope === 'all' || scope === 'variables') &&
+                    !selectedTagId &&
+                    (data?.variables?.length ?? 0) > 0 && (
+                      <Command.Group heading={`Variables · ${data!.variables.length}`}>
+                        {data!.variables.map((v) => (
+                          <PaletteItem
+                            key={v.id}
+                            icon={<FamilyIcon family="variable" />}
+                            label={v.key}
+                            hint={`${v.label} · ${v.type}`}
+                            value={`var-${v.id}`}
+                            keywords={[v.key, v.label, v.type]}
+                            onSelect={() =>
+                              go(`/parcours/${ctx.parcoursSlug}/variables`, { kind: 'variable', id: v.id })
+                            }
+                          />
+                        ))}
+                      </Command.Group>
+                    )}
 
                   {/* === Parcours ===
                     Like Variables, hidden while a tag filter is active —
@@ -775,21 +1007,24 @@ export function CommandPalette() {
                     irrelevant to a tag-scoped view (that's why two parcours
                     were wrongly showing under the « vue agenda » filter).
                     Shown normally otherwise, including plain text search. */}
-                  {!selectedTagId && (data?.parcours?.length ?? 0) > 0 && (
-                    <Command.Group heading="Parcours">
-                      {data!.parcours.map((p) => (
-                        <PaletteItem
-                          key={p.id}
-                          icon={<FamilyIcon family="parcours" />}
-                          label={p.name}
-                          hint={p.slug}
-                          value={`parcours-${p.id}`}
-                          keywords={[p.name, p.slug]}
-                          onSelect={() => go(`/parcours/${p.slug}`)}
-                        />
-                      ))}
-                    </Command.Group>
-                  )}
+                  {!isEmptyQuery &&
+                    (scope === 'all' || scope === 'parcours') &&
+                    !selectedTagId &&
+                    (data?.parcours?.length ?? 0) > 0 && (
+                      <Command.Group heading={`Parcours · ${data!.parcours.length}`}>
+                        {data!.parcours.map((p) => (
+                          <PaletteItem
+                            key={p.id}
+                            icon={<FamilyIcon family="parcours" />}
+                            label={p.name}
+                            hint={p.slug}
+                            value={`parcours-${p.id}`}
+                            keywords={[p.name, p.slug]}
+                            onSelect={() => go(`/parcours/${p.slug}`, { kind: 'parcours', id: p.id })}
+                          />
+                        ))}
+                      </Command.Group>
+                    )}
                 </>
               )}
             </Command.List>
@@ -821,10 +1056,22 @@ export function CommandPalette() {
         )}
 
         <div className="border-border bg-muted/30 text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-[10px]">
-          <span>
-            <kbd className="border-border bg-surface rounded border px-1 py-0.5">↑↓</kbd> naviguer ·{' '}
-            <kbd className="border-border bg-surface rounded border px-1 py-0.5">↵</kbd> valider ·{' '}
-            <kbd className="border-border bg-surface rounded border px-1 py-0.5">esc</kbd> fermer
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span>
+              <kbd className="border-border bg-surface rounded border px-1 py-0.5">↑↓</kbd> naviguer
+            </span>
+            <span>
+              <kbd className="border-border bg-surface rounded border px-1 py-0.5">1–9</kbd> accès direct
+            </span>
+            <span>
+              <kbd className="border-border bg-surface rounded border px-1 py-0.5">⇥</kbd> filtrer
+            </span>
+            <span>
+              <kbd className="border-border bg-surface rounded border px-1 py-0.5">↵</kbd> ouvrir
+            </span>
+            <span>
+              <kbd className="border-border bg-surface rounded border px-1 py-0.5">esc</kbd> fermer
+            </span>
           </span>
           <span className="flex items-center gap-1">
             <FileText className="h-3 w-3" />

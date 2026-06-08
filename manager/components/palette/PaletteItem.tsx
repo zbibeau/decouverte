@@ -82,6 +82,9 @@ export function PaletteItem({
   keywords,
   disabled,
   onSelect,
+  index,
+  actionHint,
+  meta,
 }: {
   icon: ReactNode;
   label: string;
@@ -100,6 +103,26 @@ export function PaletteItem({
   keywords?: string[];
   disabled?: boolean;
   onSelect: () => void;
+  /**
+   * 1-based position within the visible search results. When set
+   * (1-9), a small `qjump` badge is rendered to the left so the
+   * editor knows they can press that digit to validate the row
+   * without arrowing through. Omit / `undefined` outside search
+   * mode or for rows past the 9th visible result.
+   */
+  index?: number;
+  /**
+   * Right-aligned action label revealed when the row is selected /
+   * hovered (e.g. « ↵ Ouvrir », « ↵ Insérer »). Replaces the
+   * always-on hint inside the same slot when both are present.
+   */
+  actionHint?: string;
+  /**
+   * Trailing metadata shown next to / instead of `hint` — used for
+   * the relative timestamp on the "Récents" rows
+   * (« il y a 5 min »). Rendered before the `actionHint`.
+   */
+  meta?: string;
 }) {
   return (
     <Command.Item
@@ -107,8 +130,17 @@ export function PaletteItem({
       keywords={keywords}
       disabled={disabled}
       onSelect={onSelect}
-      className="data-[selected=true]:bg-primary/10 flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm data-[disabled=true]:opacity-40"
+      className="data-[selected=true]:bg-primary/10 group flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm data-[disabled=true]:opacity-40"
     >
+      {typeof index === 'number' && index >= 1 && index <= 9 && (
+        <span
+          aria-hidden="true"
+          className="border-border text-text-faint group-data-[selected=true]:border-primary/40 group-data-[selected=true]:text-primary-on mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border font-mono text-[10px]"
+          title={`Accès direct : touche ${index}`}
+        >
+          {index}
+        </span>
+      )}
       <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">{icon}</span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-center gap-1.5">
@@ -123,7 +155,14 @@ export function PaletteItem({
         </span>
         {snippet && <HighlightedSnippet snippet={snippet} highlight={highlight} />}
       </span>
-      {hint && <span className="text-muted-foreground ml-2 shrink-0 truncate text-[10px]">{hint}</span>}
+      {meta && <span className="text-text-faint ml-2 shrink-0 truncate text-[10px]">{meta}</span>}
+      {actionHint ? (
+        <span className="text-primary-on ml-2 hidden shrink-0 truncate text-[10px] font-medium group-data-[selected=true]:inline">
+          {actionHint}
+        </span>
+      ) : (
+        hint && <span className="text-muted-foreground ml-2 shrink-0 truncate text-[10px]">{hint}</span>
+      )}
     </Command.Item>
   );
 }
