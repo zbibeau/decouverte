@@ -79,12 +79,21 @@
        valeur existante — il reste légèrement plus clair que le
        canvas, ce qui crée la stratification voulue rail panel ←
        canvas (le plus profond) → blocs (les plus clairs). */
-    --bg: 14 17 23; /* #0e1117 — Direction C `--graphite` */
-    --surface: 22 27 36; /* #161b24 — Direction C `--g2` */
-    --surface-2: 29 36 47; /* #1d242f — Direction C `--g3` */
-    --surface-3: 35 42 53; /* #232a35 — non-utilisé en proto, conservé pour les usages internes */
-    --border: 38 45 57; /* #262d39 — Direction C `--gline` */
-    --border-strong: 50 59 73; /* #323b49 — Direction C `--gline2` */
+    --bg: 14 17 23; /* #0e1117 — Direction C `--graphite` (canvas) */
+    /* Surfaces remontées de ~+6 RGB vs Direction C original pour
+       donner un VRAI "lift" aux Cards top-level sur fond graphite.
+       Avant : `--surface` à #161b24 (+8 vs canvas) → contraste
+       quasi nul à l'œil, toutes les zones éditables glissaient dans
+       le canvas. Maintenant : +14/+15 RGB de delta, les Cards
+       ressortent comme des surfaces flottantes sans casser l'esprit
+       graphite Studio. Les sub-zones « well » (Section neutre,
+       wrapper de ChildBlockList) restent plus SOMBRES que le canvas
+       — la stratification globale reste : well > canvas > Card. */
+    --surface: 28 35 47; /* #1c232f — Card (lifted) */
+    --surface-2: 38 46 60; /* #262e3c — sub-row à l'intérieur d'une Card */
+    --surface-3: 46 55 71; /* #2e3747 — usages internes (header de table, etc.) */
+    --border: 50 59 75; /* #323b4b — un peu plus visible que le proto */
+    --border-strong: 66 78 96; /* #424e60 */
     --text: 211 217 227; /* #d3d9e3 — Direction C `--gtext` */
     --text-muted: 139 148 163; /* #8b94a3 — Direction C `--gmut` */
     --text-faint: 93 102 117; /* #5d6675 — Direction C `--gfaint` */
