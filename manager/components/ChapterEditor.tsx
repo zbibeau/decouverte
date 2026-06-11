@@ -9,6 +9,7 @@ import { AddGallery } from '@/components/blocks/AddGallery';
 import { BlockThumb } from '@/components/blocks/BlockThumb';
 import type { NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
 import { BlockPreview } from '@/components/editor/preview/BlockPreview';
+import { LivePreviewIframe } from '@/components/palette/LivePreviewIframe';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
 import { EditorInspector } from '@/components/editor/EditorInspector';
@@ -1156,14 +1157,31 @@ export function ChapterEditor(props: Props) {
                                 </button>
                               </div>
                             )}
-                            <BlockPreview
-                              type={b.type}
-                              payload={
-                                isActive && activeBlock?.block
-                                  ? (activeBlock.block.payload as Record<string, unknown>)
-                                  : b.payload
-                              }
-                            />
+                            {/* Direction B Lot 5 v7 — quand le bloc est
+                                sélectionné, on remplace le BlockPreview
+                                React mirror par une VRAIE iframe Solid
+                                du front (LivePreviewIframe) — l'éditeur
+                                voit le rendu réel pendant qu'il édite à
+                                droite dans l'Inspector. previewId
+                                `canvas-live` distinct de `palette-live`
+                                de la palette ⌘K pour éviter conflit
+                                postMessage si les deux sont ouverts.
+                                Hauteur fixée à 480 px (la plupart des
+                                blocs y rentrent ; Hero plein écran est
+                                clippé mais lisible). */}
+                            {isActive ? (
+                              <LivePreviewIframe
+                                previewId="canvas-live"
+                                block={{
+                                  type: b.type,
+                                  payload:
+                                    (activeBlock?.block?.payload as Record<string, unknown> | undefined) ?? b.payload,
+                                }}
+                                className="bg-bg block h-[480px] w-full rounded-2xl border-0"
+                              />
+                            ) : (
+                              <BlockPreview type={b.type} payload={b.payload} />
+                            )}
                           </div>
                           {snippet && (
                             <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">

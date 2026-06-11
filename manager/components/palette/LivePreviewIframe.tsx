@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from 'react';
  *     isn't a block / add-block — we just hide the iframe).
  */
 
-const PREVIEW_ID = 'palette-live';
+const DEFAULT_PREVIEW_ID = 'palette-live';
 
 interface LivePreviewIframeProps {
   /** Block to render. null/undefined → iframe stays mounted but
@@ -33,9 +33,22 @@ interface LivePreviewIframeProps {
   clientUrl?: string;
   /** Class forwarded to the iframe (height etc.). */
   className?: string;
+  /** Identifier used in the preview URL `?id=<previewId>` and in
+   *  the `preview:setBlockOverride` blockId — DOIT correspondre
+   *  côté Solid (IsolatedBlockPreview filtre par cette valeur).
+   *  Permet de distinguer plusieurs iframes simultanées (e.g.
+   *  palette ⌘K = `palette-live`, canvas chapter editor =
+   *  `canvas-live`). */
+  previewId?: string;
 }
 
-export function LivePreviewIframe({ block, clientUrl = 'http://localhost:3100', className }: LivePreviewIframeProps) {
+export function LivePreviewIframe({
+  block,
+  clientUrl = 'http://localhost:3100',
+  className,
+  previewId = DEFAULT_PREVIEW_ID,
+}: LivePreviewIframeProps) {
+  const PREVIEW_ID = previewId;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [ready, setReady] = useState(false);
   /** Last block we successfully sent, so we don't re-post identical
