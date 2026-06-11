@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ChevronsUpDown, LayoutList, LogOut, PanelLeftClose, PanelLeftOpen, Search, Stethoscope } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -35,6 +35,16 @@ const STORAGE_KEY = 'manager:sidebarCollapsed';
  * encadre le plan de travail clair et fait ressortir les contenus colorés
  * (tags, field rails, preview).
  *
+ * Refonte Direction B (handoff §4) :
+ *   - En-tête : pastille logo 30×30 en gradient violet + Stethoscope blanc
+ *     + libellés « MadeForMed » / « Studio · Découverte ».
+ *   - Déclencheur ⌘K factice : champ de recherche cliquable qui ouvre la
+ *     palette via dispatch event clavier (le `useCommandPaletteHotkeys`
+ *     écoute déjà window keydown).
+ *   - Deux sections de nav : « Parcours de découverte » (liste live) et
+ *     « Studio » (Vue d'ensemble).
+ *   - Pied : avatar avec initiales du user + email + chevronsUpDown.
+ *
  * Replié (w-14 = 56 px) : rail d'icônes. Chaque parcours garde son dot
  * coloré + son icône, l'item actif a la même barre violet 3 px qu'en mode
  * déplié — le repère visuel reste lisible.
@@ -48,6 +58,8 @@ export function Sidebar({ email, parcours }: Props) {
     const parts = pathname.split('/').filter(Boolean);
     return parts[0] === 'parcours' && parts[1] ? decodeURIComponent(parts[1]) : null;
   })();
+  /** Active state for the Studio section links. */
+  const onOverview = pathname === '/overview' || pathname.startsWith('/overview/');
 
   // Read persisted state on mount.
   useEffect(() => {
@@ -85,6 +97,17 @@ export function Sidebar({ email, parcours }: Props) {
     }
   }
 
+  /** Direction B — Déclencheur ⌘K. Click sur le champ « Rechercher… »
+   *  dispatch un événement clavier ⌘K que `useCommandPaletteHotkeys`
+   *  écoute déjà → ouverture sans nouveau contexte React.  */
+  function openCommandPalette() {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
+  }
+
+  // Initiale email pour l'avatar utilisateur (premier char du local-part).
+  const userInitials = (email?.split('@')[0]?.[0] ?? '?').toUpperCase();
+
   // Avoid a hydration flash: render the expanded width on the server, then
   // swap to the persisted state once hydrated.
   const isCollapsed = hydrated && collapsed;
@@ -98,47 +121,98 @@ export function Sidebar({ email, parcours }: Props) {
         isCollapsed ? 'w-14' : 'w-64',
       )}
     >
-      {/* Header : logo carré violet + toggle. Sépare visuellement la
-          marque du contenu nav via une bordure basse. */}
+      {/* En-tête Direction B : pastille violet-gradient + Stethoscope +
+          libellés « MadeForMed » / « Studio · Découverte ». Toggle à
+          droite (replier/déplier la sidebar). */}
       <div
         className={cn(
-          'border-rail-border flex h-14 items-center border-b',
+          'border-rail-border flex h-[60px] items-center border-b',
           isCollapsed ? 'justify-center px-2' : 'justify-between px-3',
         )}
       >
-        {!isCollapsed && (
-          <Link href="/" className="text-rail-text flex items-center gap-2 text-sm font-semibold">
+        {!isCollapsed ? (
+          <Link href="/" className="flex min-w-0 items-center gap-2">
             <span
-              className="bg-primary text-on-primary inline-flex h-7 w-7 items-center justify-center text-[12px] font-bold"
-              style={{ borderRadius: 7 }}
+              aria-hidden="true"
+              className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg"
+              style={{ background: 'linear-gradient(150deg, #9951fb, #6e1ed2)' }}
             >
-              M
+              <Stethoscope className="h-[15px] w-[15px] text-white" />
             </span>
-            <span className="truncate">Manager</span>
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate text-[14px] font-bold text-white">MadeForMed</span>
+              <span className="text-rail-muted truncate text-[11px] font-semibold">Studio · Découverte</span>
+            </span>
+          </Link>
+        ) : (
+          <Link
+            href="/"
+            aria-label="Accueil"
+            className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg"
+            style={{ background: 'linear-gradient(150deg, #9951fb, #6e1ed2)' }}
+          >
+            <Stethoscope className="h-[15px] w-[15px] text-white" />
           </Link>
         )}
-        <button
-          type="button"
-          onClick={toggle}
-          className="text-rail-muted hover:text-rail-text inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/[0.06]"
-          title={isCollapsed ? 'Afficher la sidebar' : 'Masquer la sidebar'}
-        >
-          {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-        </button>
+        {!isCollapsed && (
+          <button
+            type="button"
+            onClick={toggle}
+            className="text-rail-muted hover:text-rail-text inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/[0.06]"
+            title="Masquer la sidebar"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      <nav className={cn('flex flex-1 flex-col gap-0.5', isCollapsed ? 'px-1.5 py-2' : 'p-2')}>
+      {/* Toggle en mode collapsed — sous le logo. Le placer dans le header
+          collapsed encombrerait, le mettre ici garde le logo seul. */}
+      {isCollapsed && (
+        <div className="border-rail-border/40 flex justify-center border-b px-2 py-1.5">
+          <button
+            type="button"
+            onClick={toggle}
+            className="text-rail-muted hover:text-rail-text inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/[0.06]"
+            title="Afficher la sidebar"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Déclencheur ⌘K Direction B — champ de recherche factice qui
+          ouvre la palette. Visible uniquement en mode déplié (en mode
+          collapsed le user peut presser ⌘K direct au clavier). */}
+      {!isCollapsed && (
+        <div className="px-2 pt-2.5">
+          <button
+            type="button"
+            onClick={openCommandPalette}
+            className="border-rail-border text-rail-muted hover:text-rail-text flex h-9 w-full items-center gap-2 rounded-md border bg-white/[0.04] px-2.5 text-xs transition-colors hover:bg-white/[0.07]"
+            title="Ouvrir la palette de commandes (⌘K)"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 text-left">Rechercher…</span>
+            <kbd className="border-rail-border inline-flex h-5 min-w-5 items-center justify-center rounded border bg-white/[0.04] px-1 font-mono text-[10px]">
+              ⌘
+            </kbd>
+            <kbd className="border-rail-border inline-flex h-5 min-w-5 items-center justify-center rounded border bg-white/[0.04] px-1 font-mono text-[10px]">
+              K
+            </kbd>
+          </button>
+        </div>
+      )}
+
+      <nav className={cn('flex flex-1 flex-col gap-0.5 overflow-y-auto', isCollapsed ? 'px-1.5 py-2' : 'p-2')}>
         {!isCollapsed && (
-          <p className="text-rail-section px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.07em]">
-            Parcours
+          <p className="text-rail-section px-2 pb-1 pt-3 text-[10.5px] font-bold uppercase tracking-[0.07em]">
+            Parcours de découverte
           </p>
         )}
         {parcours.map((p) => {
           const isActive = activeSlug === p.slug;
           const tint = safeThemeColor(p.themeColor ?? pastelForString(p.slug));
-          // Initiale du parcours — premier caractère non-espace du nom,
-          // capitalisé. Fallback sur le slug si le nom est vide, puis « ? »
-          // pour ne jamais rendre une pastille sans glyphe.
           const initial = (p.name?.trim() || p.slug || '?').charAt(0).toUpperCase() || '?';
           return (
             <Link
@@ -155,22 +229,12 @@ export function Sidebar({ email, parcours }: Props) {
                   : 'text-rail-text hover:text-rail-active-text hover:bg-white/[0.055]',
               )}
             >
-              {/* Liseré gauche pour l'item actif — repère ultra-rapide
-                  même quand l'œil scanne verticalement. */}
               {isActive && (
                 <span
                   aria-hidden="true"
                   className="bg-rail-active-bar absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
                 />
               )}
-              {/* Pastille colorée du parcours — fond = `theme_color` (la
-                  même teinte que l'ancien bandeau de header), initiale du
-                  nom centrée en gras. Sert de mini-identité visuelle pour
-                  le parcours et, en collapsed, devient le seul identifiant
-                  (avec le tooltip natif sur `title=`). Texte forcé en
-                  #181b22 (= `--text` clair) parce que la palette de pastels
-                  est calibrée pour rester lisible avec du texte sombre,
-                  peu importe le thème global. */}
               <span
                 aria-hidden="true"
                 className={cn(
@@ -193,9 +257,6 @@ export function Sidebar({ email, parcours }: Props) {
                   )}
                 </>
               )}
-              {/* Pastille brouillon en collapsed : petit point amber dans le
-                  coin haut-droite de la pastille colorée. `ring-rail-bg`
-                  pour le découper proprement sur le fond graphite. */}
               {isCollapsed && p.hasDraft && (
                 <span
                   aria-label="Brouillon non publié"
@@ -206,10 +267,41 @@ export function Sidebar({ email, parcours }: Props) {
             </Link>
           );
         })}
+
+        {/* Section « Studio » Direction B — entrées globales (cross-parcours).
+            Pour le moment : Vue d'ensemble. Bibliothèque média / Historique /
+            Réglages sont mentionnés dans le handoff mais n'ont pas de routes
+            dédiées dans le manager actuel — on les ajoutera quand ces écrans
+            existeront. */}
+        {!isCollapsed && (
+          <p className="text-rail-section mt-4 px-2 pb-1 pt-3 text-[10.5px] font-bold uppercase tracking-[0.07em]">
+            Studio
+          </p>
+        )}
+        <Link
+          href="/overview"
+          aria-current={onOverview ? 'page' : undefined}
+          title={isCollapsed ? "Vue d'ensemble" : undefined}
+          className={cn(
+            'group relative flex items-center rounded-md text-sm transition-colors',
+            isCollapsed ? 'justify-center py-1.5' : 'gap-2.5 px-2 py-1.5',
+            onOverview
+              ? 'bg-rail-active-bg text-rail-active-text'
+              : 'text-rail-text hover:text-rail-active-text hover:bg-white/[0.055]',
+          )}
+        >
+          {onOverview && (
+            <span
+              aria-hidden="true"
+              className="bg-rail-active-bar absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
+            />
+          )}
+          <LayoutList className={cn('shrink-0', isCollapsed ? 'h-5 w-5' : 'h-4 w-4')} />
+          {!isCollapsed && <span className="truncate">Vue d'ensemble</span>}
+        </Link>
       </nav>
 
-      {/* Footer : email (déplié) + theme toggle + logout. Bordure haute
-          pour matérialiser la séparation avec la nav. */}
+      {/* Footer Direction B : avatar avec initiales + email + theme + logout. */}
       <div
         className={cn(
           'border-rail-border border-t',
@@ -217,10 +309,19 @@ export function Sidebar({ email, parcours }: Props) {
         )}
       >
         {!isCollapsed ? (
-          <div className="text-rail-muted flex items-center gap-1.5 px-2 py-1.5 text-xs">
-            <span className="flex-1 truncate" title={email}>
-              {email}
+          <div className="text-rail-muted flex items-center gap-2 px-1 py-1">
+            <span
+              aria-hidden="true"
+              className="bg-primary text-on-primary inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-xs font-bold"
+              title={email}
+            >
+              {userInitials}
             </span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="text-rail-text truncate text-[13px] font-semibold">{email.split('@')[0]}</div>
+              <div className="text-rail-muted truncate text-[11px]">{email}</div>
+            </div>
+            <ChevronsUpDown className="text-rail-muted h-3.5 w-3.5 shrink-0" />
             <ThemeToggle />
             <SignOutButton>
               <LogOut className="h-4 w-4" />
@@ -228,6 +329,13 @@ export function Sidebar({ email, parcours }: Props) {
           </div>
         ) : (
           <>
+            <span
+              aria-hidden="true"
+              className="bg-primary text-on-primary inline-flex h-[30px] w-[30px] items-center justify-center rounded-full text-xs font-bold"
+              title={email}
+            >
+              {userInitials}
+            </span>
             <ThemeToggle />
             <SignOutButton>
               <LogOut className="h-4 w-4" />
