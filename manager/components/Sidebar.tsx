@@ -1,6 +1,15 @@
 'use client';
 
-import { ChevronsUpDown, LayoutList, LogOut, PanelLeftClose, PanelLeftOpen, Search, Stethoscope } from 'lucide-react';
+import {
+  ChevronsUpDown,
+  LayoutList,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+  Stethoscope,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -60,6 +69,7 @@ export function Sidebar({ email, parcours }: Props) {
   })();
   /** Active state for the Studio section links. */
   const onOverview = pathname === '/overview' || pathname.startsWith('/overview/');
+  const onSettings = pathname === '/settings' || pathname.startsWith('/settings/');
 
   // Read persisted state on mount.
   useEffect(() => {
@@ -298,6 +308,27 @@ export function Sidebar({ email, parcours }: Props) {
           )}
           <LayoutList className={cn('shrink-0', isCollapsed ? 'h-5 w-5' : 'h-4 w-4')} />
           {!isCollapsed && <span className="truncate">Vue d'ensemble</span>}
+        </Link>
+        <Link
+          href="/settings"
+          aria-current={onSettings ? 'page' : undefined}
+          title={isCollapsed ? 'Réglages' : undefined}
+          className={cn(
+            'group relative flex items-center rounded-md text-sm transition-colors',
+            isCollapsed ? 'justify-center py-1.5' : 'gap-2.5 px-2 py-1.5',
+            onSettings
+              ? 'bg-rail-active-bg text-rail-active-text'
+              : 'text-rail-text hover:text-rail-active-text hover:bg-white/[0.055]',
+          )}
+        >
+          {onSettings && (
+            <span
+              aria-hidden="true"
+              className="bg-rail-active-bar absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
+            />
+          )}
+          <Settings className={cn('shrink-0', isCollapsed ? 'h-5 w-5' : 'h-4 w-4')} />
+          {!isCollapsed && <span className="truncate">Réglages</span>}
         </Link>
       </nav>
 
