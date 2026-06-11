@@ -988,7 +988,18 @@ export function ChapterEditor(props: Props) {
                               — ouvert ci-dessous
                             </div>
                           )}
-                          <div className="flex items-center gap-2">
+                          {/* Direction B (Lot 5 v5) — row chrome compact
+                              (handle + chevron + thumb + eyebrow + summary
+                              + tags + diff + actions) AFFICHÉE UNIQUEMENT
+                              quand le bloc n'est pas sélectionné. En
+                              mode sélectionné, le chip type + la
+                              mini-toolbar flottants au-dessus du
+                              BlockPreview prennent le relais — pattern
+                              papier net comme la maquette Direction B.
+                              Drag handle reste accessible : l'éditeur
+                              peut déselectionner (✕ inspecteur ou click
+                              ailleurs) pour réordonner. */}
+                          <div className={cn('flex items-center gap-2', isActive && 'hidden')}>
                             {dragHandle}
                             <button
                               type="button"
