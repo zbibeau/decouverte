@@ -170,15 +170,19 @@ function FormPreview({ p }: { p: FormBlock['payload'] }) {
           <p className="text-text-faint text-center text-[11px]">+ {(p.fields?.length ?? 0) - 5} autre(s) champ(s)</p>
         )}
       </div>
-      <button
-        type="button"
-        disabled
-        className="bg-brand-primary-600 mx-auto mt-4 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-white opacity-90"
-        tabIndex={-1}
-      >
-        {p.nextButtonText ?? 'Continuer'}
-        <ChevronRight className="h-4 w-4" />
-      </button>
+      {/* Continuer CTA — purement décoratif (preview). On utilise un
+          <span> stylé comme un bouton plutôt qu'un vrai <button> pour
+          éviter le nested-button (le wrapper BlockPreview est lui-même
+          un <button> de sélection → HTML invalide). */}
+      <div className="mt-4 flex justify-center">
+        <span
+          aria-hidden="true"
+          className="bg-brand-primary-600 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-white opacity-90"
+        >
+          {p.nextButtonText ?? 'Continuer'}
+          <ChevronRight className="h-4 w-4" />
+        </span>
+      </div>
     </div>
   );
 }

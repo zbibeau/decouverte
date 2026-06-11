@@ -1076,13 +1076,40 @@ export function ChapterEditor(props: Props) {
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
-                          {/* Direction B (Lot 2) — BlockPreview en miroir
-                              du rendu front, juste sous la row compact
-                              header. Donne le feel « papier » : chaque
-                              bloc se lit comme il sera vu côté médecin.
-                              Read-only ; sélection + inspecteur viendront
-                              en Lot 3. */}
-                          <div className="mt-2 pl-[44px]">
+                          {/* Direction B (Lot 3) — BlockPreview cliquable
+                              avec halo de sélection. Le click sur le
+                              wrapper sélectionne le bloc → l'Inspector
+                              droit affiche son PayloadEditor.
+                              L'expansion inline a été retirée : il
+                              n'y a plus d'éditeur sous la row, tout
+                              se passe dans le panel droit. La row
+                              chrome (drag, chevron, type, summary,
+                              tags, actions) reste visible pour le scan
+                              rapide. */}
+                          <button
+                            type="button"
+                            onClick={() => void openBlock(b.id)}
+                            aria-pressed={isActive}
+                            aria-label={`Sélectionner le bloc ${b.type}`}
+                            className={cn(
+                              'group relative mt-2 block w-full rounded-2xl text-left transition-all',
+                              'focus-visible:ring-primary/40 focus-visible:outline-none focus-visible:ring-2',
+                              isActive && 'ring-primary/60 ring-offset-surface-2 ring-2 ring-offset-2',
+                            )}
+                            style={{ marginLeft: 44 }}
+                          >
+                            {/* Chip de type flottant en haut-gauche
+                                (révélé sur sélection). Évite
+                                d'occuper du visuel quand le bloc
+                                n'est pas l'objet courant. */}
+                            {isActive && (
+                              <span
+                                aria-hidden="true"
+                                className="bg-primary text-on-primary absolute -top-2.5 left-3 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wider shadow-sm"
+                              >
+                                {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
+                              </span>
+                            )}
                             <BlockPreview
                               type={b.type}
                               payload={
@@ -1091,44 +1118,11 @@ export function ChapterEditor(props: Props) {
                                   : b.payload
                               }
                             />
-                          </div>
+                          </button>
                           {snippet && (
                             <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
                               <HighlightedSnippet snippet={snippet} query={searchQuery} />
                             </p>
-                          )}
-                          {isExpanded && (
-                            <div className="border-border bg-muted/20 mt-3 rounded-md border p-3">
-                              <InlineBlockEditor
-                                key={b.id}
-                                blockId={b.id}
-                                chapterSlug={props.chapter.slug}
-                                parcoursSlug={props.parcoursSlug}
-                                isNew={false}
-                                type={b.type as ContentBlock['type']}
-                                initialPayload={b.payload}
-                                variables={props.variables}
-                                chapters={props.chapters}
-                                navbarVariants={props.navbarVariants}
-                                onCreateNavbarVariant={onCreateNavbarVariant}
-                                saveAction={(payload) => props.saveBlockAction(b.id, payload)}
-                                draftStatus={b.diff}
-                                sourcePayload={null}
-                                simValues={simValues}
-                                setSimValues={setSimValues}
-                                setHoveredField={setHoveredField}
-                                active={isActive}
-                                onBlockChange={(blk) =>
-                                  setActiveBlock((prev) =>
-                                    prev && prev.id === b.id && prev.block === blk ? prev : { id: b.id, block: blk },
-                                  )
-                                }
-                                onDirtyChange={(d) =>
-                                  setDirtyMap((prev) => (prev[b.id] === d ? prev : { ...prev, [b.id]: d }))
-                                }
-                                onPersistedId={handlePersistedId}
-                              />
-                            </div>
                           )}
                         </div>
                       </>
@@ -1152,11 +1146,58 @@ export function ChapterEditor(props: Props) {
             </Card>
           </div>
         </main>
-        {/* Inspecteur de bloc (Direction B) — placeholder pour Lot 1.
-            La sélection contextuelle des champs PayloadEditor arrive
-            en Lot 3 (sélection + inspecteur dynamique). */}
+        {/* Inspecteur de bloc (Direction B Lot 3) — contextuel sur le
+            bloc actif. Quand un bloc est sélectionné dans le canvas,
+            son InlineBlockEditor est monté ici (au lieu de
+            l'expansion inline sous la row, désormais retirée).
+            Bouton fermer ✕ désélectionne, Dupliquer / Supprimer
+            câblés sur les handlers existants. */}
         <div className="hidden lg:block">
-          <EditorInspector />
+          {(() => {
+            const activeRow = activeBlockId ? displayBlocks.find((b) => b.id === activeBlockId) : null;
+            return (
+              <EditorInspector
+                selectedBlock={activeRow ? { id: activeRow.id, type: activeRow.type } : null}
+                onClose={activeRow ? () => setActiveBlockId(null) : undefined}
+                onDuplicate={activeRow ? () => handleDuplicate(activeRow.id) : undefined}
+                onDelete={activeRow ? () => handleDelete(activeRow.id) : undefined}
+              >
+                {activeRow && (
+                  <InlineBlockEditor
+                    key={activeRow.id}
+                    blockId={activeRow.id}
+                    chapterSlug={props.chapter.slug}
+                    parcoursSlug={props.parcoursSlug}
+                    isNew={false}
+                    type={activeRow.type as ContentBlock['type']}
+                    initialPayload={activeRow.payload}
+                    variables={props.variables}
+                    chapters={props.chapters}
+                    navbarVariants={props.navbarVariants}
+                    onCreateNavbarVariant={onCreateNavbarVariant}
+                    saveAction={(payload) => props.saveBlockAction(activeRow.id, payload)}
+                    draftStatus={activeRow.diff}
+                    sourcePayload={null}
+                    simValues={simValues}
+                    setSimValues={setSimValues}
+                    setHoveredField={setHoveredField}
+                    active={true}
+                    onBlockChange={(blk) =>
+                      setActiveBlock((prev) =>
+                        prev && prev.id === activeRow.id && prev.block === blk
+                          ? prev
+                          : { id: activeRow.id, block: blk },
+                      )
+                    }
+                    onDirtyChange={(d) =>
+                      setDirtyMap((prev) => (prev[activeRow.id] === d ? prev : { ...prev, [activeRow.id]: d }))
+                    }
+                    onPersistedId={handlePersistedId}
+                  />
+                )}
+              </EditorInspector>
+            );
+          })()}
         </div>
       </div>
     </div>
