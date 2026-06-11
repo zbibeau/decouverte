@@ -244,12 +244,6 @@ export function ChapterEditor(props: Props) {
   // lieu d'un panneau replié contenant un autre bouton qui ouvre
   // la galerie — redondance héritée de la migration Lot 2).
   const [galleryOpen, setGalleryOpen] = useState(false);
-  // Compact filter — la grosse barre « 🔍 Filtrer les blocs… » au-dessus
-  // de la card a été remplacée par une petite loupe dans le header (à
-  // gauche du CTA « Ajouter un bloc »). Click sur la loupe → input
-  // inline qui apparaît dans le header, auto-focus. Click sur ✕ ou
-  // submit Esc → ferme + clear.
-  const [filterOpen, setFilterOpen] = useState(false);
   // Preview device mode — pilote la largeur de la colonne du
   // PreviewPanel dans le grid 3-col. Mobile = 380 px (phone-like),
   // Desktop = 720 px (le front Solid rend alors sa version desktop
