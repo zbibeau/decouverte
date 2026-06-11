@@ -42,6 +42,29 @@ interface BlockRow {
   tags?: Array<{ id: string; label: string; color: string }>;
 }
 
+/**
+ * Hauteur de l'iframe Solid (LivePreviewIframe) côté canvas quand le
+ * bloc est sélectionné, par type. Le front utilise `h-dvh` sur Hero —
+ * dans l'iframe ça devient la hauteur du wrapper, donc plus c'est
+ * haut, plus le Hero est lisible. Pour les blocs courts (text,
+ * conditional), on réduit pour ne pas créer de gros vide blanc en
+ * dessous du contenu utile.
+ */
+const IFRAME_HEIGHT_BY_TYPE: Record<string, string> = {
+  heroTitle: 'h-[640px]',
+  toolContentSection: 'h-[600px]',
+  video: 'h-[520px]',
+  photoCarousel: 'h-[520px]',
+  form: 'h-[560px]',
+  keyPointsCard: 'h-[480px]',
+  faqCard: 'h-[480px]',
+  card: 'h-[440px]',
+  conditional: 'h-[360px]',
+  text: 'h-[300px]',
+  componentRef: 'h-[280px]',
+  _default: 'h-[480px]',
+};
+
 interface Props {
   parcoursSlug: string;
   chapter: { id: string; slug: string; title: string };
@@ -1177,7 +1200,19 @@ export function ChapterEditor(props: Props) {
                                   payload:
                                     (activeBlock?.block?.payload as Record<string, unknown> | undefined) ?? b.payload,
                                 }}
-                                className="bg-bg block h-[480px] w-full rounded-2xl border-0"
+                                /* Hauteur adaptée au type — Hero
+                                   immersif et Tool section ont besoin
+                                   de plus, text/conditional sont
+                                   compacts par nature. Le front Solid
+                                   utilise `h-dvh` sur Hero ; à
+                                   l'intérieur de l'iframe ça devient
+                                   la hauteur de l'iframe → plus c'est
+                                   haut, plus le Hero est lisible. */
+                                className={cn(
+                                  'bg-bg block w-full rounded-2xl border-0',
+                                  IFRAME_HEIGHT_BY_TYPE[b.type as keyof typeof IFRAME_HEIGHT_BY_TYPE] ??
+                                    IFRAME_HEIGHT_BY_TYPE._default,
+                                )}
                               />
                             ) : (
                               <BlockPreview type={b.type} payload={b.payload} />
