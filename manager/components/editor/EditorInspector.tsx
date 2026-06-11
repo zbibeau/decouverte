@@ -44,7 +44,7 @@ export function EditorInspector({
   if (!selectedBlock) {
     return (
       <aside
-        className="border-border bg-surface flex h-full w-[360px] shrink-0 flex-col border-l"
+        className="border-border bg-surface flex h-full w-[420px] shrink-0 flex-col border-l"
         aria-label="Inspecteur de bloc"
       >
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -66,7 +66,7 @@ export function EditorInspector({
 
   return (
     <aside
-      className="border-border bg-surface flex h-full w-[360px] shrink-0 flex-col border-l"
+      className="border-border bg-surface flex h-full w-[420px] shrink-0 flex-col border-l"
       aria-label="Inspecteur de bloc"
     >
       {/* Header : icône type + libellé + fermer */}

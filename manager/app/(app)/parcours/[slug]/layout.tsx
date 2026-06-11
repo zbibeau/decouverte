@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 
 import { DraftStatusBar } from '@/components/DraftStatusBar';
+import { DraftStatusBarSlot } from '@/components/DraftStatusBarSlot';
 import { DockedPreviewLayout } from '@/components/preview/DockedPreviewLayout';
 import { Badge } from '@/components/ui/Badge';
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog';
@@ -177,10 +178,11 @@ export default async function ParcoursLayout({
             led to surprise "Publier" clicks. z-30 keeps it above
             chapter cards (z-10) and below the global CommandPalette
             (z-50). */}
-        <div
-          data-draft-status-bar
-          className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 -mx-4 px-4 py-2 backdrop-blur"
-        >
+        {/* DraftStatusBarSlot (client) cache la barre quand on est
+            dans l'éditeur de chapitre (Direction B Lot 5) — le status
+            pill de la EditorTopbar prend le relais. Hors chapter
+            editor, la barre garde son comportement existant. */}
+        <DraftStatusBarSlot parcoursSlug={slug}>
           {/* DraftStatusBar is an async Server Component that hits multiple
               Supabase queries (draft diffs, deleted count, tag review summary).
               Wrapping it in Suspense lets the REST of the page stream
@@ -190,7 +192,7 @@ export default async function ParcoursLayout({
           <Suspense fallback={null}>
             <DraftStatusBar parcoursSlug={slug} />
           </Suspense>
-        </div>
+        </DraftStatusBarSlot>
         {/* DockedPreviewLayout wraps the page content with a sticky
             right-side parcours preview on every sub-page EXCEPT the
             chapter editor (which already owns a richer PreviewPanel).
