@@ -1,5 +1,6 @@
 import { CreateParcoursDialog } from '@/components/CreateParcoursDialog';
 import { ParcoursGrid } from '@/components/ParcoursGrid';
+import { ParcoursListStatsBar } from '@/components/parcours/ParcoursListStatsBar';
 import { createParcours } from '@/lib/actions';
 import { createClient } from '@/lib/supabase/server';
 
@@ -17,16 +18,32 @@ export default async function ParcoursListPage() {
     return await createParcours(input);
   }
 
+  // Direction B stats : total / publiés / brouillon. Pas de roundtrip
+  // supplémentaire — calculé depuis le fetch parcours déjà fait.
+  const total = (parcours ?? []).length;
+  const published = (parcours ?? []).filter((p) => Boolean(p.published_version_id)).length;
+  const draft = total - published;
+
   return (
     <div className="mx-auto max-w-4xl p-8">
-      <div className="mb-6 flex items-center justify-between">
+      {/* Direction B (handoff §8) — eyebrow + grand H1 + texte intro,
+          au lieu de l'ancien h2 simple. */}
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Parcours</h1>
-          <p className="text-sm text-muted-foreground">
-            Sélectionnez un parcours pour éditer ses chapitres, ses vidéos et ses branches.
+          <div className="text-text-faint mb-1.5 text-[11px] font-semibold uppercase tracking-wider">
+            Parcours de découverte
+          </div>
+          <h1 className="text-text text-[26px] font-bold leading-tight tracking-tight">Tous les parcours</h1>
+          <p className="text-text-muted mt-1.5 max-w-xl text-sm">
+            Le contenu que les médecins parcourent pas à pas, organisé en sections puis chapitres. Sélectionne un
+            parcours pour éditer ses chapitres, ses vidéos et ses branches.
           </p>
         </div>
         <CreateParcoursDialog createAction={createAction} />
+      </header>
+
+      <div className="mb-6">
+        <ParcoursListStatsBar total={total} published={published} draft={draft} />
       </div>
 
       <ParcoursGrid
