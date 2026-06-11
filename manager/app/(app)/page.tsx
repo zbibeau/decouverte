@@ -1,3 +1,6 @@
+import { LayoutList } from 'lucide-react';
+import Link from 'next/link';
+
 import { CreateParcoursDialog } from '@/components/CreateParcoursDialog';
 import { ParcoursGrid } from '@/components/ParcoursGrid';
 import { ParcoursListStatsBar } from '@/components/parcours/ParcoursListStatsBar';
@@ -39,7 +42,17 @@ export default async function ParcoursListPage() {
             parcours pour éditer ses chapitres, ses vidéos et ses branches.
           </p>
         </div>
-        <CreateParcoursDialog createAction={createAction} />
+        <div className="flex items-center gap-2">
+          <Link
+            href="/overview"
+            className="border-border-strong bg-surface text-text hover:bg-surface-2 shadow-app-sm inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-sm font-semibold transition-colors"
+            title="Voir l'arborescence complète (tous parcours + chapitres)"
+          >
+            <LayoutList className="h-3.5 w-3.5" />
+            Vue d'ensemble
+          </Link>
+          <CreateParcoursDialog createAction={createAction} />
+        </div>
       </header>
 
       <div className="mb-6">
