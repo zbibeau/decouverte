@@ -1,7 +1,7 @@
 'use client';
 
 import type { ContentBlock } from '@shared/content-schema';
-import { ChevronDown, ChevronRight, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Plus, Search, Trash2, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
@@ -1083,32 +1083,35 @@ export function ChapterEditor(props: Props) {
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
-                          {/* Direction B (Lot 3) — BlockPreview cliquable
-                              avec halo de sélection. Le click sur le
-                              wrapper sélectionne le bloc → l'Inspector
-                              droit affiche son PayloadEditor.
-                              L'expansion inline a été retirée : il
-                              n'y a plus d'éditeur sous la row, tout
-                              se passe dans le panel droit. La row
-                              chrome (drag, chevron, type, summary,
-                              tags, actions) reste visible pour le scan
-                              rapide. */}
-                          <button
-                            type="button"
+                          {/* Direction B (Lot 3+5v4) — BlockPreview cliquable
+                              avec halo de sélection. Click sur le wrapper
+                              sélectionne le bloc → l'Inspector droit
+                              affiche son PayloadEditor.
+                              Lot 5 v4 : on est passé d'un <button> à un
+                              <div role="button"> pour pouvoir nester la
+                              mini-toolbar flottante (Duplicate + Trash)
+                              en haut-droite sur sélection. */}
+                          <div
+                            role="button"
+                            tabIndex={0}
                             onClick={() => void openBlock(b.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                void openBlock(b.id);
+                              }
+                            }}
                             aria-pressed={isActive}
                             aria-label={`Sélectionner le bloc ${b.type}`}
                             className={cn(
-                              'group relative mt-2 block w-full rounded-2xl text-left transition-all',
+                              'group relative mt-2 block w-full cursor-pointer rounded-2xl text-left transition-all',
                               'focus-visible:ring-primary/40 focus-visible:outline-none focus-visible:ring-2',
                               isActive && 'ring-primary/60 ring-offset-surface-2 ring-2 ring-offset-2',
                             )}
                             style={{ marginLeft: 44 }}
                           >
                             {/* Chip de type flottant en haut-gauche
-                                (révélé sur sélection). Évite
-                                d'occuper du visuel quand le bloc
-                                n'est pas l'objet courant. */}
+                                (révélé sur sélection). */}
                             {isActive && (
                               <span
                                 aria-hidden="true"
@@ -1116,6 +1119,39 @@ export function ChapterEditor(props: Props) {
                               >
                                 {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
                               </span>
+                            )}
+                            {/* Mini-toolbar flottante haut-droite — Lot
+                                5 v4. Visible sur sélection. Click
+                                stoppe la propagation pour ne pas
+                                re-déclencher openBlock. Trash en danger
+                                (rose) pour signaler l'action
+                                destructive. */}
+                            {isActive && (
+                              <div
+                                className="bg-surface border-border shadow-app-sm absolute -top-3.5 right-3 inline-flex items-center gap-0.5 rounded-md border p-0.5"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={isPending}
+                                  title="Dupliquer ce bloc"
+                                  aria-label="Dupliquer"
+                                  onClick={() => handleDuplicate(b.id)}
+                                  className="text-text-muted hover:bg-muted hover:text-text inline-flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-40"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isPending}
+                                  title="Supprimer ce bloc"
+                                  aria-label="Supprimer"
+                                  onClick={() => handleDelete(b.id)}
+                                  className="text-text-muted inline-flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
                             )}
                             <BlockPreview
                               type={b.type}
@@ -1125,7 +1161,7 @@ export function ChapterEditor(props: Props) {
                                   : b.payload
                               }
                             />
-                          </button>
+                          </div>
                           {snippet && (
                             <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
                               <HighlightedSnippet snippet={snippet} query={searchQuery} />
