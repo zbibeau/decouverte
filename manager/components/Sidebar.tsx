@@ -2,6 +2,8 @@
 
 import {
   ChevronsUpDown,
+  History,
+  ImageIcon,
   LayoutList,
   LogOut,
   PanelLeftClose,
@@ -69,6 +71,8 @@ export function Sidebar({ email, parcours }: Props) {
   })();
   /** Active state for the Studio section links. */
   const onOverview = pathname === '/overview' || pathname.startsWith('/overview/');
+  const onMedia = pathname === '/media' || pathname.startsWith('/media/');
+  const onHistory = pathname === '/history' || pathname.startsWith('/history/');
   const onSettings = pathname === '/settings' || pathname.startsWith('/settings/');
 
   // Read persisted state on mount.
@@ -308,6 +312,48 @@ export function Sidebar({ email, parcours }: Props) {
           )}
           <LayoutList className={cn('shrink-0', isCollapsed ? 'h-5 w-5' : 'h-4 w-4')} />
           {!isCollapsed && <span className="truncate">Vue d'ensemble</span>}
+        </Link>
+        <Link
+          href="/media"
+          aria-current={onMedia ? 'page' : undefined}
+          title={isCollapsed ? 'Bibliothèque média' : undefined}
+          className={cn(
+            'group relative flex items-center rounded-md text-sm transition-colors',
+            isCollapsed ? 'justify-center py-1.5' : 'gap-2.5 px-2 py-1.5',
+            onMedia
+              ? 'bg-rail-active-bg text-rail-active-text'
+              : 'text-rail-text hover:text-rail-active-text hover:bg-white/[0.055]',
+          )}
+        >
+          {onMedia && (
+            <span
+              aria-hidden="true"
+              className="bg-rail-active-bar absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
+            />
+          )}
+          <ImageIcon className={cn('shrink-0', isCollapsed ? 'h-5 w-5' : 'h-4 w-4')} />
+          {!isCollapsed && <span className="truncate">Bibliothèque média</span>}
+        </Link>
+        <Link
+          href="/history"
+          aria-current={onHistory ? 'page' : undefined}
+          title={isCollapsed ? 'Historique' : undefined}
+          className={cn(
+            'group relative flex items-center rounded-md text-sm transition-colors',
+            isCollapsed ? 'justify-center py-1.5' : 'gap-2.5 px-2 py-1.5',
+            onHistory
+              ? 'bg-rail-active-bg text-rail-active-text'
+              : 'text-rail-text hover:text-rail-active-text hover:bg-white/[0.055]',
+          )}
+        >
+          {onHistory && (
+            <span
+              aria-hidden="true"
+              className="bg-rail-active-bar absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
+            />
+          )}
+          <History className={cn('shrink-0', isCollapsed ? 'h-5 w-5' : 'h-4 w-4')} />
+          {!isCollapsed && <span className="truncate">Historique</span>}
         </Link>
         <Link
           href="/settings"
