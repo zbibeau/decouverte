@@ -239,6 +239,29 @@ export function ChapterEditor(props: Props) {
   // drops the optimistic clone — the rendered row swap is invisible
   // because we key by id (stable across the swap).
   const [optimisticBlocks, setOptimisticBlocks] = useState<BlockRow[]>([]);
+
+  // Direction B (Lot 4) — raccourci global `/` ouvre AddGallery,
+  // sauf si l'éditeur est en train de taper dans un input / textarea
+  // / contenteditable, ou si une modale concurrente est déjà ouverte
+  // (palette ⌘K, AddGallery elle-même). Pattern Notion-like.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== '/') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      // Skip si la palette ⌘K ou la gallery sont déjà ouvertes.
+      if (galleryOpen) return;
+      if (document.querySelector('.mfm-palette')) return;
+      e.preventDefault();
+      setGalleryOpen(true);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [galleryOpen]);
+
   useEffect(() => {
     const serverIds = new Set(props.blocks.map((b) => b.id));
     setOptimisticBlocks((prev) => {
@@ -1136,12 +1159,28 @@ export function ChapterEditor(props: Props) {
                     </div>
                     <p className="text-sm font-medium">Aucun bloc dans ce chapitre</p>
                     <p className="text-muted-foreground max-w-md text-xs">
-                      Choisis un type de bloc ci-dessus (texte, vidéo, formulaire, condition…) — un aperçu live
-                      s&apos;ouvre, puis « Insérer cet exemple » ajoute le bloc et l&apos;ouvre directement pour
-                      l&apos;éditer ici.
+                      Click sur « + Ajouter un bloc » ci-dessous ou tapez{' '}
+                      <kbd className="border-border bg-surface rounded border px-1 py-0.5 text-[10px]">/</kbd> n'importe
+                      où dans le chapitre.
                     </p>
                   </div>
                 )}
+                {/* Direction B (Lot 4) — CTA pointillé sous la liste
+                    des blocs, pour ajouter un bloc à la suite. Pattern
+                    Notion-like : pointillé doux, raccourci `/`
+                    indiqué en hint. Reuse `setGalleryOpen` (l'AddGallery
+                    modale du Lot 2). */}
+                <button
+                  type="button"
+                  onClick={() => setGalleryOpen(true)}
+                  className="border-border-strong text-text-muted hover:bg-primary/5 hover:border-primary/40 hover:text-primary-on mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-dashed text-sm font-medium transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Ajouter un bloc
+                  <span className="text-text-faint ml-2 inline-flex items-center gap-1 text-xs">
+                    ou tapez <kbd className="border-border bg-surface rounded border px-1 py-0.5 text-[10px]">/</kbd>
+                  </span>
+                </button>
               </CardContent>
             </Card>
           </div>
