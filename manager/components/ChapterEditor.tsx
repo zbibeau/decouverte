@@ -11,9 +11,10 @@ import { BlockThumb } from '@/components/blocks/BlockThumb';
 import type { NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
+import { EditorInspector } from '@/components/editor/EditorInspector';
+import { EditorTopbar } from '@/components/editor/EditorTopbar';
 import { InlineBlockEditor } from '@/components/InlineBlockEditor';
 import { MoveIntoBlockMenu } from '@/components/MoveIntoBlockMenu';
-import { PreviewPanel } from '@/components/PreviewPanel';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
 import { Button } from '@/components/ui/Button';
@@ -775,376 +776,371 @@ export function ChapterEditor(props: Props) {
     [createNavbarVariantAction, router],
   );
 
-  // Direction C (Lot 5) — grid 3-col implicite : Sidebar (rail,
-  // 210 px géré au niveau layout (app)/layout.tsx) | canvas éditeur
-  // (1fr, prend l'espace) | device preview (380 px mobile / 720 px
-  // desktop). L'ancien split 50/50 sous-utilisait le canvas et
-  // obligeait la preview à des cards démesurées. Le toggle device
-  // (Mobile/Desktop) dans le header de PreviewPanel pilote ce sizing.
-  const gridClass =
-    previewDevice === 'desktop'
-      ? 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_720px]'
-      : 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]';
+  // Direction B (Lot 1 du handoff Studio Découverte) — nouvelle
+  // structure de l'éditeur : Topbar fine en haut (breadcrumb + status +
+  // actions Aperçu/Publier), puis main 2-col Canvas papier (fond
+  // `--surface-2`, 1fr) | Inspecteur (296 px). La docked PreviewPanel
+  // a été retirée : le bouton « Aperçu » de la topbar ouvre le front
+  // dans un onglet. Pour Lot 1 le contenu central garde la liste
+  // actuelle de blocs (rows InlineBlockEditor) ; les BlockPreview
+  // React et la sélection contextuelle viendront en Lot 2 et 3.
+  const parcoursName = props.parcoursSlug
+    .split('-')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(' ');
+  const previewUrl = `http://localhost:3100/parcours/${props.parcoursSlug}/?preview=1&step=${props.chapter.slug}`;
   return (
-    <div className={gridClass}>
-      <div className="min-w-0 space-y-6">
-        <div>
-          <Link href={`/parcours/${props.parcoursSlug}`}>
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Retour aux chapitres
-            </Button>
-          </Link>
-          <h2 className="mt-3 text-lg font-semibold">{props.chapter.title}</h2>
-          <p className="text-muted-foreground text-xs">
-            <code>{props.chapter.slug}</code>
-          </p>
-        </div>
+    <div className="-mx-6 -my-4 flex h-[calc(100vh-4rem)] flex-col">
+      <EditorTopbar
+        parcoursSlug={props.parcoursSlug}
+        parcoursName={parcoursName}
+        chapterTitle={props.chapter.title}
+        status="review"
+        previewUrl={previewUrl}
+      />
+      <div className="flex min-h-0 flex-1">
+        {/* Canvas papier — la Card existante des blocs vit ici. La
+            forme finale (max-w 720 + padding 40/48 + rendu BlockPreview
+            React) arrive en Lot 2. Pour Lot 1 on offre l'enveloppe et
+            on garde la liste de blocs telle quelle. */}
+        <main className="bg-surface-2 min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[820px] px-6 py-7">
+            <div>
+              <Link href={`/parcours/${props.parcoursSlug}`}>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Retour aux chapitres
+                </Button>
+              </Link>
+              <h2 className="mt-3 text-lg font-semibold">{props.chapter.title}</h2>
+              <p className="text-muted-foreground text-xs">
+                <code>{props.chapter.slug}</code>
+              </p>
+            </div>
 
-        <Card>
-          <CardHeader>
-            {/* Header en flex : titre + sous-textes à gauche, loupe
+            <Card className="mt-6">
+              <CardHeader>
+                {/* Header en flex : titre + sous-textes à gauche, loupe
                 (filtre) + CTA « Ajouter un bloc » à droite. La grosse
                 barre « Filtrer les blocs… » qui vivait ici avant la
                 refonte Direction C est désormais une **petite icône
                 loupe** qui se déplie en input inline au click. Quand
                 l'input contient du texte, il reste ouvert (on peut
                 clearer + fermer via la ✕). */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <CardTitle className="flex items-center gap-2">
-                  <FamilyIcon family="block" className="h-4 w-4" />
-                  Blocs
-                </CardTitle>
-                <p className="text-muted-foreground text-xs">
-                  {props.blocks.length} bloc(s). Clique sur un bloc pour l&apos;éditer ici ; le panneau de droite suit.
-                </p>
-                {(() => {
-                  const untagged = props.blocks.filter((b) => (b.tags?.length ?? 0) === 0).length;
-                  if (untagged === 0) {
-                    return props.blocks.length > 0 ? (
-                      <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
-                        🏷 Tous les blocs sont taggés
-                      </p>
-                    ) : null;
-                  }
-                  return (
-                    <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                      🏷 {untagged} bloc{untagged > 1 ? 's' : ''} sans tag dans ce chapitre
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="flex items-center gap-2">
+                      <FamilyIcon family="block" className="h-4 w-4" />
+                      Blocs
+                    </CardTitle>
+                    <p className="text-muted-foreground text-xs">
+                      {props.blocks.length} bloc(s). Clique sur un bloc pour l&apos;éditer ici ; le panneau de droite
+                      suit.
                     </p>
-                  );
-                })()}
-              </div>
-              {/* Filtre — expansion inline. État fermé = icône
+                    {(() => {
+                      const untagged = props.blocks.filter((b) => (b.tags?.length ?? 0) === 0).length;
+                      if (untagged === 0) {
+                        return props.blocks.length > 0 ? (
+                          <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+                            🏷 Tous les blocs sont taggés
+                          </p>
+                        ) : null;
+                      }
+                      return (
+                        <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                          🏷 {untagged} bloc{untagged > 1 ? 's' : ''} sans tag dans ce chapitre
+                        </p>
+                      );
+                    })()}
+                  </div>
+                  {/* Filtre — expansion inline. État fermé = icône
                   uniquement. État ouvert OU input non-vide = barre
                   visible avec input auto-focus. */}
-              {filterOpen || localSearch ? (
-                <div className="border-border bg-surface flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2 transition-all">
-                  <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                  <input
-                    autoFocus
-                    type="text"
-                    value={localSearch}
-                    onChange={(e) => setLocalSearch(e.target.value)}
-                    placeholder="Filtrer les blocs…"
-                    className="placeholder:text-muted-foreground h-7 w-44 bg-transparent text-sm outline-none"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        setLocalSearch('');
-                        setFilterOpen(false);
-                      }
-                    }}
-                  />
+                  {filterOpen || localSearch ? (
+                    <div className="border-border bg-surface flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2 transition-all">
+                      <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={localSearch}
+                        onChange={(e) => setLocalSearch(e.target.value)}
+                        placeholder="Filtrer les blocs…"
+                        className="placeholder:text-muted-foreground h-7 w-44 bg-transparent text-sm outline-none"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setLocalSearch('');
+                            setFilterOpen(false);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalSearch('');
+                          setFilterOpen(false);
+                        }}
+                        className="hover:bg-muted text-muted-foreground hover:text-foreground inline-flex h-5 w-5 shrink-0 items-center justify-center rounded transition"
+                        aria-label="Fermer le filtre"
+                        title="Fermer (Esc)"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setFilterOpen(true)}
+                      className="text-text-muted hover:bg-muted hover:text-text inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors"
+                      title="Filtrer les blocs du chapitre"
+                      aria-label="Filtrer"
+                    >
+                      <Search className="h-4 w-4" />
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => {
-                      setLocalSearch('');
-                      setFilterOpen(false);
-                    }}
-                    className="hover:bg-muted text-muted-foreground hover:text-foreground inline-flex h-5 w-5 shrink-0 items-center justify-center rounded transition"
-                    aria-label="Fermer le filtre"
-                    title="Fermer (Esc)"
+                    onClick={() => setGalleryOpen(true)}
+                    className="bg-brand-primary-600 hover:bg-brand-primary-700 shadow-brand inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors"
                   >
-                    <X className="h-3 w-3" />
+                    <Plus className="h-4 w-4" />
+                    Ajouter un bloc
                   </button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setFilterOpen(true)}
-                  className="text-text-muted hover:bg-muted hover:text-text inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors"
-                  title="Filtrer les blocs du chapitre"
-                  aria-label="Filtrer"
-                >
-                  <Search className="h-4 w-4" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setGalleryOpen(true)}
-                className="bg-brand-primary-600 hover:bg-brand-primary-700 shadow-brand inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                Ajouter un bloc
-              </button>
-            </div>
-            {/* La galerie d'ajout (modale) — montée juste sous le CTA
+                {/* La galerie d'ajout (modale) — montée juste sous le CTA
                 pour rester proche du déclencheur dans le tree React.
                 Plus de panneau replié intermédiaire : le CTA ouvre
                 directement la modale. */}
-            {galleryOpen && (
-              <AddGallery
-                insertTarget="chapter"
-                onPick={async (t) => {
-                  setGalleryOpen(false);
-                  await handleInsertSample(t);
-                }}
-                onClose={() => setGalleryOpen(false)}
-              />
-            )}
-          </CardHeader>
-          <CardContent ref={listRef} className="max-h-[calc(100vh-280px)] overflow-y-auto">
-            <SortableList
-              items={displayBlocks}
-              onReorder={handleReorder}
-              itemClassName="border-b border-border last:border-b-0"
-              renderItem={(b, dragHandle, idx) => {
-                const isSelected = selectedBlockId === b.id;
-                const isActive = activeBlockId === b.id;
-                const isExpanded = expandedIds.has(b.id);
-                const isInspected = inspectedBlockId === b.id;
-                const isKbd = kbdActive && kbdIdx === idx;
-                // Scroll-gate divider : matérialise dans la liste que le
-                // bloc qui suit un FORM est "gated" — côté front, le
-                // visiteur doit valider le formulaire (bouton Continuer)
-                // avant que la suite ne défile. Recalculé à chaque render
-                // depuis la liste, donc le drag-and-drop le repositionne
-                // automatiquement (pas de tracking en état).
-                const showGateDivider = idx > 0 && displayBlocks[idx - 1]?.type === 'form';
-                const isMatch = matchedBlockIds.has(b.id);
-                const isMoveHoverDest = moveHoverDestId === b.id;
-                const snippet = snippetByBlockId.get(b.id);
-                return (
-                  <>
-                    {showGateDivider && (
-                      <div
-                        className="bg-primary/40 mx-2 my-2 h-px rounded-full"
-                        aria-hidden="true"
-                        title="Visible côté front uniquement après validation du formulaire ci-dessus."
-                      />
-                    )}
-                    <div
-                      data-row-id={b.id}
-                      className={cn(
-                        'relative py-3 transition-colors',
-                        (isSelected || isActive) && 'bg-primary/5 -mx-5 px-5',
-                        isActive && 'ring-primary/30 rounded-md ring-1',
-                        isInspected &&
-                          '!bg-amber-100 ring-2 ring-amber-300 dark:!bg-amber-900/60 dark:ring-amber-500/60',
-                        isMatch &&
-                          !isInspected &&
-                          'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/50 dark:ring-amber-700/60',
-                        isKbd && !isInspected && 'ring-primary/40 ring-1',
-                        // Move-into hover preview wins over the rest visually so the
-                        // user can see exactly which row their cursor in the menu
-                        // is targeting. Violet to stay distinct from selection
-                        // (primary), inspection (amber) and just-added (emerald).
-                        isMoveHoverDest &&
-                          '!bg-violet-50 ring-2 ring-violet-400 dark:!bg-violet-950/60 dark:bg-violet-950/50 dark:ring-violet-500/60',
-                      )}
-                    >
-                      {isInspected && (
-                        <div className="absolute -top-7 left-0 z-20 rounded-md bg-amber-900 px-2 py-1 text-[10px] font-medium text-white shadow">
-                          Bloc{' '}
-                          {(BLOCK_TYPE_LABELS as Record<string, string>)[inspectedBlockType ?? ''] ??
-                            inspectedBlockType ??
-                            b.type}{' '}
-                          — ouvert ci-dessous
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        {dragHandle}
-                        <button
-                          type="button"
-                          onClick={() => toggleExpand(b.id)}
-                          className="text-muted-foreground hover:text-foreground shrink-0"
-                          title={isExpanded ? 'Replier' : 'Déplier pour éditer'}
-                          aria-expanded={isExpanded}
+                {galleryOpen && (
+                  <AddGallery
+                    insertTarget="chapter"
+                    onPick={async (t) => {
+                      setGalleryOpen(false);
+                      await handleInsertSample(t);
+                    }}
+                    onClose={() => setGalleryOpen(false)}
+                  />
+                )}
+              </CardHeader>
+              <CardContent ref={listRef} className="max-h-[calc(100vh-280px)] overflow-y-auto">
+                <SortableList
+                  items={displayBlocks}
+                  onReorder={handleReorder}
+                  itemClassName="border-b border-border last:border-b-0"
+                  renderItem={(b, dragHandle, idx) => {
+                    const isSelected = selectedBlockId === b.id;
+                    const isActive = activeBlockId === b.id;
+                    const isExpanded = expandedIds.has(b.id);
+                    const isInspected = inspectedBlockId === b.id;
+                    const isKbd = kbdActive && kbdIdx === idx;
+                    // Scroll-gate divider : matérialise dans la liste que le
+                    // bloc qui suit un FORM est "gated" — côté front, le
+                    // visiteur doit valider le formulaire (bouton Continuer)
+                    // avant que la suite ne défile. Recalculé à chaque render
+                    // depuis la liste, donc le drag-and-drop le repositionne
+                    // automatiquement (pas de tracking en état).
+                    const showGateDivider = idx > 0 && displayBlocks[idx - 1]?.type === 'form';
+                    const isMatch = matchedBlockIds.has(b.id);
+                    const isMoveHoverDest = moveHoverDestId === b.id;
+                    const snippet = snippetByBlockId.get(b.id);
+                    return (
+                      <>
+                        {showGateDivider && (
+                          <div
+                            className="bg-primary/40 mx-2 my-2 h-px rounded-full"
+                            aria-hidden="true"
+                            title="Visible côté front uniquement après validation du formulaire ci-dessus."
+                          />
+                        )}
+                        <div
+                          data-row-id={b.id}
+                          className={cn(
+                            'relative py-3 transition-colors',
+                            (isSelected || isActive) && 'bg-primary/5 -mx-5 px-5',
+                            isActive && 'ring-primary/30 rounded-md ring-1',
+                            isInspected &&
+                              '!bg-amber-100 ring-2 ring-amber-300 dark:!bg-amber-900/60 dark:ring-amber-500/60',
+                            isMatch &&
+                              !isInspected &&
+                              'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/50 dark:ring-amber-700/60',
+                            isKbd && !isInspected && 'ring-primary/40 ring-1',
+                            // Move-into hover preview wins over the rest visually so the
+                            // user can see exactly which row their cursor in the menu
+                            // is targeting. Violet to stay distinct from selection
+                            // (primary), inspection (amber) and just-added (emerald).
+                            isMoveHoverDest &&
+                              '!bg-violet-50 ring-2 ring-violet-400 dark:!bg-violet-950/60 dark:bg-violet-950/50 dark:ring-violet-500/60',
+                          )}
                         >
-                          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void openBlock(b.id)}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                          title="Éditer ce bloc (déplie l'éditeur + centre la preview)"
-                        >
-                          <span className="text-text-faint w-5 shrink-0 font-mono text-xs">{b.order}</span>
-                          <BlockThumb type={b.type as ContentBlock['type']} />
-                          <span className="flex min-w-0 flex-1 flex-col">
-                            <span className="text-text-faint font-mono text-[9px] uppercase tracking-[0.12em]">
-                              {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
-                            </span>
-                            <span
-                              className={cn(
-                                'min-w-0 truncate text-sm',
-                                // Hero titles are the chapter's anchor lines — give
-                                // them more visual weight in the row list so the
-                                // user can scan a chapter's structure at a glance.
-                                b.type === 'heroTitle' && 'font-semibold',
-                              )}
+                          {isInspected && (
+                            <div className="absolute -top-7 left-0 z-20 rounded-md bg-amber-900 px-2 py-1 text-[10px] font-medium text-white shadow">
+                              Bloc{' '}
+                              {(BLOCK_TYPE_LABELS as Record<string, string>)[inspectedBlockType ?? ''] ??
+                                inspectedBlockType ??
+                                b.type}{' '}
+                              — ouvert ci-dessous
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            {dragHandle}
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(b.id)}
+                              className="text-muted-foreground hover:text-foreground shrink-0"
+                              title={isExpanded ? 'Replier' : 'Déplier pour éditer'}
+                              aria-expanded={isExpanded}
                             >
-                              {summarizeBlock(
-                                b.type,
-                                // Use the live (unsaved) payload of the active
-                                // editor when it matches this row, so editing
-                                // e.g. a hero's title immediately updates the row
-                                // summary above instead of waiting for autosave +
-                                // refresh. Falls back to the server-side payload
-                                // for any inactive row.
-                                isActive && activeBlock?.block
-                                  ? (activeBlock.block.payload as Record<string, unknown>)
-                                  : b.payload,
-                              )}
-                            </span>
-                          </span>
-                          {(() => {
-                            const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar?.variant;
-                            if (!variantKey) return null;
-                            const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
-                            return (
-                              <span
-                                className="border-border bg-surface inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
-                                title={`Navbar « ${variantKey} »`}
-                              >
+                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void openBlock(b.id)}
+                              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                              title="Éditer ce bloc (déplie l'éditeur + centre la preview)"
+                            >
+                              <span className="text-text-faint w-5 shrink-0 font-mono text-xs">{b.order}</span>
+                              <BlockThumb type={b.type as ContentBlock['type']} />
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span className="text-text-faint font-mono text-[9px] uppercase tracking-[0.12em]">
+                                  {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
+                                </span>
                                 <span
-                                  className="inline-block h-2 w-2 rounded-full"
-                                  style={{ background: v?.color || '#94a3b8' }}
-                                />
-                                {v?.title ?? variantKey}
+                                  className={cn(
+                                    'min-w-0 truncate text-sm',
+                                    // Hero titles are the chapter's anchor lines — give
+                                    // them more visual weight in the row list so the
+                                    // user can scan a chapter's structure at a glance.
+                                    b.type === 'heroTitle' && 'font-semibold',
+                                  )}
+                                >
+                                  {summarizeBlock(
+                                    b.type,
+                                    // Use the live (unsaved) payload of the active
+                                    // editor when it matches this row, so editing
+                                    // e.g. a hero's title immediately updates the row
+                                    // summary above instead of waiting for autosave +
+                                    // refresh. Falls back to the server-side payload
+                                    // for any inactive row.
+                                    isActive && activeBlock?.block
+                                      ? (activeBlock.block.payload as Record<string, unknown>)
+                                      : b.payload,
+                                  )}
+                                </span>
                               </span>
-                            );
-                          })()}
-                          <BlockTagsChips tags={b.tags} />
-                          <BlockDiffBadge diff={b.diff} />
-                        </button>
-                        <DuplicateBlockMenu
-                          chapters={props.chapters ?? []}
-                          currentChapterSlug={props.chapter.slug}
-                          disabled={isPending}
-                          onDuplicateHere={() => handleDuplicate(b.id)}
-                          onCopyTo={(targetChapterId) => handleCopyTo(b.id, targetChapterId)}
-                        />
-                        <MoveIntoBlockMenu
-                          sourceBlockId={b.id}
-                          allBlocks={props.blocks}
-                          disabled={isPending}
-                          onMove={(destContainerId, destField) => handleMoveInto(b.id, destContainerId, destField)}
-                          onHoverDestination={setMoveHoverDestId}
-                        />
-                        {/* Direction C — picto suppression discret (icbtn) :
+                              {(() => {
+                                const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar
+                                  ?.variant;
+                                if (!variantKey) return null;
+                                const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
+                                return (
+                                  <span
+                                    className="border-border bg-surface inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+                                    title={`Navbar « ${variantKey} »`}
+                                  >
+                                    <span
+                                      className="inline-block h-2 w-2 rounded-full"
+                                      style={{ background: v?.color || '#94a3b8' }}
+                                    />
+                                    {v?.title ?? variantKey}
+                                  </span>
+                                );
+                              })()}
+                              <BlockTagsChips tags={b.tags} />
+                              <BlockDiffBadge diff={b.diff} />
+                            </button>
+                            <DuplicateBlockMenu
+                              chapters={props.chapters ?? []}
+                              currentChapterSlug={props.chapter.slug}
+                              disabled={isPending}
+                              onDuplicateHere={() => handleDuplicate(b.id)}
+                              onCopyTo={(targetChapterId) => handleCopyTo(b.id, targetChapterId)}
+                            />
+                            <MoveIntoBlockMenu
+                              sourceBlockId={b.id}
+                              allBlocks={props.blocks}
+                              disabled={isPending}
+                              onMove={(destContainerId, destField) => handleMoveInto(b.id, destContainerId, destField)}
+                              onHoverDestination={setMoveHoverDestId}
+                            />
+                            {/* Direction C — picto suppression discret (icbtn) :
                           monochrome gris au repos, fond rouge translucide
                           au hover. Le rouge plein-temps de Trash2 attirait
                           l'œil en permanence. */}
-                        <button
-                          type="button"
-                          disabled={isPending}
-                          title="Supprimer ce bloc"
-                          onClick={() => handleDelete(b.id)}
-                          className="text-text-muted inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      {snippet && (
-                        <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
-                          <HighlightedSnippet snippet={snippet} query={searchQuery} />
-                        </p>
-                      )}
-                      {isExpanded && (
-                        <div className="border-border bg-muted/20 mt-3 rounded-md border p-3">
-                          <InlineBlockEditor
-                            key={b.id}
-                            blockId={b.id}
-                            chapterSlug={props.chapter.slug}
-                            parcoursSlug={props.parcoursSlug}
-                            isNew={false}
-                            type={b.type as ContentBlock['type']}
-                            initialPayload={b.payload}
-                            variables={props.variables}
-                            chapters={props.chapters}
-                            navbarVariants={props.navbarVariants}
-                            onCreateNavbarVariant={onCreateNavbarVariant}
-                            saveAction={(payload) => props.saveBlockAction(b.id, payload)}
-                            draftStatus={b.diff}
-                            sourcePayload={null}
-                            simValues={simValues}
-                            setSimValues={setSimValues}
-                            setHoveredField={setHoveredField}
-                            active={isActive}
-                            onBlockChange={(blk) =>
-                              setActiveBlock((prev) =>
-                                prev && prev.id === b.id && prev.block === blk ? prev : { id: b.id, block: blk },
-                              )
-                            }
-                            onDirtyChange={(d) =>
-                              setDirtyMap((prev) => (prev[b.id] === d ? prev : { ...prev, [b.id]: d }))
-                            }
-                            onPersistedId={handlePersistedId}
-                          />
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              title="Supprimer ce bloc"
+                              onClick={() => handleDelete(b.id)}
+                              className="text-text-muted inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          {snippet && (
+                            <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
+                              <HighlightedSnippet snippet={snippet} query={searchQuery} />
+                            </p>
+                          )}
+                          {isExpanded && (
+                            <div className="border-border bg-muted/20 mt-3 rounded-md border p-3">
+                              <InlineBlockEditor
+                                key={b.id}
+                                blockId={b.id}
+                                chapterSlug={props.chapter.slug}
+                                parcoursSlug={props.parcoursSlug}
+                                isNew={false}
+                                type={b.type as ContentBlock['type']}
+                                initialPayload={b.payload}
+                                variables={props.variables}
+                                chapters={props.chapters}
+                                navbarVariants={props.navbarVariants}
+                                onCreateNavbarVariant={onCreateNavbarVariant}
+                                saveAction={(payload) => props.saveBlockAction(b.id, payload)}
+                                draftStatus={b.diff}
+                                sourcePayload={null}
+                                simValues={simValues}
+                                setSimValues={setSimValues}
+                                setHoveredField={setHoveredField}
+                                active={isActive}
+                                onBlockChange={(blk) =>
+                                  setActiveBlock((prev) =>
+                                    prev && prev.id === b.id && prev.block === blk ? prev : { id: b.id, block: blk },
+                                  )
+                                }
+                                onDirtyChange={(d) =>
+                                  setDirtyMap((prev) => (prev[b.id] === d ? prev : { ...prev, [b.id]: d }))
+                                }
+                                onPersistedId={handlePersistedId}
+                              />
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </>
+                    );
+                  }}
+                />
+                {props.blocks.length === 0 && (
+                  <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
+                    <div className="text-3xl" aria-hidden="true">
+                      🧱
                     </div>
-                  </>
-                );
-              }}
-            />
-            {props.blocks.length === 0 && (
-              <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
-                <div className="text-3xl" aria-hidden="true">
-                  🧱
-                </div>
-                <p className="text-sm font-medium">Aucun bloc dans ce chapitre</p>
-                <p className="text-muted-foreground max-w-md text-xs">
-                  Choisis un type de bloc ci-dessus (texte, vidéo, formulaire, condition…) — un aperçu live
-                  s&apos;ouvre, puis « Insérer cet exemple » ajoute le bloc et l&apos;ouvre directement pour
-                  l&apos;éditer ici.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="hidden lg:block">
-        <PreviewPanel
-          chapterSlug={props.chapter.slug}
-          parcoursSlug={props.parcoursSlug}
-          variables={activeVariables}
-          values={simValues}
-          onValuesChange={setSimValues}
-          selectedBlockId={previewTargetId}
-          versionId={props.editingVersionId}
-          publishedVersionId={props.publishedVersionId}
-          hoveredField={hoveredField}
-          hoveredFieldBlockId={activeBlockId ?? undefined}
-          editingBlockId={activeBlockId}
-          editedBlockOffscreen={editedBlockOffscreen}
-          editedBlockSummary={editedBlockSummary}
-          fieldRails={fieldRails}
-          onFieldRails={setFieldRails}
-          fieldRailColors={FIELD_RAIL_COLORS}
-          onVisibleBlock={handleVisibleBlock}
-          onBlockClicked={handleBlockClicked}
-          onEditVisibleBlock={(id) => void openBlock(id)}
-          prevChapter={chapterNav.prev}
-          nextChapter={chapterNav.next}
-          onGoToChapter={(slug) => router.push(`/parcours/${props.parcoursSlug}/chapters/${slug}`)}
-          blockOverride={blockOverride}
-          reloadKey={previewReloadKey}
-          deviceMode={previewDevice}
-          onDeviceModeChange={setPreviewDevice}
-        />
+                    <p className="text-sm font-medium">Aucun bloc dans ce chapitre</p>
+                    <p className="text-muted-foreground max-w-md text-xs">
+                      Choisis un type de bloc ci-dessus (texte, vidéo, formulaire, condition…) — un aperçu live
+                      s&apos;ouvre, puis « Insérer cet exemple » ajoute le bloc et l&apos;ouvre directement pour
+                      l&apos;éditer ici.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+        {/* Inspecteur de bloc (Direction B) — placeholder pour Lot 1.
+            La sélection contextuelle des champs PayloadEditor arrive
+            en Lot 3 (sélection + inspecteur dynamique). */}
+        <div className="hidden lg:block">
+          <EditorInspector />
+        </div>
       </div>
     </div>
   );
