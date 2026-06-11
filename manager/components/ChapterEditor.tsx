@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { AddGallery } from '@/components/blocks/AddGallery';
 import { BlockThumb } from '@/components/blocks/BlockThumb';
 import type { NavbarVariantMeta, VariableMeta } from '@/components/blocks/editor-types';
+import { BlockPreview } from '@/components/editor/preview/BlockPreview';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
 import { EditorInspector } from '@/components/editor/EditorInspector';
@@ -1074,6 +1075,22 @@ export function ChapterEditor(props: Props) {
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
+                          </div>
+                          {/* Direction B (Lot 2) — BlockPreview en miroir
+                              du rendu front, juste sous la row compact
+                              header. Donne le feel « papier » : chaque
+                              bloc se lit comme il sera vu côté médecin.
+                              Read-only ; sélection + inspecteur viendront
+                              en Lot 3. */}
+                          <div className="mt-2 pl-[44px]">
+                            <BlockPreview
+                              type={b.type}
+                              payload={
+                                isActive && activeBlock?.block
+                                  ? (activeBlock.block.payload as Record<string, unknown>)
+                                  : b.payload
+                              }
+                            />
                           </div>
                           {snippet && (
                             <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
