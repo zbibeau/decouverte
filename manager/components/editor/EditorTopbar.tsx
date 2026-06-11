@@ -3,6 +3,8 @@
 import { Check, ChevronRight, ExternalLink, Eye, Undo } from 'lucide-react';
 import Link from 'next/link';
 
+import { PublishDraftButton } from '@/components/PublishDraftButton';
+
 /**
  * Topbar de l'éditeur de chapitre — Direction B (handoff Studio Découverte).
  *
@@ -34,7 +36,8 @@ export function EditorTopbar({
   previewUrl,
   onUndo,
   onPreviewMedecin,
-  onPublish,
+  publishAction,
+  publishConfirmMessage,
   saved = true,
 }: {
   parcoursSlug: string;
@@ -43,9 +46,7 @@ export function EditorTopbar({
    *  hiérarchie du parcours (section.order, chapter.order). */
   chapterNumber?: string;
   chapterTitle: string;
-  /** Statut affiché en pill (StatusTag). Pour Lot 1 on accepte
-   *  'review' (à relire) par défaut — le câblage sur le vrai
-   *  status de brouillon viendra plus tard. */
+  /** Statut affiché en pill (StatusTag). */
   status?: 'published' | 'draft' | 'review' | 'new' | 'progress' | 'update' | 'outdated';
   /** URL publique du chapitre côté front Solid (ouverte dans un
    *  nouvel onglet par le bouton « Aperçu »). */
@@ -55,7 +56,12 @@ export function EditorTopbar({
   saved?: boolean;
   onUndo?: () => void;
   onPreviewMedecin?: () => void;
-  onPublish?: () => void;
+  /** Lot 5 v6 — server action publishant le brouillon courant.
+   *  Quand fournie, on rend le vrai `<PublishDraftButton>` (qui
+   *  ouvre TagReviewModal + publishDraft). Quand omise, le bouton
+   *  reste stub (disabled). */
+  publishAction?: () => Promise<void>;
+  publishConfirmMessage?: string;
 }) {
   return (
     <div className="border-border bg-surface flex h-[60px] shrink-0 items-center gap-3 border-b px-6">
@@ -121,16 +127,29 @@ export function EditorTopbar({
           <ExternalLink className="h-3.5 w-3.5" />
           Aperçu
         </a>
-        <button
-          type="button"
-          onClick={onPublish}
-          disabled={!onPublish}
-          title="Publier le chapitre"
-          className="bg-brand-primary-600 hover:bg-brand-primary-700 shadow-brand inline-flex h-9 items-center gap-1.5 rounded-[10px] px-3.5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Check className="h-3.5 w-3.5" />
-          Publier
-        </button>
+        {/* Lot 5 v6 — vrai PublishDraftButton (TagReviewModal +
+            publishDraft action) quand `publishAction` est fourni
+            par ChapterEditor (cas normal de l'éditeur de chapitre).
+            Sinon stub disabled pour les usages hors chapter editor
+            (au cas où un autre écran réutilise EditorTopbar). */}
+        {publishAction ? (
+          <PublishDraftButton
+            publishAction={publishAction}
+            parcoursSlug={parcoursSlug}
+            confirmMessage={publishConfirmMessage ?? 'Publier le brouillon ?'}
+            label="Publier"
+          />
+        ) : (
+          <button
+            type="button"
+            disabled
+            title="Publier le brouillon (indisponible)"
+            className="bg-brand-primary-600 shadow-brand inline-flex h-9 items-center gap-1.5 rounded-[10px] px-3.5 text-sm font-semibold text-white opacity-40"
+          >
+            <Check className="h-3.5 w-3.5" />
+            Publier
+          </button>
+        )}
       </div>
     </div>
   );

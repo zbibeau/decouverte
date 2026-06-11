@@ -77,6 +77,13 @@ interface Props {
   editingVersionId?: string | null;
   /** Published parcours_version id — enables the draft/published toggle. */
   publishedVersionId?: string | null;
+  /** Server action publishing the current draft of the parcours.
+   *  Direction B Lot 5 v6 — câble le bouton Publier de la topbar
+   *  directement sur le vrai flow (avec TagReviewModal). */
+  publishDraftAction?: () => Promise<void>;
+  /** Numéro de version du brouillon (utilisé dans le confirmMessage du
+   *  PublishDraftButton — « Publier le brouillon v83 ? »). */
+  draftVersionNumber?: number | null;
 }
 
 /**
@@ -835,30 +842,14 @@ export function ChapterEditor(props: Props) {
           ? 'published'
           : 'new';
 
-  // Bouton Publier de la topbar : alias vers la DraftStatusBar
-  // existante (qui détient le vrai flow brouillon/publish + le
-  // TagReviewModal). On scroll vers elle et on lui passe le focus
-  // visuel (flash anneau violet) pour signaler le bouton réel.
-  // On ne re-implémente PAS le flow pour rester sous le garde-fou
-  // « brouillon/publication intact ».
-  const handleTopbarPublish = useCallback(() => {
-    const el =
-      document.querySelector<HTMLElement>('[data-draft-status-bar]') ??
-      document.querySelector<HTMLElement>('button[data-publish-cta], button[title="Publier"]');
-    if (!el) {
-      toast.info('La barre de statut n’est pas visible — vérifie le statut du brouillon.');
-      return;
-    }
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.animate(
-      [
-        { boxShadow: '0 0 0 0 rgba(140,90,235,0)' },
-        { boxShadow: '0 0 0 6px rgba(140,90,235,0.35)' },
-        { boxShadow: '0 0 0 0 rgba(140,90,235,0)' },
-      ],
-      { duration: 1200, iterations: 2 },
-    );
-  }, [toast]);
+  // Lot 5 v6 — confirmMessage composé pour le PublishDraftButton
+  // rendu directement dans la EditorTopbar. Le vrai flow (TagReviewModal
+  // + publishDraft server action) est désormais déclenché depuis la
+  // topbar, plus besoin d'aliaser la DraftStatusBar (qui est masquée
+  // dans l'éditeur depuis Lot 5 v2).
+  const publishConfirmMessage = props.draftVersionNumber
+    ? `Publier le brouillon v${props.draftVersionNumber} ?\n\nLes utilisateurs finaux verront ces changements immédiatement. L'ancienne version sera archivée.`
+    : `Publier le brouillon ?\n\nLes utilisateurs finaux verront ces changements immédiatement.`;
 
   // Bouton Aperçu médecin (eye) : popup window dédiée pour
   // visualiser le rendu sans quitter le manager. Window features
@@ -882,7 +873,8 @@ export function ChapterEditor(props: Props) {
         status={topbarStatus}
         previewUrl={previewUrl}
         onPreviewMedecin={handlePreviewMedecin}
-        onPublish={handleTopbarPublish}
+        publishAction={props.publishDraftAction}
+        publishConfirmMessage={publishConfirmMessage}
       />
       <div className="flex min-h-0 flex-1">
         {/* Canvas papier — la Card existante des blocs vit ici. La

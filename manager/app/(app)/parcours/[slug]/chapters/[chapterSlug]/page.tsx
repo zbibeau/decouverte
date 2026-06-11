@@ -14,6 +14,7 @@ import {
   getNavbarVariants,
   insertSampleBlock,
   moveBlockIntoContainer,
+  publishDraft,
   reorderBlocks,
   updateBlockPayload,
 } from '@/lib/actions';
@@ -114,6 +115,15 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
   async function createNavbarVariantAction(title: string) {
     'use server';
     return await createNavbarVariant(slug, title);
+  }
+  // Direction B Lot 5 v6 — server action de publication exposée au
+  // ChapterEditor pour câbler le bouton Publier de la topbar via le
+  // PublishDraftButton client (qui gère TagReviewModal + flow review).
+  // Wrapper « inline server action » identique au pattern de
+  // DraftStatusBar.
+  async function publishDraftAction(): Promise<void> {
+    'use server';
+    await publishDraft(slug);
   }
 
   // Draft id (if any) so the iframe previews the draft version, not the live.
@@ -225,10 +235,12 @@ export default async function ChapterEditPage({ params }: { params: Promise<{ sl
       saveBlockAction={saveBlockPayloadAction}
       ensureDraftAction={ensureDraftAction}
       createNavbarVariantAction={createNavbarVariantAction}
+      publishDraftAction={publishDraftAction}
       chapters={chapters}
       navbarVariants={navbarVariants}
       editingVersionId={draftStatus.draftVersionId}
       publishedVersionId={draftStatus.publishedVersionId}
+      draftVersionNumber={draftStatus.draftVersionNumber}
     />
   );
 }
