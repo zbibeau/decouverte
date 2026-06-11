@@ -813,14 +813,78 @@ export function ChapterEditor(props: Props) {
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join(' ');
   const previewUrl = `http://localhost:3100/parcours/${props.parcoursSlug}/?preview=1&step=${props.chapter.slug}`;
+  // Lot 5 — Status badge dérivé des props serveur. Heuristique :
+  //   - editing+published : version publiée existe ET un brouillon
+  //     est ouvert → « À relire » (review) le temps que l'éditeur le
+  //     valide. C'est le cas dominant en édition.
+  //   - editing seul : brouillon sans version publiée → « Brouillon »
+  //     (draft) — première écriture du chapitre.
+  //   - published seul : version publiée, pas d'édition en cours →
+  //     « Publié » (published).
+  //   - aucun : nouveau chapitre fraîchement créé → « Nouveau » (new).
+  //
+  // On lit ces props depuis le ChapterEditor existant — pas de fetch
+  // supplémentaire. Le contrôle plus fin (modifié vs nouveau vs à
+  // mettre à jour) viendra quand on aura un endpoint draft-status
+  // par chapitre (aujourd'hui DraftStatusBar agrège au niveau
+  // parcours).
+  const topbarStatus: 'review' | 'draft' | 'published' | 'new' =
+    props.editingVersionId && props.publishedVersionId
+      ? 'review'
+      : props.editingVersionId
+        ? 'draft'
+        : props.publishedVersionId
+          ? 'published'
+          : 'new';
+
+  // Bouton Publier de la topbar : alias vers la DraftStatusBar
+  // existante (qui détient le vrai flow brouillon/publish + le
+  // TagReviewModal). On scroll vers elle et on lui passe le focus
+  // visuel (flash anneau violet) pour signaler le bouton réel.
+  // On ne re-implémente PAS le flow pour rester sous le garde-fou
+  // « brouillon/publication intact ».
+  const handleTopbarPublish = useCallback(() => {
+    const el =
+      document.querySelector<HTMLElement>('[data-draft-status-bar]') ??
+      document.querySelector<HTMLElement>('button[data-publish-cta], button[title="Publier"]');
+    if (!el) {
+      toast.info('La barre de statut n’est pas visible — vérifie le statut du brouillon.');
+      return;
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.animate(
+      [
+        { boxShadow: '0 0 0 0 rgba(140,90,235,0)' },
+        { boxShadow: '0 0 0 6px rgba(140,90,235,0.35)' },
+        { boxShadow: '0 0 0 0 rgba(140,90,235,0)' },
+      ],
+      { duration: 1200, iterations: 2 },
+    );
+  }, [toast]);
+
+  // Bouton Aperçu médecin (eye) : popup window dédiée pour
+  // visualiser le rendu sans quitter le manager. Window features
+  // restreintes (pas de barre d'outils) — l'éditeur reste focus sur
+  // l'aperçu. Si le popup est bloqué, on retombe sur un onglet
+  // standard via window.open(url, '_blank').
+  const handlePreviewMedecin = useCallback(() => {
+    const features = 'popup=yes,width=440,height=820,scrollbars=yes,resizable=yes';
+    const win = window.open(previewUrl, 'mfm-medecin-preview', features);
+    if (!win) {
+      window.open(previewUrl, '_blank', 'noreferrer');
+    }
+  }, [previewUrl]);
+
   return (
     <div className="-mx-6 -my-4 flex h-[calc(100vh-4rem)] flex-col">
       <EditorTopbar
         parcoursSlug={props.parcoursSlug}
         parcoursName={parcoursName}
         chapterTitle={props.chapter.title}
-        status="review"
+        status={topbarStatus}
         previewUrl={previewUrl}
+        onPreviewMedecin={handlePreviewMedecin}
+        onPublish={handleTopbarPublish}
       />
       <div className="flex min-h-0 flex-1">
         {/* Canvas papier — la Card existante des blocs vit ici. La

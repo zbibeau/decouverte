@@ -177,7 +177,10 @@ export default async function ParcoursLayout({
             led to surprise "Publier" clicks. z-30 keeps it above
             chapter cards (z-10) and below the global CommandPalette
             (z-50). */}
-        <div className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 -mx-4 px-4 py-2 backdrop-blur">
+        <div
+          data-draft-status-bar
+          className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 -mx-4 px-4 py-2 backdrop-blur"
+        >
           {/* DraftStatusBar is an async Server Component that hits multiple
               Supabase queries (draft diffs, deleted count, tag review summary).
               Wrapping it in Suspense lets the REST of the page stream
