@@ -1,4 +1,5 @@
 import { LibraryBlockCard } from '@/components/library/LibraryBlockCard';
+import { LibrarySectionHeader } from '@/components/library/LibrarySectionHeader';
 import { LibrarySectionTabs } from '@/components/library/LibrarySectionTabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { getEditingVersionId, insertSampleBlock } from '@/lib/actions';
@@ -43,6 +44,11 @@ export default async function LibraryPage({ params }: { params: Promise<{ slug: 
 
   return (
     <div className="space-y-4">
+      <LibrarySectionHeader
+        eyebrow="Bibliothèque · Blocs"
+        title="Galerie de blocs"
+        description="Aperçu live de chaque type de bloc disponible. Insère un exemple directement dans un chapitre — l'ajout passe par le brouillon."
+      />
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2">

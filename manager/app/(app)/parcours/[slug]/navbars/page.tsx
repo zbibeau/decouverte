@@ -1,3 +1,4 @@
+import { LibrarySectionHeader } from '@/components/library/LibrarySectionHeader';
 import { LibrarySectionTabs } from '@/components/library/LibrarySectionTabs';
 import { NavbarVariantsEditor } from '@/components/NavbarVariantsEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -24,6 +25,11 @@ export default async function NavbarsPage({ params }: { params: Promise<{ slug: 
 
   return (
     <div className="space-y-4">
+      <LibrarySectionHeader
+        eyebrow="Bibliothèque · Top bar"
+        title="Variantes de navbar"
+        description="Variantes de barre supérieure (= navbars pilote) rendues au-dessus de chaque chapitre selon `payload.navbar.variant`."
+      />
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2">

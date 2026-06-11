@@ -1,5 +1,6 @@
 import type { ContentBlock } from '@shared/content-schema';
 
+import { LibrarySectionHeader } from '@/components/library/LibrarySectionHeader';
 import { LibrarySectionTabs } from '@/components/library/LibrarySectionTabs';
 import { CardWithCreateAction } from '@/components/ui/CardWithCreateAction';
 import { AddVariableForm } from '@/components/variables/AddVariableForm';
@@ -106,6 +107,11 @@ export default async function VariablesPage({ params }: { params: Promise<{ slug
 
   return (
     <div className="space-y-4">
+      <LibrarySectionHeader
+        eyebrow="Bibliothèque · Variables"
+        title="Variables du parcours"
+        description="Données collectées auprès du visiteur (statut, logiciel utilisé, etc.) qui pilotent les conditions, formulaires et personnalisations."
+      />
       <CardWithCreateAction
         title={
           <span className="flex items-center gap-2">
