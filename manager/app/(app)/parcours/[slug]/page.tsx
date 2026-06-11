@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { ChapterList } from '@/components/ChapterList';
 import { CreateChapterForm } from '@/components/CreateChapterForm';
+import { ParcoursStatsBar } from '@/components/parcours/ParcoursStatsBar';
 import { CardWithCreateAction } from '@/components/ui/CardWithCreateAction';
 import {
   createChapter,
@@ -213,9 +214,25 @@ export default async function ChapterListPage({ params }: { params: Promise<{ sl
   // at a glance even on the published view (where DraftStatusBar's
   // counter is hidden).
   const totalUntaggedBlocks = [...untaggedBlockCountByChapter.values()].reduce((sum, n) => sum + n, 0);
+  // Direction B (handoff §8 « Vue chapitres ») — totaux affichés
+  // dans le ParcoursStatsBar au-dessus de la liste des chapitres.
+  // Calcul depuis les data déjà fetchées (aucun roundtrip
+  // supplémentaire).
+  const totalBlocks = [...blocksPreviewByChapter.values()].reduce((sum, arr) => sum + arr.length, 0);
+  const sectionCount = new Set(
+    (chapters ?? []).map((c) => c.section_label).filter((s): s is string => typeof s === 'string' && s.length > 0),
+  ).size;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Bandeau de stats — Direction B. Donne à l'éditeur un sense
+          quantitatif immédiat avant de plonger dans la liste. */}
+      <ParcoursStatsBar
+        chapterCount={(chapters ?? []).length}
+        blockCount={totalBlocks}
+        untaggedCount={totalUntaggedBlocks}
+        sectionCount={sectionCount}
+      />
       {/* "Ajouter un chapitre" est maintenant rendu inline dans le header
           de la card Chapitres ci-dessous — la liste reste en haut du
           viewport, le CTA est à portée de clic à droite du titre. */}
