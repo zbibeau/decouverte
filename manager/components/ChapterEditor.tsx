@@ -1,8 +1,7 @@
 'use client';
 
 import type { ContentBlock } from '@shared/content-schema';
-import { ArrowLeft, ChevronDown, ChevronRight, Plus, Search, Trash2, X } from 'lucide-react';
-import Link from 'next/link';
+import { ChevronDown, ChevronRight, Plus, Search, Trash2, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
@@ -18,8 +17,7 @@ import { InlineBlockEditor } from '@/components/InlineBlockEditor';
 import { MoveIntoBlockMenu } from '@/components/MoveIntoBlockMenu';
 import { SortableList } from '@/components/SortableList';
 import { useToast } from '@/components/Toaster';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { BLOCK_TYPE_LABELS } from '@/lib/blockDefaults';
 import { SAMPLE_PAYLOADS } from '@/lib/blockSamples';
 import { extractBlockSearchTextWeighted, extractSnippet } from '@/lib/blockSearch';
@@ -893,18 +891,26 @@ export function ChapterEditor(props: Props) {
             on garde la liste de blocs telle quelle. */}
         <main className="bg-surface-2 min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[820px] px-6 py-7">
-            <div>
-              <Link href={`/parcours/${props.parcoursSlug}`}>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  Retour aux chapitres
-                </Button>
-              </Link>
-              <h2 className="mt-3 text-lg font-semibold">{props.chapter.title}</h2>
-              <p className="text-muted-foreground text-xs">
-                <code>{props.chapter.slug}</code>
-              </p>
-            </div>
+            {/* Direction B Lot 5 v3 — ChapterHeader inline dans le
+                canvas papier. Remplace l'ancien mini-header (Retour
+                aux chapitres + h2 + slug code) qui faisait double
+                emploi avec le breadcrumb de la topbar. Pattern :
+                eyebrow `<Parcours> · Chapitre <slug>` puis le H1 du
+                chapitre (30 px / 700 / tracking tight) comme dans la
+                maquette Direction B. Donne le feel « début du
+                document » sans chrome inutile. */}
+            <header className="mb-6">
+              <div className="text-text-muted mb-3 inline-flex items-center gap-2 text-[12.5px] font-semibold">
+                <span>{parcoursName}</span>
+                <span className="text-text-faint" aria-hidden="true">
+                  ·
+                </span>
+                <span className="text-text-faint font-mono">
+                  Chapitre <code>{props.chapter.slug}</code>
+                </span>
+              </div>
+              <h1 className="text-text text-[30px] font-bold leading-tight tracking-tight">{props.chapter.title}</h1>
+            </header>
 
             {/* Direction B Lot 5 — la CardHeader interne (titre "Blocs"
                 + sous-titre + filter loupe + bouton primary Ajouter)
