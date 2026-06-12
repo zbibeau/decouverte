@@ -61,11 +61,33 @@ export function PreviewIframeWithScroll({
 
   // Auto-scroll au bloc sélectionné dès que ready ET id présent.
   // Re-déclenche aussi quand `scrollToBlockId` change.
+  //
+  // Note race condition : la URL contient `?step=<chapter>` qui
+  // déclenche un scroll initial AU CHAPITRE quand le front charge.
+  // Si on envoie scrollToBlock immédiatement après rendererReady,
+  // notre scroll est exécuté puis le step= scroll arrive et écrase
+  // la position. On envoie donc PLUSIEURS fois avec des delays
+  // croissants — la dernière émission gagne la course. C'est laid
+  // mais robuste, et le coût d'un postMessage est négligeable.
+  // align: 'center' = default Solid → le bloc édité atterrit
+  // pile au centre de la viewport, plus naturel que 'start'.
   useEffect(() => {
     if (!ready || !scrollToBlockId) return;
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: 'preview:scrollToBlock', blockId: scrollToBlockId, align: 'start' }, clientUrl);
+    const send = () => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage({ type: 'preview:scrollToBlock', blockId: scrollToBlockId, align: 'center' }, clientUrl);
+    };
+    // Émissions échelonnées : 100ms (immédiat post-ready), 600ms
+    // (après le scroll initial step=), 1400ms (filet de sécurité).
+    const t1 = setTimeout(send, 100);
+    const t2 = setTimeout(send, 600);
+    const t3 = setTimeout(send, 1400);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, [ready, scrollToBlockId, clientUrl]);
 
   return (
