@@ -1,9 +1,10 @@
 'use client';
 
-import { Check, ChevronRight, ExternalLink, Eye, Undo } from 'lucide-react';
+import { Check, ChevronRight, Eye, Pencil, Undo } from 'lucide-react';
 import Link from 'next/link';
 
 import { PublishDraftButton } from '@/components/PublishDraftButton';
+import { cn } from '@/lib/utils';
 
 /**
  * Topbar de l'éditeur de chapitre — Direction B (handoff Studio Découverte).
@@ -33,9 +34,9 @@ export function EditorTopbar({
   chapterNumber,
   chapterTitle,
   status,
-  previewUrl,
   onUndo,
-  onPreviewMedecin,
+  viewMode = 'editor',
+  onViewModeChange,
   publishAction,
   publishConfirmMessage,
   saved = true,
@@ -48,14 +49,16 @@ export function EditorTopbar({
   chapterTitle: string;
   /** Statut affiché en pill (StatusTag). */
   status?: 'published' | 'draft' | 'review' | 'new' | 'progress' | 'update' | 'outdated';
-  /** URL publique du chapitre côté front Solid (ouverte dans un
-   *  nouvel onglet par le bouton « Aperçu »). */
-  previewUrl: string;
   /** Indicateur « Enregistré » à côté du statut. Pour Lot 1 toujours
    *  vrai (l'auto-save est déjà en place dans InlineBlockEditor). */
   saved?: boolean;
   onUndo?: () => void;
-  onPreviewMedecin?: () => void;
+  /** Lot v9 — segmented control « Édition | Aperçu » qui remplace
+   *  les anciens boutons Aperçu (popup) + Aperçu médecin. Quand
+   *  `viewMode === 'preview'`, le canvas central bascule sur une
+   *  iframe Solid du chapitre entier (in-page, pas popup). */
+  viewMode?: 'editor' | 'preview';
+  onViewModeChange?: (next: 'editor' | 'preview') => void;
   /** Lot 5 v6 — server action publishant le brouillon courant.
    *  Quand fournie, on rend le vrai `<PublishDraftButton>` (qui
    *  ouvre TagReviewModal + publishDraft). Quand omise, le bouton
@@ -107,26 +110,44 @@ export function EditorTopbar({
         >
           <Undo className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          onClick={onPreviewMedecin}
-          disabled={!onPreviewMedecin}
-          title="Aperçu médecin"
-          aria-label="Aperçu médecin"
-          className="text-text-muted hover:bg-muted hover:text-text inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-        <a
-          href={previewUrl}
-          target="_blank"
-          rel="noreferrer"
-          title="Ouvrir le chapitre dans un nouvel onglet"
-          className="border-border-strong bg-surface text-text hover:bg-surface-2 shadow-app-sm inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-sm font-semibold transition-colors"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          Aperçu
-        </a>
+        {/* Lot v9 — Segmented control « Édition | Aperçu ». Bascule
+            le canvas central entre la vue éditeur (BlockPreview +
+            iframe Solid sur sélection) et la vue aperçu (iframe
+            Solid du chapitre entier rendue en place du canvas).
+            Remplace les anciens boutons « Aperçu » (onglet externe)
+            et « Aperçu médecin » (popup). */}
+        {onViewModeChange && (
+          <div className="bg-surface-2 inline-flex shrink-0 gap-0.5 rounded-md p-0.5">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'editor'}
+              onClick={() => onViewModeChange('editor')}
+              title="Mode édition (canvas papier)"
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-[5px] px-2.5 text-xs font-medium transition-colors',
+                viewMode === 'editor' ? 'bg-surface text-text shadow-app-sm' : 'text-text-muted hover:text-text',
+              )}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Édition</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'preview'}
+              onClick={() => onViewModeChange('preview')}
+              title="Aperçu front (chapitre rendu comme le médecin le voit)"
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-[5px] px-2.5 text-xs font-medium transition-colors',
+                viewMode === 'preview' ? 'bg-surface text-text shadow-app-sm' : 'text-text-muted hover:text-text',
+              )}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Aperçu</span>
+            </button>
+          </div>
+        )}
         {/* Lot 5 v6 — vrai PublishDraftButton (TagReviewModal +
             publishDraft action) quand `publishAction` est fourni
             par ChapterEditor (cas normal de l'éditeur de chapitre).

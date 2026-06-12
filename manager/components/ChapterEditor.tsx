@@ -869,18 +869,12 @@ export function ChapterEditor(props: Props) {
     ? `Publier le brouillon v${props.draftVersionNumber} ?\n\nLes utilisateurs finaux verront ces changements immédiatement. L'ancienne version sera archivée.`
     : `Publier le brouillon ?\n\nLes utilisateurs finaux verront ces changements immédiatement.`;
 
-  // Bouton Aperçu médecin (eye) : popup window dédiée pour
-  // visualiser le rendu sans quitter le manager. Window features
-  // restreintes (pas de barre d'outils) — l'éditeur reste focus sur
-  // l'aperçu. Si le popup est bloqué, on retombe sur un onglet
-  // standard via window.open(url, '_blank').
-  const handlePreviewMedecin = useCallback(() => {
-    const features = 'popup=yes,width=440,height=820,scrollbars=yes,resizable=yes';
-    const win = window.open(previewUrl, 'mfm-medecin-preview', features);
-    if (!win) {
-      window.open(previewUrl, '_blank', 'noreferrer');
-    }
-  }, [previewUrl]);
+  // Lot v9 — viewMode `editor` / `preview` bascule le canvas central
+  // entre la vue éditeur (BlockPreview + iframe sur sélection) et
+  // une iframe Solid full-chapter. L'inspecteur droite reste actif
+  // dans les deux modes — l'éditeur peut continuer à éditer un bloc
+  // sélectionné en regardant le rendu chapitre complet à gauche.
+  const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
 
   return (
     <div className="-mx-6 -my-4 flex h-[calc(100vh-4rem)] flex-col">
@@ -889,19 +883,35 @@ export function ChapterEditor(props: Props) {
         parcoursName={parcoursName}
         chapterTitle={props.chapter.title}
         status={topbarStatus}
-        previewUrl={previewUrl}
-        onPreviewMedecin={handlePreviewMedecin}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         publishAction={props.publishDraftAction}
         publishConfirmMessage={publishConfirmMessage}
       />
       <div className="flex min-h-0 flex-1">
-        {/* Canvas papier — la Card existante des blocs vit ici. La
+        {/* Lot v9 — quand viewMode='preview', on bascule sur une
+            iframe Solid pleine surface (rendu chapitre tel qu'un
+            médecin le voit). L'Inspector droit reste accessible —
+            l'éditeur peut continuer à modifier un bloc sélectionné
+            en regardant le rendu intégral. */}
+        {viewMode === 'preview' ? (
+          <main className="bg-surface-2 min-w-0 flex-1 overflow-hidden">
+            <iframe
+              key={`preview-${props.chapter.slug}-${previewReloadKey}`}
+              src={previewUrl}
+              title={`Aperçu front du chapitre ${props.chapter.title}`}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              className="h-full w-full border-0 bg-white"
+            />
+          </main>
+        ) : (
+          /* Canvas papier — la Card existante des blocs vit ici. La
             forme finale (max-w 720 + padding 40/48 + rendu BlockPreview
             React) arrive en Lot 2. Pour Lot 1 on offre l'enveloppe et
-            on garde la liste de blocs telle quelle. */}
-        <main className="bg-surface-2 min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[820px] px-6 py-7">
-            {/* Direction B Lot 5 v3 — ChapterHeader inline dans le
+            on garde la liste de blocs telle quelle. */
+          <main className="bg-surface-2 min-w-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-[820px] px-6 py-7">
+              {/* Direction B Lot 5 v3 — ChapterHeader inline dans le
                 canvas papier. Remplace l'ancien mini-header (Retour
                 aux chapitres + h2 + slug code) qui faisait double
                 emploi avec le breadcrumb de la topbar. Pattern :
@@ -909,96 +919,96 @@ export function ChapterEditor(props: Props) {
                 chapitre (30 px / 700 / tracking tight) comme dans la
                 maquette Direction B. Donne le feel « début du
                 document » sans chrome inutile. */}
-            <header className="mb-6">
-              <div className="text-text-muted mb-3 inline-flex items-center gap-2 text-[12.5px] font-semibold">
-                <span>{parcoursName}</span>
-                <span className="text-text-faint" aria-hidden="true">
-                  ·
-                </span>
-                <span className="text-text-faint font-mono">
-                  Chapitre <code>{props.chapter.slug}</code>
-                </span>
-              </div>
-              <h1 className="text-text text-[30px] font-bold leading-tight tracking-tight">{props.chapter.title}</h1>
-            </header>
+              <header className="mb-6">
+                <div className="text-text-muted mb-3 inline-flex items-center gap-2 text-[12.5px] font-semibold">
+                  <span>{parcoursName}</span>
+                  <span className="text-text-faint" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="text-text-faint font-mono">
+                    Chapitre <code>{props.chapter.slug}</code>
+                  </span>
+                </div>
+                <h1 className="text-text text-[30px] font-bold leading-tight tracking-tight">{props.chapter.title}</h1>
+              </header>
 
-            {/* Direction B Lot 5 — la CardHeader interne (titre "Blocs"
+              {/* Direction B Lot 5 — la CardHeader interne (titre "Blocs"
                 + sous-titre + filter loupe + bouton primary Ajouter)
                 a été retirée : la topbar (breadcrumb + status pill) et
                 le bouton dashed du bas suffisent comme entry-points.
                 La AddGallery modale reste rendue ici pour rester
                 proche du déclencheur dans le tree React. */}
-            {galleryOpen && (
-              <AddGallery
-                insertTarget="chapter"
-                onPick={async (t) => {
-                  setGalleryOpen(false);
-                  await handleInsertSample(t);
-                }}
-                onClose={() => setGalleryOpen(false)}
-              />
-            )}
-            <Card className="mt-6">
-              <CardContent ref={listRef} className="max-h-[calc(100vh-160px)] overflow-y-auto pt-5">
-                <SortableList
-                  items={displayBlocks}
-                  onReorder={handleReorder}
-                  itemClassName="border-b border-border last:border-b-0"
-                  renderItem={(b, dragHandle, idx) => {
-                    const isSelected = selectedBlockId === b.id;
-                    const isActive = activeBlockId === b.id;
-                    const isExpanded = expandedIds.has(b.id);
-                    const isInspected = inspectedBlockId === b.id;
-                    const isKbd = kbdActive && kbdIdx === idx;
-                    // Scroll-gate divider : matérialise dans la liste que le
-                    // bloc qui suit un FORM est "gated" — côté front, le
-                    // visiteur doit valider le formulaire (bouton Continuer)
-                    // avant que la suite ne défile. Recalculé à chaque render
-                    // depuis la liste, donc le drag-and-drop le repositionne
-                    // automatiquement (pas de tracking en état).
-                    const showGateDivider = idx > 0 && displayBlocks[idx - 1]?.type === 'form';
-                    const isMatch = matchedBlockIds.has(b.id);
-                    const isMoveHoverDest = moveHoverDestId === b.id;
-                    const snippet = snippetByBlockId.get(b.id);
-                    return (
-                      <>
-                        {showGateDivider && (
+              {galleryOpen && (
+                <AddGallery
+                  insertTarget="chapter"
+                  onPick={async (t) => {
+                    setGalleryOpen(false);
+                    await handleInsertSample(t);
+                  }}
+                  onClose={() => setGalleryOpen(false)}
+                />
+              )}
+              <Card className="mt-6">
+                <CardContent ref={listRef} className="max-h-[calc(100vh-160px)] overflow-y-auto pt-5">
+                  <SortableList
+                    items={displayBlocks}
+                    onReorder={handleReorder}
+                    itemClassName="border-b border-border last:border-b-0"
+                    renderItem={(b, dragHandle, idx) => {
+                      const isSelected = selectedBlockId === b.id;
+                      const isActive = activeBlockId === b.id;
+                      const isExpanded = expandedIds.has(b.id);
+                      const isInspected = inspectedBlockId === b.id;
+                      const isKbd = kbdActive && kbdIdx === idx;
+                      // Scroll-gate divider : matérialise dans la liste que le
+                      // bloc qui suit un FORM est "gated" — côté front, le
+                      // visiteur doit valider le formulaire (bouton Continuer)
+                      // avant que la suite ne défile. Recalculé à chaque render
+                      // depuis la liste, donc le drag-and-drop le repositionne
+                      // automatiquement (pas de tracking en état).
+                      const showGateDivider = idx > 0 && displayBlocks[idx - 1]?.type === 'form';
+                      const isMatch = matchedBlockIds.has(b.id);
+                      const isMoveHoverDest = moveHoverDestId === b.id;
+                      const snippet = snippetByBlockId.get(b.id);
+                      return (
+                        <>
+                          {showGateDivider && (
+                            <div
+                              className="bg-primary/40 mx-2 my-2 h-px rounded-full"
+                              aria-hidden="true"
+                              title="Visible côté front uniquement après validation du formulaire ci-dessus."
+                            />
+                          )}
                           <div
-                            className="bg-primary/40 mx-2 my-2 h-px rounded-full"
-                            aria-hidden="true"
-                            title="Visible côté front uniquement après validation du formulaire ci-dessus."
-                          />
-                        )}
-                        <div
-                          data-row-id={b.id}
-                          className={cn(
-                            'relative py-3 transition-colors',
-                            (isSelected || isActive) && 'bg-primary/5 -mx-5 px-5',
-                            isActive && 'ring-primary/30 rounded-md ring-1',
-                            isInspected &&
-                              '!bg-amber-100 ring-2 ring-amber-300 dark:!bg-amber-900/60 dark:ring-amber-500/60',
-                            isMatch &&
-                              !isInspected &&
-                              'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/50 dark:ring-amber-700/60',
-                            isKbd && !isInspected && 'ring-primary/40 ring-1',
-                            // Move-into hover preview wins over the rest visually so the
-                            // user can see exactly which row their cursor in the menu
-                            // is targeting. Violet to stay distinct from selection
-                            // (primary), inspection (amber) and just-added (emerald).
-                            isMoveHoverDest &&
-                              '!bg-violet-50 ring-2 ring-violet-400 dark:!bg-violet-950/60 dark:bg-violet-950/50 dark:ring-violet-500/60',
-                          )}
-                        >
-                          {isInspected && (
-                            <div className="absolute -top-7 left-0 z-20 rounded-md bg-amber-900 px-2 py-1 text-[10px] font-medium text-white shadow">
-                              Bloc{' '}
-                              {(BLOCK_TYPE_LABELS as Record<string, string>)[inspectedBlockType ?? ''] ??
-                                inspectedBlockType ??
-                                b.type}{' '}
-                              — ouvert ci-dessous
-                            </div>
-                          )}
-                          {/* Direction B (Lot 5 v5) — row chrome compact
+                            data-row-id={b.id}
+                            className={cn(
+                              'relative py-3 transition-colors',
+                              (isSelected || isActive) && 'bg-primary/5 -mx-5 px-5',
+                              isActive && 'ring-primary/30 rounded-md ring-1',
+                              isInspected &&
+                                '!bg-amber-100 ring-2 ring-amber-300 dark:!bg-amber-900/60 dark:ring-amber-500/60',
+                              isMatch &&
+                                !isInspected &&
+                                'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/50 dark:ring-amber-700/60',
+                              isKbd && !isInspected && 'ring-primary/40 ring-1',
+                              // Move-into hover preview wins over the rest visually so the
+                              // user can see exactly which row their cursor in the menu
+                              // is targeting. Violet to stay distinct from selection
+                              // (primary), inspection (amber) and just-added (emerald).
+                              isMoveHoverDest &&
+                                '!bg-violet-50 ring-2 ring-violet-400 dark:!bg-violet-950/60 dark:bg-violet-950/50 dark:ring-violet-500/60',
+                            )}
+                          >
+                            {isInspected && (
+                              <div className="absolute -top-7 left-0 z-20 rounded-md bg-amber-900 px-2 py-1 text-[10px] font-medium text-white shadow">
+                                Bloc{' '}
+                                {(BLOCK_TYPE_LABELS as Record<string, string>)[inspectedBlockType ?? ''] ??
+                                  inspectedBlockType ??
+                                  b.type}{' '}
+                                — ouvert ci-dessous
+                              </div>
+                            )}
+                            {/* Direction B (Lot 5 v5) — row chrome compact
                               (handle + chevron + thumb + eyebrow + summary
                               + tags + diff + actions) AFFICHÉE UNIQUEMENT
                               quand le bloc n'est pas sélectionné. En
@@ -1009,102 +1019,108 @@ export function ChapterEditor(props: Props) {
                               Drag handle reste accessible : l'éditeur
                               peut déselectionner (✕ inspecteur ou click
                               ailleurs) pour réordonner. */}
-                          <div className={cn('flex items-center gap-2', isActive && 'hidden')}>
-                            {dragHandle}
-                            <button
-                              type="button"
-                              onClick={() => toggleExpand(b.id)}
-                              className="text-muted-foreground hover:text-foreground shrink-0"
-                              title={isExpanded ? 'Replier' : 'Déplier pour éditer'}
-                              aria-expanded={isExpanded}
-                            >
-                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void openBlock(b.id)}
-                              className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                              title="Éditer ce bloc (déplie l'éditeur + centre la preview)"
-                            >
-                              <span className="text-text-faint w-5 shrink-0 font-mono text-xs">{b.order}</span>
-                              <BlockThumb type={b.type as ContentBlock['type']} />
-                              <span className="flex min-w-0 flex-1 flex-col">
-                                <span className="text-text-faint font-mono text-[9px] uppercase tracking-[0.12em]">
-                                  {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
-                                </span>
-                                <span
-                                  className={cn(
-                                    'min-w-0 truncate text-sm',
-                                    // Hero titles are the chapter's anchor lines — give
-                                    // them more visual weight in the row list so the
-                                    // user can scan a chapter's structure at a glance.
-                                    b.type === 'heroTitle' && 'font-semibold',
-                                  )}
-                                >
-                                  {summarizeBlock(
-                                    b.type,
-                                    // Use the live (unsaved) payload of the active
-                                    // editor when it matches this row, so editing
-                                    // e.g. a hero's title immediately updates the row
-                                    // summary above instead of waiting for autosave +
-                                    // refresh. Falls back to the server-side payload
-                                    // for any inactive row.
-                                    isActive && activeBlock?.block
-                                      ? (activeBlock.block.payload as Record<string, unknown>)
-                                      : b.payload,
-                                  )}
-                                </span>
-                              </span>
-                              {(() => {
-                                const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar
-                                  ?.variant;
-                                if (!variantKey) return null;
-                                const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
-                                return (
-                                  <span
-                                    className="border-border bg-surface inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
-                                    title={`Navbar « ${variantKey} »`}
-                                  >
-                                    <span
-                                      className="inline-block h-2 w-2 rounded-full"
-                                      style={{ background: v?.color || '#94a3b8' }}
-                                    />
-                                    {v?.title ?? variantKey}
+                            <div className={cn('flex items-center gap-2', isActive && 'hidden')}>
+                              {dragHandle}
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(b.id)}
+                                className="text-muted-foreground hover:text-foreground shrink-0"
+                                title={isExpanded ? 'Replier' : 'Déplier pour éditer'}
+                                aria-expanded={isExpanded}
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void openBlock(b.id)}
+                                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                title="Éditer ce bloc (déplie l'éditeur + centre la preview)"
+                              >
+                                <span className="text-text-faint w-5 shrink-0 font-mono text-xs">{b.order}</span>
+                                <BlockThumb type={b.type as ContentBlock['type']} />
+                                <span className="flex min-w-0 flex-1 flex-col">
+                                  <span className="text-text-faint font-mono text-[9px] uppercase tracking-[0.12em]">
+                                    {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
                                   </span>
-                                );
-                              })()}
-                              <BlockTagsChips tags={b.tags} />
-                              <BlockDiffBadge diff={b.diff} />
-                            </button>
-                            <DuplicateBlockMenu
-                              chapters={props.chapters ?? []}
-                              currentChapterSlug={props.chapter.slug}
-                              disabled={isPending}
-                              onDuplicateHere={() => handleDuplicate(b.id)}
-                              onCopyTo={(targetChapterId) => handleCopyTo(b.id, targetChapterId)}
-                            />
-                            <MoveIntoBlockMenu
-                              sourceBlockId={b.id}
-                              allBlocks={props.blocks}
-                              disabled={isPending}
-                              onMove={(destContainerId, destField) => handleMoveInto(b.id, destContainerId, destField)}
-                              onHoverDestination={setMoveHoverDestId}
-                            />
-                            {/* Direction C — picto suppression discret (icbtn) :
+                                  <span
+                                    className={cn(
+                                      'min-w-0 truncate text-sm',
+                                      // Hero titles are the chapter's anchor lines — give
+                                      // them more visual weight in the row list so the
+                                      // user can scan a chapter's structure at a glance.
+                                      b.type === 'heroTitle' && 'font-semibold',
+                                    )}
+                                  >
+                                    {summarizeBlock(
+                                      b.type,
+                                      // Use the live (unsaved) payload of the active
+                                      // editor when it matches this row, so editing
+                                      // e.g. a hero's title immediately updates the row
+                                      // summary above instead of waiting for autosave +
+                                      // refresh. Falls back to the server-side payload
+                                      // for any inactive row.
+                                      isActive && activeBlock?.block
+                                        ? (activeBlock.block.payload as Record<string, unknown>)
+                                        : b.payload,
+                                    )}
+                                  </span>
+                                </span>
+                                {(() => {
+                                  const variantKey = (b.payload as { navbar?: { variant?: string } } | null)?.navbar
+                                    ?.variant;
+                                  if (!variantKey) return null;
+                                  const v = (props.navbarVariants ?? []).find((x) => x.key === variantKey);
+                                  return (
+                                    <span
+                                      className="border-border bg-surface inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+                                      title={`Navbar « ${variantKey} »`}
+                                    >
+                                      <span
+                                        className="inline-block h-2 w-2 rounded-full"
+                                        style={{ background: v?.color || '#94a3b8' }}
+                                      />
+                                      {v?.title ?? variantKey}
+                                    </span>
+                                  );
+                                })()}
+                                <BlockTagsChips tags={b.tags} />
+                                <BlockDiffBadge diff={b.diff} />
+                              </button>
+                              <DuplicateBlockMenu
+                                chapters={props.chapters ?? []}
+                                currentChapterSlug={props.chapter.slug}
+                                disabled={isPending}
+                                onDuplicateHere={() => handleDuplicate(b.id)}
+                                onCopyTo={(targetChapterId) => handleCopyTo(b.id, targetChapterId)}
+                              />
+                              <MoveIntoBlockMenu
+                                sourceBlockId={b.id}
+                                allBlocks={props.blocks}
+                                disabled={isPending}
+                                onMove={(destContainerId, destField) =>
+                                  handleMoveInto(b.id, destContainerId, destField)
+                                }
+                                onHoverDestination={setMoveHoverDestId}
+                              />
+                              {/* Direction C — picto suppression discret (icbtn) :
                           monochrome gris au repos, fond rouge translucide
                           au hover. Le rouge plein-temps de Trash2 attirait
                           l'œil en permanence. */}
-                            <button
-                              type="button"
-                              disabled={isPending}
-                              title="Supprimer ce bloc"
-                              onClick={() => handleDelete(b.id)}
-                              className="text-text-muted inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                          {/* Direction B (Lot 3+5v4) — BlockPreview cliquable
+                              <button
+                                type="button"
+                                disabled={isPending}
+                                title="Supprimer ce bloc"
+                                onClick={() => handleDelete(b.id)}
+                                className="text-text-muted inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {/* Direction B (Lot 3+5v4) — BlockPreview cliquable
                               avec halo de sélection. Click sur le wrapper
                               sélectionne le bloc → l'Inspector droit
                               affiche son PayloadEditor.
@@ -1112,74 +1128,74 @@ export function ChapterEditor(props: Props) {
                               <div role="button"> pour pouvoir nester la
                               mini-toolbar flottante (Duplicate + Trash)
                               en haut-droite sur sélection. */}
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => void openBlock(b.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                void openBlock(b.id);
-                              }
-                            }}
-                            aria-pressed={isActive}
-                            aria-label={`Sélectionner le bloc ${b.type}`}
-                            className={cn(
-                              // ml-11 = 44 px ; on évite `w-full` qui
-                              // combiné au margin produirait
-                              // 100 % + 44 px = débordement à droite.
-                              // Un block sans width prend
-                              // automatiquement la place restante après
-                              // le margin.
-                              'group relative ml-11 mt-2 block cursor-pointer rounded-2xl text-left transition-all',
-                              'focus-visible:ring-primary/40 focus-visible:outline-none focus-visible:ring-2',
-                              isActive && 'ring-primary/60 ring-offset-surface-2 ring-2 ring-offset-2',
-                            )}
-                          >
-                            {/* Chip de type flottant en haut-gauche
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => void openBlock(b.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  void openBlock(b.id);
+                                }
+                              }}
+                              aria-pressed={isActive}
+                              aria-label={`Sélectionner le bloc ${b.type}`}
+                              className={cn(
+                                // ml-11 = 44 px ; on évite `w-full` qui
+                                // combiné au margin produirait
+                                // 100 % + 44 px = débordement à droite.
+                                // Un block sans width prend
+                                // automatiquement la place restante après
+                                // le margin.
+                                'group relative ml-11 mt-2 block cursor-pointer rounded-2xl text-left transition-all',
+                                'focus-visible:ring-primary/40 focus-visible:outline-none focus-visible:ring-2',
+                                isActive && 'ring-primary/60 ring-offset-surface-2 ring-2 ring-offset-2',
+                              )}
+                            >
+                              {/* Chip de type flottant en haut-gauche
                                 (révélé sur sélection). */}
-                            {isActive && (
-                              <span
-                                aria-hidden="true"
-                                className="bg-primary text-on-primary absolute -top-2.5 left-3 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wider shadow-sm"
-                              >
-                                {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
-                              </span>
-                            )}
-                            {/* Mini-toolbar flottante haut-droite — Lot
+                              {isActive && (
+                                <span
+                                  aria-hidden="true"
+                                  className="bg-primary text-on-primary absolute -top-2.5 left-3 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wider shadow-sm"
+                                >
+                                  {(BLOCK_TYPE_LABELS as Record<string, string>)[b.type] ?? b.type}
+                                </span>
+                              )}
+                              {/* Mini-toolbar flottante haut-droite — Lot
                                 5 v4. Visible sur sélection. Click
                                 stoppe la propagation pour ne pas
                                 re-déclencher openBlock. Trash en danger
                                 (rose) pour signaler l'action
                                 destructive. */}
-                            {isActive && (
-                              <div
-                                className="bg-surface border-border shadow-app-sm absolute -top-3.5 right-3 inline-flex items-center gap-0.5 rounded-md border p-0.5"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  type="button"
-                                  disabled={isPending}
-                                  title="Dupliquer ce bloc"
-                                  aria-label="Dupliquer"
-                                  onClick={() => handleDuplicate(b.id)}
-                                  className="text-text-muted hover:bg-muted hover:text-text inline-flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-40"
+                              {isActive && (
+                                <div
+                                  className="bg-surface border-border shadow-app-sm absolute -top-3.5 right-3 inline-flex items-center gap-0.5 rounded-md border p-0.5"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Copy className="h-3 w-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={isPending}
-                                  title="Supprimer ce bloc"
-                                  aria-label="Supprimer"
-                                  onClick={() => handleDelete(b.id)}
-                                  className="text-text-muted inline-flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            )}
-                            {/* Direction B Lot 5 v7 — quand le bloc est
+                                  <button
+                                    type="button"
+                                    disabled={isPending}
+                                    title="Dupliquer ce bloc"
+                                    aria-label="Dupliquer"
+                                    onClick={() => handleDuplicate(b.id)}
+                                    className="text-text-muted hover:bg-muted hover:text-text inline-flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-40"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isPending}
+                                    title="Supprimer ce bloc"
+                                    aria-label="Supprimer"
+                                    onClick={() => handleDelete(b.id)}
+                                    className="text-text-muted inline-flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:opacity-40"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+                              {/* Direction B Lot 5 v7 — quand le bloc est
                                 sélectionné, on remplace le BlockPreview
                                 React mirror par une VRAIE iframe Solid
                                 du front (LivePreviewIframe) — l'éditeur
@@ -1191,15 +1207,15 @@ export function ChapterEditor(props: Props) {
                                 Hauteur fixée à 480 px (la plupart des
                                 blocs y rentrent ; Hero plein écran est
                                 clippé mais lisible). */}
-                            {isActive ? (
-                              <LivePreviewIframe
-                                previewId="canvas-live"
-                                block={{
-                                  type: b.type,
-                                  payload:
-                                    (activeBlock?.block?.payload as Record<string, unknown> | undefined) ?? b.payload,
-                                }}
-                                /* Hauteur adaptée au type — Hero
+                              {isActive ? (
+                                <LivePreviewIframe
+                                  previewId="canvas-live"
+                                  block={{
+                                    type: b.type,
+                                    payload:
+                                      (activeBlock?.block?.payload as Record<string, unknown> | undefined) ?? b.payload,
+                                  }}
+                                  /* Hauteur adaptée au type — Hero
                                    immersif et Tool section ont besoin
                                    de plus, text/conditional sont
                                    compacts par nature. Le front Solid
@@ -1207,59 +1223,60 @@ export function ChapterEditor(props: Props) {
                                    l'intérieur de l'iframe ça devient
                                    la hauteur de l'iframe → plus c'est
                                    haut, plus le Hero est lisible. */
-                                className={cn(
-                                  'bg-bg block w-full rounded-2xl border-0',
-                                  IFRAME_HEIGHT_BY_TYPE[b.type as keyof typeof IFRAME_HEIGHT_BY_TYPE] ??
-                                    IFRAME_HEIGHT_BY_TYPE._default,
-                                )}
-                              />
-                            ) : (
-                              <BlockPreview type={b.type} payload={b.payload} />
+                                  className={cn(
+                                    'bg-bg block w-full rounded-2xl border-0',
+                                    IFRAME_HEIGHT_BY_TYPE[b.type as keyof typeof IFRAME_HEIGHT_BY_TYPE] ??
+                                      IFRAME_HEIGHT_BY_TYPE._default,
+                                  )}
+                                />
+                              ) : (
+                                <BlockPreview type={b.type} payload={b.payload} />
+                              )}
+                            </div>
+                            {snippet && (
+                              <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
+                                <HighlightedSnippet snippet={snippet} query={searchQuery} />
+                              </p>
                             )}
                           </div>
-                          {snippet && (
-                            <p className="text-muted-foreground mt-1 pl-[44px] text-[11px] italic leading-snug">
-                              <HighlightedSnippet snippet={snippet} query={searchQuery} />
-                            </p>
-                          )}
-                        </div>
-                      </>
-                    );
-                  }}
-                />
-                {props.blocks.length === 0 && (
-                  <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
-                    <div className="text-3xl" aria-hidden="true">
-                      🧱
+                        </>
+                      );
+                    }}
+                  />
+                  {props.blocks.length === 0 && (
+                    <div className="border-border bg-muted/30 flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center">
+                      <div className="text-3xl" aria-hidden="true">
+                        🧱
+                      </div>
+                      <p className="text-sm font-medium">Aucun bloc dans ce chapitre</p>
+                      <p className="text-muted-foreground max-w-md text-xs">
+                        Click sur « + Ajouter un bloc » ci-dessous ou tapez{' '}
+                        <kbd className="border-border bg-surface rounded border px-1 py-0.5 text-[10px]">/</kbd>{' '}
+                        n'importe où dans le chapitre.
+                      </p>
                     </div>
-                    <p className="text-sm font-medium">Aucun bloc dans ce chapitre</p>
-                    <p className="text-muted-foreground max-w-md text-xs">
-                      Click sur « + Ajouter un bloc » ci-dessous ou tapez{' '}
-                      <kbd className="border-border bg-surface rounded border px-1 py-0.5 text-[10px]">/</kbd> n'importe
-                      où dans le chapitre.
-                    </p>
-                  </div>
-                )}
-                {/* Direction B (Lot 4) — CTA pointillé sous la liste
+                  )}
+                  {/* Direction B (Lot 4) — CTA pointillé sous la liste
                     des blocs, pour ajouter un bloc à la suite. Pattern
                     Notion-like : pointillé doux, raccourci `/`
                     indiqué en hint. Reuse `setGalleryOpen` (l'AddGallery
                     modale du Lot 2). */}
-                <button
-                  type="button"
-                  onClick={() => setGalleryOpen(true)}
-                  className="border-border-strong text-text-muted hover:bg-primary/5 hover:border-primary/40 hover:text-primary-on mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-dashed text-sm font-medium transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Ajouter un bloc
-                  <span className="text-text-faint ml-2 inline-flex items-center gap-1 text-xs">
-                    ou tapez <kbd className="border-border bg-surface rounded border px-1 py-0.5 text-[10px]">/</kbd>
-                  </span>
-                </button>
-              </CardContent>
-            </Card>
-          </div>
-        </main>
+                  <button
+                    type="button"
+                    onClick={() => setGalleryOpen(true)}
+                    className="border-border-strong text-text-muted hover:bg-primary/5 hover:border-primary/40 hover:text-primary-on mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-dashed text-sm font-medium transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Ajouter un bloc
+                    <span className="text-text-faint ml-2 inline-flex items-center gap-1 text-xs">
+                      ou tapez <kbd className="border-border bg-surface rounded border px-1 py-0.5 text-[10px]">/</kbd>
+                    </span>
+                  </button>
+                </CardContent>
+              </Card>
+            </div>
+          </main>
+        )}
         {/* Inspecteur de bloc (Direction B Lot 3) — contextuel sur le
             bloc actif. Quand un bloc est sélectionné dans le canvas,
             son InlineBlockEditor est monté ici (au lieu de
