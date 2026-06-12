@@ -14,6 +14,7 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { DuplicateBlockMenu } from '@/components/DuplicateBlockMenu';
 import { EditorInspector } from '@/components/editor/EditorInspector';
 import { EditorTopbar } from '@/components/editor/EditorTopbar';
+import { PreviewIframeWithScroll } from '@/components/editor/PreviewIframeWithScroll';
 import { InlineBlockEditor } from '@/components/InlineBlockEditor';
 import { MoveIntoBlockMenu } from '@/components/MoveIntoBlockMenu';
 import { SortableList } from '@/components/SortableList';
@@ -896,12 +897,12 @@ export function ChapterEditor(props: Props) {
             en regardant le rendu intégral. */}
         {viewMode === 'preview' ? (
           <main className="bg-surface-2 min-w-0 flex-1 overflow-hidden">
-            <iframe
-              key={`preview-${props.chapter.slug}-${previewReloadKey}`}
-              src={previewUrl}
-              title={`Aperçu front du chapitre ${props.chapter.title}`}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-              className="h-full w-full border-0 bg-white"
+            <PreviewIframeWithScroll
+              previewUrl={previewUrl}
+              chapterSlug={props.chapter.slug}
+              chapterTitle={props.chapter.title}
+              reloadKey={previewReloadKey}
+              scrollToBlockId={activeBlockId}
             />
           </main>
         ) : (
