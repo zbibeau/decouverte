@@ -1125,11 +1125,16 @@ export function ChapterEditor(props: Props) {
                             aria-pressed={isActive}
                             aria-label={`Sélectionner le bloc ${b.type}`}
                             className={cn(
-                              'group relative mt-2 block w-full cursor-pointer rounded-2xl text-left transition-all',
+                              // ml-11 = 44 px ; on évite `w-full` qui
+                              // combiné au margin produirait
+                              // 100 % + 44 px = débordement à droite.
+                              // Un block sans width prend
+                              // automatiquement la place restante après
+                              // le margin.
+                              'group relative ml-11 mt-2 block cursor-pointer rounded-2xl text-left transition-all',
                               'focus-visible:ring-primary/40 focus-visible:outline-none focus-visible:ring-2',
                               isActive && 'ring-primary/60 ring-offset-surface-2 ring-2 ring-offset-2',
                             )}
-                            style={{ marginLeft: 44 }}
                           >
                             {/* Chip de type flottant en haut-gauche
                                 (révélé sur sélection). */}
