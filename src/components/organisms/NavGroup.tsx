@@ -101,32 +101,16 @@ export const NavGroup = (_props: { data: NavGroupData; actualStep?: string; disa
           <>
             <div>
               {group.title && (
-                <div class="relative">
-                  {/* Handoff §3 : en-têtes de section en petites capitales
-                      `primary-500`, letter-spacing .12em. La 1ère section
-                      du sommaire écrit ainsi « CONSTAT », « LA BOÎTE À
-                      OUTILS DU MÉDECIN », « LA SUITE AVEC NOUS ». */}
-                  <p class="px-2 pb-1.5 pt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-primary-500">
-                    {group.title}
-                  </p>
-
-                  <div class="absolute top-0">
-                    {[NavItemStatus.active, NavItemStatus.done].includes(
-                      //@ts-ignore
-                      data()[indexGroup() - 1]?.steps[data()[indexGroup() - 1]?.steps?.length - 1].status,
-                    ) &&
-                      [NavItemStatus.active, NavItemStatus.done].includes(group.steps[0].status!) && (
-                        <div
-                          class={cx(
-                            'ml-[0.625rem] block h-6 w-[2px]',
-                            // Section line tinted en primary-600 (était
-                            // success-400 / vert) pour cohérence palette.
-                            'bg-primary-600',
-                          )}
-                        />
-                      )}
-                  </div>
-                </div>
+                // Handoff §3 : en-têtes de section en petites capitales
+                // `primary-500`, letter-spacing .12em. La 1ère section
+                // du sommaire écrit ainsi « CONSTAT », « LA BOÎTE À
+                // OUTILS DU MÉDECIN », « LA SUITE AVEC NOUS ».
+                // Connecteur absolu supprimé : il chevauchait le texte
+                // du titre. La maquette `03-sommaire.png` ne montre
+                // aucune ligne entre les groupes.
+                <p class="px-2 pb-1.5 pt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-primary-500">
+                  {group.title}
+                </p>
               )}
 
               <For each={group.steps || []}>
@@ -174,18 +158,11 @@ export const NavGroup = (_props: { data: NavGroupData; actualStep?: string; disa
               </For>
             </div>
 
-            {indexGroup() < data().length - 1 && (
-              <div
-                class={cx(
-                  'ml-[0.625rem] block h-6 w-[2px]',
-                  // Inter-group line — primary-600 quand le groupe suivant
-                  // a au moins une étape active/done (refonte handoff §3).
-                  data()[indexGroup() + 1].steps.find(
-                    (s) => s.status !== NavItemStatus.default && s.status !== NavItemStatus.disabled,
-                  ) && 'bg-primary-600',
-                )}
-              />
-            )}
+            {/* Connecteur inter-groupes supprimé : la maquette
+                `03-sommaire.png` ne montre aucune ligne entre les
+                groupes. La progression est lue via les états des
+                items eux-mêmes (carte blanche done, bandeau primary-100
+                active). */}
           </>
         )}
       </For>
