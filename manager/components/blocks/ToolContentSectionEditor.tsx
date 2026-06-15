@@ -191,11 +191,7 @@ export function ToolContentSectionEditor({
       </Section>
 
       <Section title="Sous-blocs additionnels" accentColor="purple">
-        <Field
-          label=""
-          path="children"
-          hint="Ces blocs sont rendus APRÈS la carte avantages. Tu peux y mettre du texte, des key points, une FAQ, etc."
-        >
+        <Field label="" path="children" hint="Rendus après la carte avantages — texte, key points, FAQ…">
           <ChildBlockList
             blocks={(payload.children ?? []) as ContentBlock[]}
             onChange={(next) => onChange({ ...payload, children: next })}
