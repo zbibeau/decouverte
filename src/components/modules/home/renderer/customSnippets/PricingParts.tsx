@@ -3,7 +3,6 @@ import { Component, createSignal, For } from 'solid-js';
 
 import { useI18nDict } from '../../../../../services/useI18nDict';
 import { Button } from '../../../../atoms/Button';
-import { Card } from '../../../../atoms/Card';
 import { Icon } from '../../../../atoms/Icon';
 import { CheckListGroup } from '../../../../organisms/CheckListGroup';
 import { Text } from '../../../../primitives/Text';
@@ -68,18 +67,24 @@ export const HomeOurPricingBody: Component<HOME_SECTION_PROPS> = () => {
   return (
     <AfterHeroContainer>
       <div class="m-auto w-full max-w-[600px] space-y-6 px-1 py-16">
-        <Card>
-          <div class="space-y-2 px-4 py-8">
+        {/* Carte calculateur — refonte handoff §8. Card legacy ombre
+            grise → wrapper white sur border-violet-border-soft +
+            shadow-card. Le calculateur (compteur nb médecins +
+            CheckList + bandeau fidélité) reste intact. */}
+        <div class="space-y-6 rounded-2xl border border-violet-border-soft bg-white p-6 shadow-card">
+          <div class="space-y-2 px-4 py-4">
             <div class="space-y-4">
               <div class="text-center">
-                <Text variant="xl" fontWeight="medium">
+                <Text variant="xl" fontWeight="medium" class="text-primary-950">
                   <span
                     innerHTML={t()('pricingCalc', {
                       price: t()(`pricingCalcValues.${nbDoctor().toString() as '1'}`),
                     })}
                   />
                 </Text>
-                <Text variant="lg">{t()('byMonthAndByDoctor')}</Text>
+                <Text variant="lg" class="text-violet-text">
+                  {t()('byMonthAndByDoctor')}
+                </Text>
               </div>
 
               <div class="mx-auto flex w-fit items-center justify-between gap-2 rounded-full bg-primary-100 p-2">
@@ -106,7 +111,7 @@ export const HomeOurPricingBody: Component<HOME_SECTION_PROPS> = () => {
             </div>
 
             <div>
-              <Text class="text-center text-primary-400">{t()('noEngagement')}</Text>
+              <Text class="text-center text-violet-faint">{t()('noEngagement')}</Text>
             </div>
           </div>
 
@@ -125,21 +130,26 @@ export const HomeOurPricingBody: Component<HOME_SECTION_PROPS> = () => {
             />
           </div>
 
-          <div class="space-y-4 rounded-2xl bg-primary-200 px-4 py-6 text-center">
+          {/* Bandeau « -3% par an » — refonte : gradient signature
+              `bg-card-premium` (Lot 1) au lieu de primary-200 plat,
+              texte blanc lisible. */}
+          <div class="space-y-4 rounded-2xl bg-card-premium px-4 py-6 text-center text-white shadow-premium">
             <div>
-              <Text variant="2xl" fontWeight="medium" class="text-primary-600">
+              <Text variant="2xl" fontWeight="medium" class="text-white">
                 {t()('pricing.title')}
               </Text>
             </div>
             <div>
-              <Text fontWeight="medium">{t()('pricing.description')}</Text>
-              <Text>{t()('pricing.infos')}</Text>
+              <Text fontWeight="medium" class="text-white">
+                {t()('pricing.description')}
+              </Text>
+              <Text class="text-white/85">{t()('pricing.infos')}</Text>
             </div>
           </div>
-        </Card>
+        </div>
 
-        <Card class="space-y-6">
-          <Title variant="h6" class="text-center">
+        <div class="space-y-6 rounded-2xl border border-violet-border-soft bg-white p-6 shadow-card">
+          <Title variant="h6" class="text-center text-primary-950">
             {t()('parteners.title')}
           </Title>
           <div class="grid items-stretch gap-2 md:grid-cols-3">
@@ -160,7 +170,7 @@ export const HomeOurPricingBody: Component<HOME_SECTION_PROPS> = () => {
               )}
             </For>
           </div>
-        </Card>
+        </div>
 
         {data()?.personWhoHandleCalls !== PERSON_WHO_HANDLE_CALLS.SECRETARY && (
           <div
