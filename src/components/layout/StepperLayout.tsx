@@ -136,7 +136,17 @@ export const StepperLayout: Component<{
     }
   });
 
-  const percentageContent = createMemo(() => {
+  /**
+   * Progression DANS le chapitre courant (0-100). Hérité d'origine.
+   *
+   * Calcul : `(scrollY - 1viewport) / (scrollHeight - 2*viewport)`.
+   *   - Soustrait le 1er écran (hero plein écran = scrollY 0 = 0%).
+   *   - Soustrait le dernier écran (auto-injecté transition grid).
+   *
+   * On le garde tel quel — il sert d'entrée pour calculer la
+   * progression globale `parcoursProgress` ci-dessous.
+   */
+  const chapterProgress = createMemo(() => {
     let elementHeight = window.innerHeight;
     let scrollY = windowScroll.y;
     try {
@@ -153,8 +163,71 @@ export const StepperLayout: Component<{
       elementHeight -= window.innerHeight * 2;
     }
 
-    return Math.ceil((scrollY * 100) / elementHeight);
+    if (elementHeight <= 0) return 0;
+    const pct = Math.ceil((scrollY * 100) / elementHeight);
+    return Math.min(100, Math.max(0, pct));
   });
+
+  /**
+   * Progression GLOBALE sur l'ensemble du parcours (0-100).
+   *
+   * Formule : `(currentChapterIndex + chapterProgressRatio) / totalChapters`.
+   *   - `currentChapterIndex` : position 0-based du chapitre courant
+   *     dans la liste des chapitres visibles (hiddenFromNav exclu).
+   *   - `chapterProgressRatio` : `chapterProgress() / 100` — la
+   *     position de scroll dans le chapitre courant, normalisée 0..1.
+   *   - `totalChapters` : total des chapitres visibles dans le
+   *     parcours.
+   *
+   * Légère mise en cohérence avec le visuel :
+   *   - Sur le 1er chapitre tout en haut → 0%.
+   *   - Sur le dernier chapitre tout en bas → 100%.
+   *   - Tomber sur le start d'un chapitre N → (N-1)/total %.
+   *
+   * Pour le parcours legacy `demo-ventes` (steps hardcodés) on dérive
+   * le compte total et l'index courant depuis `HOME_STEPS_LAYOUT_VALUE`
+   * (le mapping "X.Y" pour chaque step) + `HOME_SECTIONS_DATA` (les
+   * groupes du sommaire). Pour les parcours dynamiques (Supabase) on
+   * lit `chapters()` filtré sur `!hiddenFromNav`.
+   */
+  const parcoursProgress = createMemo(() => {
+    const dyn = useDynamic();
+
+    if (dyn) {
+      // Parcours dynamique (Supabase) : index = position du slug courant
+      // dans la liste des chapitres visibles, total = leur nombre.
+      const visible = chapters().filter((c) => !c.hiddenFromNav);
+      if (visible.length === 0) return 0;
+      const cur = props.currentStep() as string;
+      let idx = visible.findIndex((c) => c.slug === cur);
+      if (idx < 0) idx = 0;
+      const overall = ((idx + chapterProgress() / 100) / visible.length) * 100;
+      return Math.min(100, Math.max(0, Math.round(overall)));
+    }
+
+    // Parcours legacy `demo-ventes` : on flatten HOME_SECTIONS_DATA
+    // (3 groupes, 6 steps au total) pour avoir un total stable, puis
+    // on cherche l'index courant via HOME_STEPS_LAYOUT_VALUE ("X.Y").
+    const data = HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep);
+    const total = data.reduce((sum, g) => sum + g.steps.length, 0);
+    if (total === 0) return 0;
+    const cur = HOME_STEPS_LAYOUT_VALUE[props.currentStep()];
+    if (!cur) return 0;
+    const [g, s] = cur.split('.').map((v) => parseInt(v));
+    if (Number.isNaN(g) || Number.isNaN(s) || g < 1) return 0;
+    // Position 0-based = somme des steps des groupes précédents + (s-1)
+    const priorSteps = data.slice(0, g - 1).reduce((sum, grp) => sum + grp.steps.length, 0);
+    const idx = priorSteps + Math.max(0, s - 1);
+    const overall = ((idx + chapterProgress() / 100) / total) * 100;
+    return Math.min(100, Math.max(0, Math.round(overall)));
+  });
+
+  /**
+   * Alias rétrocompat : conserve le nom `percentageContent` consommé
+   * dans le JSX ci-dessous, mais branche maintenant sur la progression
+   * globale (= ce que l'éditeur a demandé).
+   */
+  const percentageContent = parcoursProgress;
 
   return (
     <div
