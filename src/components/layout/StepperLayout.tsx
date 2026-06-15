@@ -165,7 +165,11 @@ export const StepperLayout: Component<{
       }}
     >
       {!isMobileDisplay() ? (
-        <div class="flex h-full max-w-[17.5rem] flex-col justify-between space-y-5 p-6 shadow-sidebar shadow-shadow-sidebar">
+        // Sidebar 296px sur fond blanc avec border-right hairline —
+        // refonte handoff §3. Le shadow-sidebar legacy (ombre douce
+        // ambient) est remplacé par un border-right propre + le
+        // shadow-card du wrapper global donne déjà le détourage.
+        <aside class="flex h-full w-[296px] shrink-0 flex-col justify-between space-y-5 border-r border-violet-border-soft bg-white p-6">
           {/* Easter egg : double-clicking the brand logo plays a 700ms
               spring wiggle. Pure delight. Won't fire if a screen reader
               user is just navigating (single click does nothing), and
@@ -186,7 +190,7 @@ export const StepperLayout: Component<{
             <BrandLogo variant="secondary900" size="1.5x" />
           </button>
 
-          <div class="h-full space-y-5 overflow-auto">
+          <div class="h-full space-y-3 overflow-auto">
             <NavItem
               text={i18n().t('layout.stepper.back')!}
               status={NavItemStatus.back}
@@ -206,11 +210,27 @@ export const StepperLayout: Component<{
             />
           </div>
 
-          <div class="space-y-1">
+          <div class="space-y-2">
+            {/* Mini-indicateur de progression dans le footer sidebar —
+                handoff §3. Aligné avec la barre de progression du haut
+                (même % de scroll). Visuel modeste : label uppercase +
+                track plate + remplissage gradient violet. */}
+            <div class="space-y-1.5">
+              <div class="flex items-baseline justify-between text-[10px] font-bold uppercase tracking-[0.12em] text-primary-500">
+                <span>Progression</span>
+                <span class="font-mono">{percentageContent()}%</span>
+              </div>
+              <div class="h-1 w-full overflow-hidden rounded-full bg-violet-divider">
+                <div
+                  class="h-full bg-progress-violet transition-[width]"
+                  style={{ width: `${percentageContent()}%` }}
+                />
+              </div>
+            </div>
             <TakeAppointmentButton />
             <ShareButton />
           </div>
-        </div>
+        </aside>
       ) : (
         <div>
           <div class="flex items-center p-3 shadow-sidebar shadow-shadow-sidebar">
@@ -232,12 +252,37 @@ export const StepperLayout: Component<{
               spring slide-down + fade-in on open, mirroring iOS-style
               sheet animations. Without this the menu used to pop in
               abruptly — jarring on a tactile surface. The transition is
-              automatically neutered under prefers-reduced-motion. */}
+              automatically neutered under prefers-reduced-motion.
+
+              Refonte handoff §3 — sheet mobile plein écran avec header
+              « Sommaire » + pill « Étape N / N » en haut. Le contenu
+              (NavGroup) garde son rendu refondu via NavItem v2. */}
           <Transition name="mobile-menu">
             {isMobileMenuDisplay() && (
               <Portal>
                 <div class="absolute left-0 top-[56px] z-[999] flex h-[calc(100dvh-56px)] w-dvw flex-col justify-between space-y-5 overflow-auto bg-white p-6">
-                  <div class="h-full space-y-5 overflow-auto">
+                  <div class="h-full space-y-3 overflow-auto">
+                    {/* Header sheet — h2 « Sommaire » + pill « Étape X / N »
+                        de l'étape courante. L'index plat est calculé à
+                        partir du `actualStep` "X.Y" et de la data des
+                        groupes (somme des steps avant + index dans le
+                        groupe courant). Affiche « — / N » si non résolu. */}
+                    <div class="flex items-baseline justify-between pb-2">
+                      <h2 class="text-2xl font-black tracking-[-0.02em] text-primary-950">Sommaire</h2>
+                      <span class="inline-flex items-center rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-600">
+                        {(() => {
+                          const d = useDynamic() ? dynamic().data : HOME_SECTIONS_DATA(i18n().t, props.setCurrentStep);
+                          const total = d.reduce((sum, g) => sum + g.steps.length, 0);
+                          const cur = useDynamic()
+                            ? dynamic().actualStep
+                            : HOME_STEPS_LAYOUT_VALUE[props.currentStep()];
+                          if (!cur) return `— / ${total}`;
+                          const [g, s] = cur.split('.').map((v) => parseInt(v));
+                          const prior = d.slice(0, g - 1).reduce((sum, grp) => sum + grp.steps.length, 0);
+                          return `Étape ${prior + s} / ${total}`;
+                        })()}
+                      </span>
+                    </div>
                     <NavItem
                       text={i18n().t('layout.stepper.back')!}
                       status={NavItemStatus.back}
@@ -257,7 +302,7 @@ export const StepperLayout: Component<{
                     />
                   </div>
 
-                  <div class="space-y-1">
+                  <div class="space-y-2">
                     <TakeAppointmentButton />
                     <ShareButton />
                   </div>
@@ -282,15 +327,21 @@ export const StepperLayout: Component<{
         {/* Reading progress bar. When the parcours has a `theme_color`
             set (migration 0035, injected as `--mfm-theme` by HomeProvider),
             we tint the bar with that pastel so each parcours has its
-            own visual identity end-to-end. Falls back to the legacy
-            radial-gradient purple when no theme color is set. */}
+            own visual identity end-to-end. Sans theme color, fallback
+            sur le `bg-progress-violet` (refonte handoff §Token —
+            linéaire 90deg #9951FB → #822EEF). `left` aligné sur la
+            nouvelle largeur de sidebar 296px (était 280px).
+
+            Sa hauteur passe de 8px à 4px pour un visuel plus moderne
+            « thin progress bar », conforme aux maquettes mobile et
+            desktop. */}
         <div
-          class="fixed top-0 z-[999] h-[8px] rounded-r-md bg-radial-gradient"
+          class="fixed top-0 z-[999] h-[4px] rounded-r-md"
           style={{
             width: `${percentageContent()}%`,
-            left: isMobileDisplay() ? '0px' : '280px',
+            left: isMobileDisplay() ? '0px' : '296px',
             background:
-              'linear-gradient(90deg, var(--mfm-theme, transparent) 0%, transparent 200%), radial-gradient(100% 100% at 50% 0%, rgba(181, 128, 255, 0.33) 0%, #B580FF 100%)',
+              'linear-gradient(90deg, var(--mfm-theme, transparent) 0%, transparent 200%), linear-gradient(90deg, #9951FB 0%, #822EEF 100%)',
           }}
         />
         <Transition

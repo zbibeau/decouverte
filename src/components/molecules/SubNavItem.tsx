@@ -29,14 +29,16 @@ export const SubNavItem = (_props: {
       onClick={(e) => props.onClick && props.status !== SubNavItemStatus.disabled && props.onClick(e)}
     >
       <div>
-        <div class={cx('h-3 w-3 rounded-full', props.status === SubNavItemStatus.active && 'bg-primary-400')} />
+        {/* Refonte palette : point primary-600 (était primary-400) pour
+            cohérence avec NavItem actif. */}
+        <div class={cx('h-3 w-3 rounded-full', props.status === SubNavItemStatus.active && 'bg-primary-600')} />
       </div>
 
       <div
         class={cx(
-          'text-sm font-normal leading-tight text-secondary-900',
+          'text-sm font-normal leading-tight text-primary-950',
           props.status === SubNavItemStatus.active && '!font-medium',
-          props.status === SubNavItemStatus.disabled && 'opacity-50 grayscale',
+          props.status === SubNavItemStatus.disabled && 'opacity-50',
         )}
       >
         {props.text}
