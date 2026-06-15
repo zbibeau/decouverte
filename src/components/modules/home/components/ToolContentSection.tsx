@@ -1,11 +1,8 @@
 import type { ContentBlock, ToolContentSectionBlock } from '@shared/content-schema';
 import { Component, For, JSX, Show } from 'solid-js';
 
-import { Card } from '../../../atoms/Card';
-import { Icon } from '../../../atoms/Icon';
+import { KeywordItalic } from '../../../atoms/KeywordItalic';
 import { CheckListItem } from '../../../molecules/CheckListItem';
-import { Text } from '../../../primitives/Text';
-import { Title } from '../../../primitives/Title';
 import { defaultVideoI18nPropsFR, Video } from '../../../primitives/Video';
 import { AfterHeroContainerWide } from './AfterHeroContainer';
 
@@ -38,50 +35,72 @@ export const ToolContentSection: Component<{
       <div class="mx-auto w-full py-6 md:py-12">
         <div class="m-auto w-full max-w-[800px] space-y-8 px-3 md:px-1">
           <div class="space-y-8">
-            <div data-field-rail="title">
-              <Title variant="h2" class="text-center" data-field-path="title">
-                {props.payload.title}
-              </Title>
+            {/* Titre + sous-titre — refonte handoff §5-7.
+                Split sur `\n` : la 2e ligne du titre est rendue en
+                KeywordItalic primary-600 (« Un *filtre* multicanal. »).
+                Le subtitle (champ séparé du schéma) reste rendu en
+                paragraphe sobre `violet.text`. Centered desktop, left
+                mobile. */}
+            <div data-field-rail="title" class="space-y-2">
+              {(() => {
+                const lines = props.payload.title
+                  .split('\n')
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                return (
+                  <h2
+                    class="text-[clamp(28px,6vw,46px)] font-black leading-[1.05] tracking-[-0.03em] text-primary-950"
+                    data-field-path="title"
+                  >
+                    {lines[0] ?? props.payload.title}
+                    <Show when={lines.length > 1}>
+                      <br />
+                      <KeywordItalic>{lines.slice(1).join(' ')}</KeywordItalic>
+                    </Show>
+                  </h2>
+                );
+              })()}
               <Show when={props.payload.subtitle}>
-                <Text variant="xl" class="text-center text-primary-500" data-field-path="subtitle">
+                <p class="text-base leading-relaxed text-violet-text" data-field-path="subtitle">
                   {props.payload.subtitle}
-                </Text>
+                </p>
               </Show>
             </div>
 
             <Show when={resolvedVideoSrc()}>
               {(src) => (
                 <div class="mx-auto w-full" data-field-path="video" data-field-rail="video">
-                  <Video src={src()} class="rounded-3xl" i18n={defaultVideoI18nPropsFR} />
+                  <Video src={src()} class="rounded-3xl shadow-premium" i18n={defaultVideoI18nPropsFR} />
                 </div>
               )}
             </Show>
 
             <Show when={props.payload.advantagePoints?.length || props.payload.advantageText}>
               <div data-field-path="advantagePoints" data-field-rail="advantages">
-                <Card>
-                  <div class="space-y-4">
-                    <div class="flex items-center gap-2">
-                      <div>
-                        <Icon icon="icon icon-check-line" variant="secondary100Icon400" size="default" />
-                      </div>
-                      <div>
-                        <Title variant="h5" tag="p" class="font-medium" data-field-path="advantageTitle">
-                          {props.payload.advantageTitle ?? 'Les avantages'}
-                        </Title>
-                      </div>
+                {/* Carte « Les avantages » — refonte handoff §5-7. Au
+                    lieu d'une Card boxée avec ombre + header en icône,
+                    on rend une bordure douce et des checks alternants
+                    violet/ocre matchant le style de la maquette. */}
+                <div class="space-y-3 rounded-2xl border border-violet-border-soft bg-white p-5 shadow-card">
+                  <p
+                    class="text-[11px] font-bold uppercase tracking-[0.14em] text-primary-500"
+                    data-field-path="advantageTitle"
+                  >
+                    {props.payload.advantageTitle ?? 'Les avantages'}
+                  </p>
+                  <Show when={props.payload.advantagePoints?.length}>
+                    <div class="space-y-2">
+                      <For each={props.payload.advantagePoints}>
+                        {(p, i) => <CheckListItem variant={i() % 2 === 0 ? 'primary600' : 'ocre'} text={p} />}
+                      </For>
                     </div>
-
-                    <Show when={props.payload.advantagePoints?.length}>
-                      <div class="space-y-2 rounded-2xl p-4">
-                        <For each={props.payload.advantagePoints}>{(p) => <CheckListItem text={p} />}</For>
-                      </div>
-                    </Show>
-                    <Show when={props.payload.advantageText}>
-                      <Text data-field-path="advantageText">{props.payload.advantageText}</Text>
-                    </Show>
-                  </div>
-                </Card>
+                  </Show>
+                  <Show when={props.payload.advantageText}>
+                    <p class="text-violet-text" data-field-path="advantageText">
+                      {props.payload.advantageText}
+                    </p>
+                  </Show>
+                </div>
               </div>
             </Show>
 

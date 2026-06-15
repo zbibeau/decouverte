@@ -4,6 +4,10 @@ import { JSX, mergeProps } from 'solid-js';
 export type KeyofReturn<T extends (...args: any) => any> = keyof ReturnType<T>;
 
 const variantClassNames = {
+  // Refonte « moderne » (handoff Lot 4) — `primary600` (violet vif
+  // signature) en plus de la palette legacy. Utilisée pour les key
+  // points checks de la peau moderne.
+  primary600: 'bg-primary-600',
   primary400: 'bg-primary-400',
   primary200: 'bg-primary-200',
   dark950: 'bg-dark-950',
@@ -32,6 +36,7 @@ const variantClassNames = {
 };
 
 const iconVariantClassNames: Record<keyof typeof variantClassNames, string> = {
+  primary600: 'bg-white',
   primary400: 'bg-white',
   primary200: 'bg-primary-500',
   dark950: 'bg-white',
@@ -60,6 +65,7 @@ const iconVariantClassNames: Record<keyof typeof variantClassNames, string> = {
 };
 
 const iconTransparentVariantClassNames: Record<keyof typeof variantClassNames, string> = {
+  primary600: 'bg-primary-600',
   primary400: 'bg-primary-400',
   primary200: 'bg-primary-200',
   dark950: 'bg-dark-950',

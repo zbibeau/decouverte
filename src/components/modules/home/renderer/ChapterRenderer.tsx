@@ -400,8 +400,12 @@ const RenderKeyPoints: Component<{ block: KeyPointsCardBlock; nested?: boolean }
           </Text>
         )}
       </For>
+      {/* Refonte handoff §4 Constat + §5-7 Outils : alternance violet / ocre
+          des checks pour donner du rythme aux key points. Le 1er, 3e, 5e…
+          point est violet (primary-600), le 2e, 4e, 6e… ocre (#FFA300).
+          Si un seul point, il est violet par défaut. */}
       <For each={props.block.payload.main.items ?? []}>
-        {(item) => <CheckListItem variant="success400" text={item.text} />}
+        {(item, index) => <CheckListItem variant={index() % 2 === 0 ? 'primary600' : 'ocre'} text={item.text} />}
       </For>
     </>
   );

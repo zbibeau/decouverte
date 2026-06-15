@@ -8,6 +8,11 @@ const iconVariantClassNames = {
   success400TextOpacity66: 'success400',
   secondary400: 'secondary400',
   primary400: 'primary400',
+  // Refonte « moderne » (handoff Lot 4) — variantes signature de la peau :
+  //  - `primary600` violet vif (default des nouveaux key points)
+  //  - `ocre` jaune chaud (#FFA300) pour l'accent du « 2e check »
+  primary600: 'primary600',
+  ocre: 'secondary400',
   whiteSuccess400: 'success400',
   whitePrimary400: 'primary400',
 } as Record<string, Unpacked<typeof IconVariantClasses>>;
@@ -19,6 +24,8 @@ const textVariantClassNames = {
   success400TextOpacity66: 'text-dark-950 opacity-[66%]',
   secondary400: 'text-dark-950',
   primary400: 'text-dark-950',
+  primary600: 'text-primary-950',
+  ocre: 'text-primary-950',
   whiteSuccess400: 'text-white',
   whitePrimary400: 'text-white',
 } as Record<keyof typeof iconVariantClassNames, string>;
