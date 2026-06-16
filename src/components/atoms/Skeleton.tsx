@@ -29,10 +29,17 @@ export const Skeleton: Component<{
 }> = (props) => {
   const animate = () => props.animate !== false;
   return (
+    // Refonte UI Kit Lot 8 — palette skeleton passe de secondary-100
+    // (ocre pâle) à un dégradé violet pâle #EFE7F8 → #E2D6F2 → #EFE7F8.
+    // Match l'ADN violet de la peau et reste discret sur fond clair.
     <div
       aria-hidden="true"
-      class={cx('overflow-hidden bg-secondary-100', animate() && 'relative', props.class)}
-      style={props.style}
+      class={cx('overflow-hidden rounded-[7px]', animate() && 'relative', props.class)}
+      style={{
+        background: 'linear-gradient(90deg, #EFE7F8 0%, #E2D6F2 50%, #EFE7F8 100%)',
+        'background-size': '200% 100%',
+        ...(typeof props.style === 'object' ? props.style : {}),
+      }}
     >
       {/* Shimmer overlay : a translucent white band slides across the
           placeholder every 1.6s. Pure CSS, no JS, no per-frame work.
