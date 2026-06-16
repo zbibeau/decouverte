@@ -5,7 +5,6 @@ import { Portal } from 'solid-js/web';
 
 export type Unpacked<T> = T extends (infer U)[] ? U : T;
 import { Title, TitleVariantClasses } from '../primitives/Title';
-import { Icon } from './Icon';
 
 const sizeClassNames = {
   sm: 'md:w-screen md:max-w-[400px]',
