@@ -5,20 +5,54 @@ import { Accessor, createMemo, For, mergeProps, splitProps } from 'solid-js';
 
 export type Unpacked<T> = T extends (infer U)[] ? U : T;
 
-const variantClassNames = {
-  default: 'shadow data-[state=checked]:bg-success-400',
-  primary: 'shadow data-[state=checked]:bg-primary-400',
-  secondary: 'shadow data-[state=checked]:bg-secondary-400',
-  danger: 'shadow data-[state=checked]:bg-danger-400',
+/**
+ * RadioGroup — refonte UI Kit moderne (handoff Lot 7).
+ *
+ * Avant : puce 5×5 + label inline, fond pastille primary-400 quand
+ * sélectionné, label sans cadrage spécifique.
+ *
+ * Après (handoff §UI Kit Formulaires) : chaque option est une LIGNE
+ * cliquable :
+ *   - h-[48px] rounded-[14px] border-[1.5px] px-[15px] cursor-pointer
+ *   - sélectionnée → border-primary-600 + bg-primary-50 + label
+ *     font-semibold text-primary-600
+ *     puce = anneau primary-600 [20px] + point central primary-600
+ *   - non-sél. → border-violet-border (#E0D8EC), label text-violet-text
+ *     puce = anneau #CDBFE3 (= primary-200 plus saturé)
+ *
+ * Variants conservés pour rétrocompat — l'accent du sélectionné est
+ * juste re-mappé.
+ */
+const variantSelectedClassNames = {
+  default: 'border-primary-600 bg-primary-50',
+  primary: 'border-primary-600 bg-primary-50',
+  secondary: 'border-secondary-400 bg-secondary-50',
+  danger: 'border-[#E9897F] bg-[#FFF6F5]',
 };
 
-export const RadioGroupVariantClasses = Object.keys(variantClassNames) as (keyof typeof variantClassNames)[];
+const variantDotClassNames = {
+  default: 'border-primary-600',
+  primary: 'border-primary-600',
+  secondary: 'border-secondary-400',
+  danger: 'border-[#E9897F]',
+};
 
-const textVariantClassNames = {
-  default: 'text-dark-950',
-  primary: 'text-dark-950',
-  secondary: 'text-dark-950',
-  danger: 'text-danger-400',
+const variantDotInnerClassNames = {
+  default: 'bg-primary-600',
+  primary: 'bg-primary-600',
+  secondary: 'bg-secondary-400',
+  danger: 'bg-[#E9897F]',
+};
+
+export const RadioGroupVariantClasses = Object.keys(
+  variantSelectedClassNames,
+) as (keyof typeof variantSelectedClassNames)[];
+
+const textSelectedClassNames = {
+  default: 'text-primary-600 font-semibold',
+  primary: 'text-primary-600 font-semibold',
+  secondary: 'text-secondary-600 font-semibold',
+  danger: 'text-[#B33B36] font-semibold',
 } satisfies Record<Unpacked<typeof RadioGroupVariantClasses>, string>;
 
 export type RadioGroupProps = {
@@ -27,7 +61,7 @@ export type RadioGroupProps = {
 
   orientation?: 'vertical' | 'horizontal';
 
-  variant?: keyof typeof variantClassNames;
+  variant?: keyof typeof variantSelectedClassNames;
 
   disabled?: boolean;
 
@@ -69,46 +103,67 @@ export const RadioGroup = (_props: RadioGroupProps) => {
       onValueChange={(data) => {
         props.onChange && props.onChange(data.value);
       }}
-      class="space-y-1"
+      class="space-y-2"
       {...otherProps}
     >
-      <RadioGroupCMP.Label>{props.label}</RadioGroupCMP.Label>
+      {props.label && (
+        <RadioGroupCMP.Label class="text-[13px] font-semibold text-primary-950">{props.label}</RadioGroupCMP.Label>
+      )}
       <RadioGroupCMP.Indicator />
       <div
         class={cx(
-          'flex flex-wrap',
-          props.orientation === 'horizontal' ? 'flex-row items-center gap-2' : 'flex-col gap-1',
+          'flex',
+          props.orientation === 'horizontal' ? 'flex-row flex-wrap items-center gap-2' : 'flex-col gap-2',
         )}
       >
         <For each={options()}>
-          {(option) => (
-            <RadioGroupCMP.Item
-              value={option.value}
-              class={cx('flex items-center gap-1', props.disabled ? 'cursor-not-allowed' : 'cursor-pointer')}
-            >
-              <div>
+          {(option) => {
+            const isSelected = () => props.value === option.value;
+            return (
+              <RadioGroupCMP.Item
+                value={option.value}
+                class={cx(
+                  // Ligne cliquable h-[48px] rounded-[14px] border-[1.5px]
+                  // — pattern handoff §UI Kit Formulaires.
+                  'group flex h-[48px] items-center gap-3 rounded-[14px] border-[1.5px] px-[15px] transition-all',
+                  isSelected()
+                    ? variantSelectedClassNames[props.variant as keyof typeof variantSelectedClassNames]
+                    : 'border-violet-border bg-transparent hover:border-primary-200',
+                  props.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+                )}
+              >
+                {/* Puce 20px — anneau borduré + point central quand sélectionné. */}
                 <RadioGroupCMP.ItemControl
                   class={cx(
-                    'flex size-5 items-center justify-center rounded-full shadow',
-                    variantClassNames[props.variant as keyof typeof variantClassNames],
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[2px] transition-colors',
+                    isSelected()
+                      ? variantDotClassNames[props.variant as keyof typeof variantDotClassNames]
+                      : 'border-[#CDBFE3]',
                   )}
                 >
-                  <i class="icon icon-check-line relative size-4 rounded-full border bg-white" />
+                  {isSelected() && (
+                    <div
+                      class={cx(
+                        'h-2 w-2 rounded-full',
+                        variantDotInnerClassNames[props.variant as keyof typeof variantDotInnerClassNames],
+                      )}
+                    />
+                  )}
                 </RadioGroupCMP.ItemControl>
-              </div>
-              <div>
                 <RadioGroupCMP.ItemText
                   class={cx(
-                    'data-[state=checked]:font-medium',
-                    textVariantClassNames[props.variant as keyof typeof textVariantClassNames],
+                    'flex-1 text-sm',
+                    isSelected()
+                      ? textSelectedClassNames[props.variant as keyof typeof textSelectedClassNames]
+                      : 'text-violet-text',
                   )}
                 >
                   {option.label}
                 </RadioGroupCMP.ItemText>
                 <RadioGroupCMP.ItemHiddenInput />
-              </div>
-            </RadioGroupCMP.Item>
-          )}
+              </RadioGroupCMP.Item>
+            );
+          }}
         </For>
       </div>
     </RadioGroupCMP.Root>

@@ -32,8 +32,10 @@ const variantTextNotSelectedClassNames = {
   danger: 'text-danger-400',
 } satisfies Record<keyof typeof variantClassNames, string>;
 
+// Refonte UI Kit — labels select/non-select repointés sur primary-600
+// pour le sélectionné (au lieu de primary-400 doux).
 const variantTextSelectedClassNames = {
-  primary: 'text-primary-400 group-hover:text-primary-600',
+  primary: 'text-primary-600 group-hover:text-primary-700',
   secondary: 'text-secondary-400 group-hover:text-secondary-600',
   danger: 'text-danger-400',
 } satisfies Record<keyof typeof variantClassNames, string>;
@@ -56,9 +58,12 @@ const sizeCircleClassNames = {
   sm: 'w-3 h-3',
 } satisfies Record<keyof typeof sizeClassNames, string>;
 
+// Refonte UI Kit Lot 7 — la pastille du switch passe de primary-400
+// (violet doux) à primary-600 (violet vif signature de la peau
+// moderne). Le visuel actif est plus contrasté contre le track blanc.
 const variantCircleClassNames = (isDisabled?: boolean) =>
   ({
-    primary: isDisabled ? 'bg-primary-100 group-hover:bg-primary-400' : 'bg-primary-400 group-hover:bg-primary-600',
+    primary: isDisabled ? 'bg-primary-200 group-hover:bg-primary-600' : 'bg-primary-600 group-hover:bg-primary-700',
     secondary: isDisabled
       ? 'bg-secondary-100 group-hover:bg-secondary-400'
       : 'bg-secondary-400 group-hover:bg-secondary-600',

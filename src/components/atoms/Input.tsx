@@ -6,25 +6,48 @@ import { Icon, IconVariantClasses } from './Icon';
 
 export type Unpacked<T> = T extends (infer U)[] ? U : T;
 
+/**
+ * Input — refonte UI Kit moderne (handoff Lot 7).
+ *
+ * Avant : box `bg-primary-50 border border-transparent rounded-xl px-3 py-2`,
+ * focus implicite (pas de visuel dédié), erreur via variant `danger`
+ * fond rose pâle.
+ *
+ * Après (handoff §UI Kit Formulaires) :
+ *   - h-[50px], rounded-[14px], border-[1.5px] (au lieu de 1px).
+ *   - Bordure default : `border-violet-border` (#E0D8EC).
+ *   - Fond transparent par défaut (était primary-50 pour la variante
+ *     `primary`). Le contenu reste sur la surface du parent.
+ *   - Focus visible : `border-primary-600` + `ring-4 ring-primary-600/15`
+ *     pour matérialiser le tap target.
+ *   - Erreur : `border-[#E9897F]` + `bg-[#FFF6F5]` + `text-[#B33B36]`
+ *     pour éviter le rouge criard.
+ *
+ * Variants conservés pour rétrocompat — leur sémantique est juste
+ * re-mappée sur les nouveaux tokens (white = default, primary = bg
+ * primary-50 doux, secondary = idem côté secondary, danger = état
+ * erreur).
+ */
+
 const variantClassNames = {
-  white: 'hover:!border-dark-100 bg-white',
-  primary: 'hover:!border-primary-100 bg-primary-50',
-  secondary: 'hover:!border-secondary-100 bg-secondary-50',
-  danger: 'hover:!border-danger-100 bg-danger-50',
+  white: 'border-violet-border bg-transparent hover:border-primary-200',
+  primary: 'border-violet-border bg-primary-50/50 hover:border-primary-200',
+  secondary: 'border-secondary-200 bg-secondary-50/50 hover:border-secondary-300',
+  danger: 'border-[#E9897F] bg-[#FFF6F5]',
 };
 
 export const InputVariantClasses = Object.keys(variantClassNames) as (keyof typeof variantClassNames)[];
 
 const variantValueClassNames = {
-  white: 'text-dark-950',
-  primary: 'text-dark-950',
-  secondary: 'text-dark-950',
-  danger: 'text-danger-400',
+  white: 'text-primary-950 placeholder:text-violet-faint',
+  primary: 'text-primary-950 placeholder:text-violet-faint',
+  secondary: 'text-primary-950 placeholder:text-violet-faint',
+  danger: 'text-[#B33B36] placeholder:text-[#C0463F]/60',
 } satisfies Record<keyof typeof variantClassNames, string>;
 
 const variantIconClassNames = {
-  white: 'dark950',
-  primary: 'primary400',
+  white: 'primary600',
+  primary: 'primary600',
   secondary: 'secondary400',
   danger: 'danger400',
 } satisfies Record<keyof typeof variantClassNames, Unpacked<typeof IconVariantClasses>>;
@@ -55,17 +78,21 @@ export const Input = (_props: InputProps) => {
   return (
     <div
       class={cx(
-        'group flex items-center rounded-xl border border-transparent px-3 py-2',
+        // Box de base — h-[50px] rounded-[14px] border-[1.5px] (handoff §UI Kit).
+        'group flex h-[50px] items-center rounded-[14px] border-[1.5px] px-[15px] transition-all',
+        // Focus visible : ring violet à 15% d'opacité, anneau de 4px.
+        'focus-within:border-primary-600 focus-within:ring-4 focus-within:ring-primary-600/15',
         variantClassNames[props.variant as keyof typeof variantClassNames],
       )}
       {...otherProps}
     >
       {props.icon && (
-        <div>
+        <div class="pr-2">
           <Icon
             size="default"
             icon={props.icon}
             variant={variantIconClassNames[props.variant as keyof typeof variantIconClassNames]}
+            isTransparent
           />
         </div>
       )}
@@ -74,8 +101,7 @@ export const Input = (_props: InputProps) => {
         <input
           type={props.type || 'text'}
           class={cx(
-            'w-full resize-none bg-transparent outline-none',
-            props.icon && 'py-1 pl-2',
+            'w-full resize-none bg-transparent text-[15px] outline-none',
             variantValueClassNames[props.variant as keyof typeof variantValueClassNames],
           )}
           //@ts-ignore
