@@ -11,6 +11,7 @@ import { uploadImageDirect } from '@/lib/uploadImageClient';
 
 import { ChildBlockList } from './ChildBlockList';
 import { Field } from './Field';
+import { ImagePreview } from './ImagePreview';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
 import type { PayloadEditorProps } from './editor-types';
 
@@ -98,12 +99,7 @@ export function CardEditor({
           </Button>
           {payload.image && (
             <div className="basis-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={payload.image}
-                alt={payload.imageAlt ?? 'Aperçu image carte'}
-                className="border-border mt-1 h-32 w-auto rounded-lg border object-cover"
-              />
+              <ImagePreview src={payload.image} alt={payload.imageAlt ?? 'Aperçu image carte'} objectFit="cover" />
             </div>
           )}
         </div>

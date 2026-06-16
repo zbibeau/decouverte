@@ -15,6 +15,7 @@ import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
 import { uploadImageDirect } from '@/lib/uploadImageClient';
 
 import { Field, Section } from './Field';
+import { ImagePreview } from './ImagePreview';
 import { NavbarVariantSelect } from './NavbarVariantSelect';
 import { TagsField, TagsHelpBanner } from './TagsField';
 import type { PayloadEditorProps } from './editor-types';
@@ -510,12 +511,7 @@ export function HeroTitleEditor({ payload, onChange, depth = 0 }: PayloadEditorP
           </Button>
           {payload.illustration && (
             <div className="basis-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={payload.illustration}
-                alt="Aperçu illustration"
-                className="border-border mt-1 h-32 w-auto rounded border object-contain"
-              />
+              <ImagePreview src={payload.illustration} alt="Aperçu illustration" objectFit="contain" />
             </div>
           )}
         </div>
