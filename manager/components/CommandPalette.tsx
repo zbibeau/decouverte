@@ -288,6 +288,15 @@ export function CommandPalette() {
   // scored sections back via the standard rendering path below.
   const isEmptyQuery = search.trim() === '' && mode === 'search';
 
+  // Quand un filtre tag est actif, on doit RENDRE les sections
+  // Chapitres / Blocs même si la query est vide — sinon le simple fait
+  // de cliquer sur un tag dans la suggestion (qui clear la search via
+  // `setSearch('')`) cache tous les résultats filtrés et l'éditeur
+  // tombe sur « Aucun résultat. » alors que des blocs taggés existent.
+  // C'est exactement le bug rapporté avec « Manh ha » qui matchait 1
+  // bloc dans la recherche mais 0 après sélection du tag.
+  const showFilteredResults = !isEmptyQuery || !!selectedTagId;
+
   // Dedup : chapters whose only reason to appear is that one of their
   // child blocks matches the search. From a maintenance-audit
   // standpoint the chapter row is redundant — clicking the more
@@ -938,7 +947,7 @@ export function CommandPalette() {
                       to the active tag if any), then strips out the rows
                       considered redundant with a matching block row
                       (see `redundantChapterIds` above). */}
-                  {!isEmptyQuery && (scope === 'all' || scope === 'chapters') && filteredChapters.length > 0 && (
+                  {showFilteredResults && (scope === 'all' || scope === 'chapters') && filteredChapters.length > 0 && (
                     <Command.Group heading={`Chapitres · ${filteredChapters.length}`}>
                       {filteredChapters
                         .filter((c) => !redundantChapterIds.has(c.id))
@@ -982,7 +991,7 @@ export function CommandPalette() {
                   )}
 
                   {/* === Blocs (current parcours, full-text searchable) === */}
-                  {!isEmptyQuery && (scope === 'all' || scope === 'blocks') && filteredBlocks.length > 0 && (
+                  {showFilteredResults && (scope === 'all' || scope === 'blocks') && filteredBlocks.length > 0 && (
                     <Command.Group heading={`Blocs · ${filteredBlocks.length}`}>
                       {filteredBlocks.map((b, bi) => {
                         // Tags on the block that themselves match the
