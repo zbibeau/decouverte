@@ -1040,7 +1040,13 @@ export function CommandPalette() {
                             // Chapitres section if its title matches.
                             keywords={[b.summary, b.summary, b.primaryText, b.primaryText, b.type, b.secondaryText]}
                             onSelect={() =>
-                              go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}/blocks/${b.id}`, {
+                              // Cible le chapter editor avec hash #block-<id>
+                              // pour que ChapterEditor expand + centre +
+                              // mette en active le bloc cible à l'atterrissage.
+                              // Remplace la route legacy /blocks/<id> qui
+                              // sortait du chapter editor avec son canvas
+                              // papier + inspector.
+                              go(`/parcours/${ctx.parcoursSlug}/chapters/${b.chapterSlug}#block-${b.id}`, {
                                 kind: 'block',
                                 id: b.id,
                               })

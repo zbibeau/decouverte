@@ -526,6 +526,43 @@ export function ChapterEditor(props: Props) {
     setPendingExpandOrder(null);
   }, [props.blocks, pendingExpandOrder, centerOn]);
 
+  // Auto-focus du bloc cible quand l'URL contient `#block-<id>` —
+  // utilisé par le palette ⌘K pour atterrir sur le bloc choisi avec
+  // sa carte expanded, le bandeau active du canvas papier, et un
+  // scroll qui le centre dans la viewport (au lieu de la route legacy
+  // /blocks/<id> qui sortait du chapter editor).
+  //
+  // Hash plutôt que searchParam : (1) c'est un signal éphémère qui
+  // ne doit pas persister dans l'URL canonique du chapitre, (2) la
+  // navigation client-side de Next.js préserve le hash, (3) le
+  // browser scroll natif est neutralisé puisqu'on prend la main avec
+  // `centerOn` (la cible peut être un sous-bloc nested non encore
+  // expanded dont l'offset DOM n'est pas stable).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!window.location.hash.startsWith('#block-')) return;
+    const targetId = decodeURIComponent(window.location.hash.slice('#block-'.length));
+    if (!targetId) return;
+    // Vérifie que le bloc existe AVANT d'agir — sinon on déclenche
+    // openBlock sur un id inconnu (qui mettra activeBlockId à un id
+    // sans correspondance, état incohérent).
+    const exists = props.blocks.some((b) => b.id === targetId);
+    if (!exists) return;
+    setExpandedIds((prev) => (prev.has(targetId) ? prev : new Set(prev).add(targetId)));
+    setActiveBlockId(targetId);
+    // Setter pendingScrollToId pour bénéficier du retry RAF + 250ms
+    // déjà en place pour les insertions — l'inline editor a besoin
+    // d'un tick pour calculer sa hauteur finale, sinon le scroll
+    // tombe sur la hauteur skeleton.
+    setPendingScrollToId(targetId);
+    // Nettoie le hash de l'URL pour qu'un refresh ne re-déclenche pas
+    // le focus (ce n'est qu'un signal one-shot).
+    const url = new URL(window.location.href);
+    url.hash = '';
+    window.history.replaceState({}, '', url.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.blocks]);
+
   // After a fresh insert, scroll the newly-appeared row to the top of the
   // list. We wait for `props.blocks` to actually include the id (= the
   // post-`router.refresh()` render) before scrolling, then retry once at
