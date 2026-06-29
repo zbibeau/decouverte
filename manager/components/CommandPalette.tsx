@@ -722,8 +722,69 @@ export function CommandPalette() {
                 <div className="text-muted-foreground px-3 py-6 text-center text-sm">Chargement…</div>
               ) : (
                 <>
+                  {/* Empty state — quand un tag est filtré ET que le scope
+                      actuel renvoie 0, on aide l'éditeur à comprendre
+                      pourquoi (le tag existe mais dans une autre famille)
+                      et à débloquer en un clic en élargissant le scope.
+                      Cas concret rapporté : tag « Manh ha » sur 1 chapitre,
+                      onglet Blocs sélectionné → 0 bloc avec ce tag mais
+                      le tag existait bien dans l'autocomplete. */}
                   <Command.Empty className="text-muted-foreground px-3 py-6 text-center text-sm">
-                    Aucun résultat.
+                    {(() => {
+                      if (!selectedTag) return 'Aucun résultat.';
+                      const blocks = selectedTag.blockCount;
+                      const chapters = selectedTag.chapterCount;
+                      const elsewhereParts: string[] = [];
+                      if (scope !== 'blocks' && scope !== 'all' && blocks > 0) {
+                        elsewhereParts.push(`${blocks} bloc${blocks > 1 ? 's' : ''}`);
+                      }
+                      if (scope !== 'chapters' && scope !== 'all' && chapters > 0) {
+                        elsewhereParts.push(`${chapters} chapitre${chapters > 1 ? 's' : ''}`);
+                      }
+                      // Cas Blocs scope + tag uniquement sur chapitres :
+                      if (scope === 'blocks' && blocks === 0 && chapters > 0) {
+                        return (
+                          <>
+                            <p>
+                              Aucun bloc avec le tag <strong>« {selectedTag.label} »</strong>.
+                            </p>
+                            <p className="mt-1">
+                              {chapters} chapitre{chapters > 1 ? 's' : ''} en {chapters > 1 ? 'ont' : 'a'} un —{' '}
+                              <button
+                                type="button"
+                                onClick={() => setScope('all')}
+                                className="text-primary-on underline-offset-2 hover:underline"
+                              >
+                                voir tous les résultats
+                              </button>
+                              .
+                            </p>
+                          </>
+                        );
+                      }
+                      // Symétrique : Chapitres scope + tag uniquement sur blocs.
+                      if (scope === 'chapters' && chapters === 0 && blocks > 0) {
+                        return (
+                          <>
+                            <p>
+                              Aucun chapitre avec le tag <strong>« {selectedTag.label} »</strong>.
+                            </p>
+                            <p className="mt-1">
+                              {blocks} bloc{blocks > 1 ? 's' : ''} en {blocks > 1 ? 'ont' : 'a'} un —{' '}
+                              <button
+                                type="button"
+                                onClick={() => setScope('all')}
+                                className="text-primary-on underline-offset-2 hover:underline"
+                              >
+                                voir tous les résultats
+                              </button>
+                              .
+                            </p>
+                          </>
+                        );
+                      }
+                      return 'Aucun résultat.';
+                    })()}
                   </Command.Empty>
 
                   {/* === Empty-query landing — Récents + Suggestions (Direction B point 2) ===
@@ -840,14 +901,21 @@ export function CommandPalette() {
                     <Command.Group heading="Tags">
                       {data!.tags.map((t) => {
                         const hex = isTagColor(t.color) ? TAG_COLOR_HEX[t.color] : TAG_COLOR_HEX.amber;
+                        // Détail par famille — évite l'ambiguïté de l'ancien
+                        // « N bloc(s) / chapitre(s) » qui ne disait pas si
+                        // les N étaient des blocs OU des chapitres. L'éditeur
+                        // qui filtre par tag dans le scope « Blocs » a besoin
+                        // de savoir d'avance s'il aura des résultats.
+                        const parts: string[] = [];
+                        if (t.blockCount > 0) parts.push(`${t.blockCount} bloc${t.blockCount > 1 ? 's' : ''}`);
+                        if (t.chapterCount > 0)
+                          parts.push(`${t.chapterCount} chapitre${t.chapterCount > 1 ? 's' : ''}`);
                         return (
                           <PaletteItem
                             key={`tag-${t.id}`}
                             icon={<Tag className="h-3.5 w-3.5" style={{ color: hex.dot }} />}
                             label={t.label}
-                            hint={`${t.usageCount} bloc${t.usageCount > 1 ? 's' : ''} / chapitre${
-                              t.usageCount > 1 ? 's' : ''
-                            }`}
+                            hint={parts.length > 0 ? parts.join(' · ') : 'aucun usage'}
                             value={`tag-${t.id}`}
                             // Surface the section via natural French/English
                             // synonyms in addition to the label itself, so

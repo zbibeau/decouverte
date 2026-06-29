@@ -2056,6 +2056,14 @@ export interface PaletteTag {
    *  in the palette so the editor sees "réglage > acte (3)" at a
    *  glance. */
   usageCount: number;
+  /** Per-family counts — utilisés par l'autocomplete du palette pour
+   *  ne SURFACER QUE les tags qui produiraient un résultat dans le
+   *  scope actif. Avant ce split, on suggérait un tag attaché à un
+   *  chapitre uniquement dans l'onglet « Blocs » → l'éditeur cliquait
+   *  et obtenait « Aucun résultat ». Maintenant l'autocomplete cache
+   *  les tags qui n'ont aucun bloc / chapitre. */
+  blockCount: number;
+  chapterCount: number;
 }
 export interface PaletteData {
   parcours: PaletteParcours[];
@@ -2295,18 +2303,28 @@ export async function loadPaletteData(currentParcoursSlug?: string): Promise<Pal
   // Build the deduplicated tag vocabulary actually used in this parcours.
   // Each block/chapter already exposes its merged tag list (top-level +
   // nested) via `tags` so we just collect-and-dedupe by id, tracking
-  // usage count so the palette can display "réglage > acte (3)".
+  // per-family usage so the palette can display « X bloc(s) / Y chapitre(s) »
+  // et masquer les tags qui n'ont aucun résultat dans le scope actif.
   const tagCounter = new Map<string, PaletteTag>();
-  function recordTag(t: { id: string; label: string; color: string }) {
+  function recordTag(t: { id: string; label: string; color: string }, kind: 'block' | 'chapter') {
     const existing = tagCounter.get(t.id);
     if (existing) {
       existing.usageCount += 1;
+      if (kind === 'block') existing.blockCount += 1;
+      else existing.chapterCount += 1;
     } else {
-      tagCounter.set(t.id, { id: t.id, label: t.label, color: t.color, usageCount: 1 });
+      tagCounter.set(t.id, {
+        id: t.id,
+        label: t.label,
+        color: t.color,
+        usageCount: 1,
+        blockCount: kind === 'block' ? 1 : 0,
+        chapterCount: kind === 'chapter' ? 1 : 0,
+      });
     }
   }
-  for (const c of result.chapters) for (const t of c.tags) recordTag(t);
-  for (const b of result.blocks) for (const t of b.tags) recordTag(t);
+  for (const c of result.chapters) for (const t of c.tags) recordTag(t, 'chapter');
+  for (const b of result.blocks) for (const t of b.tags) recordTag(t, 'block');
   result.tags = [...tagCounter.values()].sort((a, b) => a.label.localeCompare(b.label, 'fr'));
 
   return result;
